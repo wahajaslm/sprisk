@@ -1,0 +1,32 @@
+{
+  "schema_version": "sprisk.profile_plan/v1",
+  "artifact_id": "art_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "scope": "input",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "purpose": "Establish the size and bounds of the descriptive profile.",
+      "evidence_scope": "input",
+      "reason": "Every table starts with a bounded descriptive overview."
+    },
+    {
+      "id": "classification",
+      "title": "Class balance",
+      "purpose": "Show the observed distribution of the declared target.",
+      "evidence_scope": "input",
+      "reason": "The question ledger declares a classification task."
+    },
+    {
+      "id": "images",
+      "title": "Image exploration",
+      "purpose": "Inspect the explicitly bound image assets and their coverage.",
+      "evidence_scope": "input",
+      "reason": "The question ledger explicitly binds image assets to 'imageid'."
+    }
+  ],
+  "limitations": [
+    "Input-scope views are descriptive and must not be used to fit preparation or choose a model."
+  ]
+}

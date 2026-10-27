@@ -77,6 +77,8 @@ pub enum CatalogError {
     UnknownMethod(String),
     #[error("methodology rule {0} has no rule.py")]
     NoModule(String),
+    #[error("decision {0} names no stage before its dot")]
+    UnknownStage(String),
 }
 
 #[derive(Debug, Default)]
@@ -84,6 +86,8 @@ pub struct RuleCatalog {
     rules: BTreeMap<String, Entry>,
     /// In decision order: a method comes after the methods whose decisions it reads.
     methods: Vec<MethodEntry>,
+    /// Methods shown as rules on the map. Display only: Apply and source go to the method.
+    method_rules: Vec<MethodologyRule>,
     concepts: BTreeMap<String, ConceptEntry>,
 }
 
@@ -153,6 +157,11 @@ impl RuleCatalog {
                 .collect(),
         };
         catalog.methods = methods::check(methods, &provided)?;
+        catalog.method_rules = catalog
+            .methods
+            .iter()
+            .map(|e| method_as_rule(&e.method, &e.path))
+            .collect::<Result<_, _>>()?;
         Ok(catalog)
     }
 
@@ -258,6 +267,14 @@ impl RuleCatalog {
             }
         }
         Ok(())
+    }
+
+    /// Every rule and every method shown as one, in stage order.
+    pub fn all_rules(&self) -> Vec<MethodologyRule> {
+        let mut rules: Vec<MethodologyRule> = self.rules().cloned().collect();
+        rules.extend(self.method_rules.iter().cloned());
+        rules.sort_by_key(|r| (r.stage, r.id.to_string()));
+        rules
     }
 }
 
@@ -439,4 +456,86 @@ pub fn reopened_stage(
     params: &serde_json::Map<String, serde_json::Value>,
 ) -> Option<MethodologyStage> {
     sprisk_contracts::parse(&params.get("stage")?.to_string()).ok()
+}
+
+/// The stage a decision belongs to: the area in `<area>.<decision>`.
+fn stage_of(decides: &str) -> Result<MethodologyStage, CatalogError> {
+    let area = decides.split_once('.').map_or(decides, |(area, _)| area);
+    area.parse()
+        .map_err(|_| CatalogError::UnknownStage(decides.to_owned()))
+}
+
+/// A method shown as a rule, for the map. Every word is the method's own: a rule's
+/// description, rationale and when are the option's label, its invariant the promises.
+fn method_as_rule(m: &Method, path: &Path) -> Result<MethodologyRule, CatalogError> {
+    let alternatives: Vec<serde_json::Value> = m
+        .options
+        .iter()
+        .map(|option| {
+            let label = option.label.as_str();
+            json!({
+                "id": option.id,
+                "label": label,
+                "description": label,
+                "rationale": label,
+                "when": label,
+                "action": method_action(option.action.as_ref()),
+            })
+        })
+        .collect();
+    let reads: Vec<&str> = m
+        .needs
+        .evidence
+        .iter()
+        .map(|e| e.as_str())
+        .chain(m.needs.concepts.iter().map(|c| c.as_str()))
+        .chain(m.needs.decisions.iter().map(|d| d.as_str()))
+        .collect();
+    // By name, so the words do not depend on map order.
+    let verifications: BTreeMap<&str, &str> = m
+        .verifications
+        .iter()
+        .map(|(name, v)| (name.as_str(), v.promise.as_str()))
+        .collect();
+    let (checks, promises): (Vec<&str>, Vec<&str>) = verifications.into_iter().unzip();
+    let rule = json!({
+        "schema_version": "sprisk.methodology_rule/v1",
+        "id": m.id,
+        "name": m.name,
+        "stage": stage_of(m.decides.as_str())?,
+        "decides": m.decides,
+        "status": "active",
+        "question": m.question,
+        "provenance": {
+            "standard": m.activity,
+            "citation": m.source,
+            "pitfall": m.question,
+            "corner_cases": [],
+        },
+        "policy_thresholds": {},
+        "alternatives": alternatives,
+        "verification": if checks.is_empty() {
+            json!({ "check_id": "none", "invariant": "The method makes no checked promise." })
+        } else {
+            json!({ "check_id": checks.join(", "), "invariant": promises.join(" ") })
+        },
+        "reads": reads,
+    });
+    sprisk_contracts::parse(&rule.to_string()).map_err(|source| CatalogError::Invalid {
+        path: path.to_owned(),
+        source,
+    })
+}
+
+/// The rule action nearest to what a method option does. Display only.
+fn method_action(action: Option<&sprisk_contracts::MethodAction>) -> serde_json::Value {
+    match action {
+        Some(a) if a.replace.is_some() => {
+            json!({ "type": RuleActionType::ReplaceNode, "operator": a.replace.as_ref().map(|r| &r.operator) })
+        }
+        Some(a) if a.insert.is_some() => {
+            json!({ "type": RuleActionType::InsertStep, "operator": a.insert.as_ref().map(|i| &i.operator) })
+        }
+        _ => json!({ "type": RuleActionType::PassThrough }),
+    }
 }

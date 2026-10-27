@@ -67,6 +67,8 @@ pub enum ResolveError {
     UndeclaredOption { method: String, option: String },
     #[error("a walk needs at least one source")]
     NoSource,
+    #[error("the question names an entity column, but no registered split keeps groups apart")]
+    NoGroupSplit,
     #[error("cannot tell how {0} is stored: name a .csv or .parquet file")]
     UnknownFormat(String),
     #[error("could not construct proposal: {0}")]

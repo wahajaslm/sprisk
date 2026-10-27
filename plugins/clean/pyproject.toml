@@ -2,7 +2,23 @@
 name = "sprisk-clean"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["sprisk-workers", "polars>=1.10", "scikit-learn>=1.6", "scipy>=1.11"]
+dependencies = [
+    "sprisk-workers",
+    "polars>=1.10",
+    "scikit-learn>=1.6",
+    "scipy>=1.11",
+    "pillow>=10",
+]
+
+# Asset operators pull large native stacks; a plain table install should not carry them.
+[project.optional-dependencies]
+# librosa/soundfile decode and describe clips; opensmile gives eGeMAPS; webrtcvad finds speech.
+audio = ["librosa>=0.11", "soundfile>=0.13", "opensmile>=2.6", "webrtcvad-wheels>=2.0.14"]
+# torch/transformers run the frozen CLIP image encoder.
+vision = ["torch>=2.6", "transformers>=5.0"]
+
+[dependency-groups]
+dev = ["sprisk-clean[audio,vision]"]
 
 [tool.uv.sources]
 sprisk-workers = { workspace = true }

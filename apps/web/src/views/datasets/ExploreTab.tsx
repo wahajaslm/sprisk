@@ -3,6 +3,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { type CSSProperties, useState } from "react";
 
 import { useDatasetProfile, useDatasetVersionProfile, useProfilePlan, useTableShift } from "../../api/datasets.ts";
+import { useQuestionVersion } from "../../api/questions.ts";
 import { useOutputs, usePipelineVersions, useRunAttempts, useTablePage } from "../../api/hooks.ts";
 import { latestByNode } from "../../flow/latest.ts";
 import { Button } from "../../components/ui/Button.tsx";
@@ -52,7 +53,7 @@ const TOPICS: Record<ProfileFinding["topic"], string> = {
 export type DatasetExploreView = "Overview" | "Quality" | "Relationships" | "Modalities";
 
 export function ExploreTab({ dataset, target, questionVersionId, view }: { dataset: LoadedTable; target?: string | undefined; questionVersionId?: string | undefined; view: DatasetExploreView }) {
-  return <ProfileView profile={useDatasetProfile(dataset.artifact.id, target)} plan={useProfilePlan(dataset.artifact.id, questionVersionId)} dataset={dataset} view={view} />;
+  return <ProfileView profile={useDatasetProfile(dataset.artifact.id, target)} plan={useProfilePlan(dataset.artifact.id, questionVersionId)} dataset={dataset} view={view} questionVersionId={questionVersionId} />;
 }
 
 /** A registered source's Explore page (ADR-0067): its profile, read in place on its first
@@ -63,7 +64,7 @@ export function SourceExploreTab({ source }: { source: DatasetVersion }) {
 }
 
 /** The profile's views; `view` absent shows them all. */
-function ProfileView({ profile, plan, dataset, view }: { profile: UseQueryResult<DatasetProfile>; plan?: UseQueryResult<ProfilePlan>; dataset?: LoadedTable; view?: DatasetExploreView }) {
+function ProfileView({ profile, plan, dataset, view, questionVersionId }: { profile: UseQueryResult<DatasetProfile>; plan?: UseQueryResult<ProfilePlan>; dataset?: LoadedTable; view?: DatasetExploreView; questionVersionId?: string | undefined }) {
   const shows = (v: DatasetExploreView) => view === undefined || view === v;
   const [picked, setPicked] = useState<number>();
   if (profile.isError) return <p role="alert" className="error">{profile.error.message}</p>;
@@ -97,6 +98,7 @@ function ProfileView({ profile, plan, dataset, view }: { profile: UseQueryResult
       {shows("Relationships") && applies("target") && p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
 
       {shows("Modalities") && <ModalitySummary profile={p} plan={plan?.data} />}
+      {shows("Modalities") && questionVersionId && <AssetBindings questionVersionId={questionVersionId} />}
       {shows("Modalities") && applies("text") && <TextQuality profile={p} />}
       {shows("Modalities") && applies("categories") && <ValuesPerColumn profile={p} roles={["category", "boolean"]} title="Category distributions" />}
       {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
@@ -118,6 +120,25 @@ export function sampleNote(p: DatasetProfile): string | undefined {
         : "";
   const columns = p.columns.length < p.total_columns ? `Showing the first ${p.columns.length} of ${p.total_columns} columns.` : "";
   return `${rows}${columns}`.trim() || undefined;
+}
+
+function AssetBindings({ questionVersionId }: { questionVersionId: string }) {
+  const question = useQuestionVersion(questionVersionId);
+  if (question.isError) return <p role="alert" className="error">{question.error.message}</p>;
+  const assets = question.data?.asset_bindings ?? [];
+  if (assets.length === 0) return null;
+  return (
+    <BodySection title="Bound assets" note="Declared in the Question Ledger. Asset files are audited only when the matching operator runs.">
+      <ul className="ex-stats" aria-label="Bound assets">
+        {assets.map((asset) => (
+          <li key={`${asset.modality}:${asset.link_column}`}>
+            <span>{asset.modality}</span>
+            <span>{asset.link_column} · declared root</span>
+          </li>
+        ))}
+      </ul>
+    </BodySection>
+  );
 }
 
 function ModalitySummary({ profile, plan }: { profile: DatasetProfile; plan: ProfilePlan | undefined }) {

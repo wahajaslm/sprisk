@@ -1,0 +1,28 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.opensmile_audio@1.0.0
+title: openSMILE eGeMAPS acoustic features
+capability_class: transform
+description: "Extracts the standard eGeMAPSv02 acoustic functional descriptor set and appends it to optional text features."
+entrypoint: sprisk_clean.audio_speech:opensmile_features
+fits_on_train: true
+inputs:
+  - { name: train, kind: table }
+  - { name: test, kind: table }
+  - { name: train_words, kind: matrix, optional: true }
+  - { name: test_words, kind: matrix, optional: true }
+outputs:
+  - { name: train, kind: table }
+  - { name: test, kind: table }
+  - { name: train_words, kind: matrix }
+  - { name: test_words, kind: matrix }
+  - { name: evidence, kind: report }
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [audio_dir, audio_path_column]
+  properties:
+    audio_dir: { type: string, minLength: 1, x-sprisk-local-path: true }
+    audio_path_column: { type: string, minLength: 1, x-sprisk-column: true }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 4096, gpu: none, timeout_seconds: 7200 }

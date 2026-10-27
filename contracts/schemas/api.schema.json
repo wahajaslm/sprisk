@@ -277,7 +277,7 @@
     },
     "ProfileSectionId": {
       "type": "string",
-      "enum": ["overview", "data_quality", "columns", "relationships", "target", "classification", "regression", "text", "categories", "entity_integrity", "temporal_integrity", "split_check", "change_report"]
+      "enum": ["overview", "data_quality", "columns", "relationships", "target", "classification", "regression", "text", "categories", "entity_integrity", "temporal_integrity", "images", "audio", "video", "split_check", "change_report"]
     },
     "DatasetProfile": {
       "title": "DatasetProfile",
@@ -478,7 +478,7 @@
       "required": ["target", "classes", "other", "numbers", "groups"],
       "properties": {
         "target": { "type": "string" },
-        "classes": { "type": "array", "items": { "$ref": "#/$defs/HistogramBar" }, "description": "The 20 most common labels and their rows, most common first. Rows with no label are left out." },
+        "classes": { "type": "array", "items": { "$ref": "#/$defs/HistogramBar" }, "description": "The 30 most common labels and their rows, most common first. Rows with no label are left out." },
         "other": { "type": "integer", "minimum": 0, "description": "Labelled rows whose label is not among the classes. Above zero, the label has too many values to relate columns to: numbers and groups are then empty." },
         "numbers": { "type": "array", "items": { "$ref": "#/$defs/LabelNumber" }, "description": "Each measured number and how it moves with the label." },
         "groups": { "type": "array", "items": { "$ref": "#/$defs/LabelGroup" }, "description": "Categories with 2 to 20 values, at most 6, and the first class's share in each value." }

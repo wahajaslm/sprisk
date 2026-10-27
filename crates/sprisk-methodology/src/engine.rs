@@ -73,10 +73,24 @@ pub fn start(
             "State or confirm the target column: the engine never guesses or measures one.",
         ));
     };
-    nodes.push(json!({
-        "id": "split", "operator": defaults.split,
-        "params": { "test_fraction": TEST_FRACTION, "seed": SEED },
-    }));
+    // A stated entity boundary holds from the first flow: the plan gate refuses a random
+    // split of repeated entities before any evidence could be measured.
+    let split = match &question.entity_column {
+        Some(entity) => json!({
+            "id": "split",
+            "operator": defaults.group_split.as_ref().ok_or(ResolveError::NoGroupSplit)?,
+            "params": {
+                "group_column": entity.value.as_str(),
+                "test_fraction": TEST_FRACTION,
+                "seed": SEED,
+            },
+        }),
+        None => json!({
+            "id": "split", "operator": defaults.split,
+            "params": { "test_fraction": TEST_FRACTION, "seed": SEED },
+        }),
+    };
+    nodes.push(split);
     nodes.push(json!({
         "id": MODEL_NODE, "operator": defaults.model,
         "params": { "target": target.value.as_str(), "task": task },

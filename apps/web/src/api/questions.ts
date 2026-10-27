@@ -1,11 +1,17 @@
 import type { QuestionVersion } from "@sprisk/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getList, postOne } from "./client.ts";
+import { getList, getOne, postOne } from "./client.ts";
 
 export const useQuestionVersions = () =>
   useQuery({
     queryKey: ["question_versions"],
     queryFn: () => getList("QuestionVersion", "/question_versions?limit=100"),
+  });
+
+export const useQuestionVersion = (id: string) =>
+  useQuery({
+    queryKey: ["question_versions", id],
+    queryFn: () => getOne("QuestionVersion", `/question_versions/${id}`),
   });
 
 export function useSaveQuestionVersion() {

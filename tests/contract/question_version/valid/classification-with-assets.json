@@ -1,0 +1,35 @@
+{
+  "schema_version": "sprisk.question_version/v1",
+  "id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "investigation_id": "inv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "objective": {
+    "value": "Predict each product's type from its title and photo.",
+    "origin": "explicit"
+  },
+  "task": {
+    "value": "classification",
+    "origin": "explicit"
+  },
+  "target": {
+    "value": "prdtypecode",
+    "origin": "explicit"
+  },
+  "assumptions": [],
+  "unknowns": [],
+  "acceptance_criteria": [],
+  "asset_bindings": [
+    {
+      "modality": "image",
+      "asset_root": "images/image_train",
+      "link_column": "imageid",
+      "origin": "explicit"
+    },
+    {
+      "modality": "audio",
+      "asset_root": "clips",
+      "link_column": "clip_path",
+      "origin": "confirmed"
+    }
+  ],
+  "created_at": "2026-10-27T10:00:00Z"
+}

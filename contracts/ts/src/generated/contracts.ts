@@ -74,6 +74,9 @@ export type ProfileSectionId =
   | "categories"
   | "entity_integrity"
   | "temporal_integrity"
+  | "images"
+  | "audio"
+  | "video"
   | "split_check"
   | "change_report";
 /**
@@ -1170,7 +1173,7 @@ export interface CorrelationPair {
 export interface LabelProfile {
   target: string;
   /**
-   * The 20 most common labels and their rows, most common first. Rows with no label are left out.
+   * The 30 most common labels and their rows, most common first. Rows with no label are left out.
    */
   classes: HistogramBar[];
   /**
@@ -1460,7 +1463,7 @@ export interface ErrorMargins1 {
 export interface LabelProfile1 {
   target: string;
   /**
-   * The 20 most common labels and their rows, most common first. Rows with no label are left out.
+   * The 30 most common labels and their rows, most common first. Rows with no label are left out.
    */
   classes: HistogramBar[];
   /**
@@ -3617,6 +3620,10 @@ export interface QuestionVersion {
    */
   bindings?: Binding[];
   /**
+   * Explicitly declared external assets linked to rows. Asset roots are never inferred or scanned implicitly.
+   */
+  asset_bindings?: AssetBinding[];
+  /**
    * A person's answers to the methods' asks, one per decision key (ADR-0063 amendment). Absent: none given.
    */
   answers?: DecisionAnswer[];
@@ -3682,6 +3689,16 @@ export interface SuccessBarFact {
   /**
    * A bar is never inferred or measured: one set from the scores always looks met.
    */
+  origin: "explicit" | "confirmed";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "AssetBinding".
+ */
+export interface AssetBinding {
+  modality: "image" | "audio" | "video";
+  asset_root: string;
+  link_column: string;
   origin: "explicit" | "confirmed";
 }
 /**

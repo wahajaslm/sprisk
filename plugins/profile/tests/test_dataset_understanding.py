@@ -76,6 +76,16 @@ def test_numbers_get_their_five_number_summary() -> None:
     assert q is not None and (q.min, q.q1, q.median, q.q3, q.max) == (1.0, 2.0, 3.0, 4.0, 5.0)
 
 
+def test_numeric_codes_and_identifiers_are_not_profiled_as_measured_ranges() -> None:
+    p = profile(listings())
+    for name in ("row", "code"):
+        observed = column(p, name)
+        assert observed.quartiles is None
+    assert column(p, "row").histogram is None
+    code_histogram = column(p, "code").histogram
+    assert code_histogram is not None and code_histogram.kind == "top_values"
+
+
 def test_a_category_shows_its_most_common_values_and_counts_the_long_tail() -> None:
     values = [f"c{i}" for i in range(TOP_VALUES + 5) for _ in range(TOP_VALUES + 5 - i)]
     histogram = column(profile(pl.DataFrame({"kind": values})), "kind").histogram

@@ -16,9 +16,9 @@ python_version = "3.12"
 [tool.ruff.lint.isort]
 known-first-party = ["sprisk_*"]
 
-# scikit-learn, skops, pyarrow, pandas and scipy ship no usable type information.
+# scikit-learn, skops, pyarrow, pandas, scipy and the audio libraries ship no usable type information.
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "skops.*", "plotly.*", "pyarrow.*", "pandas.*", "scipy.*"]
+module = ["sklearn.*", "skops.*", "plotly.*", "pyarrow.*", "pandas.*", "scipy.*", "opensmile.*", "soundfile.*", "webrtcvad.*"]
 ignore_missing_imports = true
 
 # Generated enums with a member named `split` (a stage) shadow str.split; the values are right.

@@ -464,7 +464,7 @@ def test_no_label_section_without_the_target_column_and_no_relations_for_many_va
     label = profile_of_target(many, "y").label
     assert label is not None
     assert label.numbers == [] and label.groups == []
-    assert label.other == 30
+    assert label.other == 20
 
 
 def profile_of_target(data: pl.DataFrame, target: str) -> DatasetProfile:

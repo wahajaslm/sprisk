@@ -84,6 +84,9 @@ class ProfileSectionId(StrEnum):
     categories = "categories"
     entity_integrity = "entity_integrity"
     temporal_integrity = "temporal_integrity"
+    images = "images"
+    audio = "audio"
+    video = "video"
     split_check = "split_check"
     change_report = "change_report"
 
@@ -1441,9 +1444,25 @@ class PortRef(RootModel[str]):
     ]
 
 
+class Modality(StrEnum):
+    image = "image"
+    audio = "audio"
+    video = "video"
+
+
 class Origin1(StrEnum):
     explicit = "explicit"
     confirmed = "confirmed"
+
+
+class AssetBinding(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    modality: Modality
+    asset_root: Annotated[str, Field(min_length=1)]
+    link_column: Annotated[str, Field(min_length=1)]
+    origin: Origin1
 
 
 class Interpretability(StrEnum):
@@ -1467,7 +1486,7 @@ class Fact(StrictModel):
     origin: Origin
 
 
-class Origin3(StrEnum):
+class Origin4(StrEnum):
     explicit = "explicit"
     confirmed = "confirmed"
 
@@ -2970,7 +2989,7 @@ class CostsFact(StrictModel):
         extra="forbid",
     )
     value: Costs
-    origin: Annotated[Origin3, Field(description="Costs are never inferred or measured.")]
+    origin: Annotated[Origin4, Field(description="Costs are never inferred or measured.")]
 
 
 class TaskFact(StrictModel):
@@ -4186,7 +4205,7 @@ class LabelProfile(StrictModel):
     classes: Annotated[
         list[HistogramBar],
         Field(
-            description="The 20 most common labels and their rows, most common first. Rows with no label are left out."
+            description="The 30 most common labels and their rows, most common first. Rows with no label are left out."
         ),
     ]
     other: Annotated[
@@ -4368,6 +4387,12 @@ class QuestionVersion(StrictModel):
         list[Binding] | None,
         Field(
             description="Which column means each concept the packs ask for, in this project (ADR-0063). One binding per concept. Absent: none stated."
+        ),
+    ] = None
+    asset_bindings: Annotated[
+        list[AssetBinding] | None,
+        Field(
+            description="Explicitly declared external assets linked to rows. Asset roots are never inferred or scanned implicitly."
         ),
     ] = None
     answers: Annotated[

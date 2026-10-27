@@ -1,0 +1,30 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.embed_images@1.0.0
+title: Frozen image embeddings
+capability_class: transform
+description: Resolves each row's Rakuten image, then appends 512 fixed CLIP visual features to text features. The vision encoder is never fitted on dataset rows; missing or unreadable files become zero vectors and are reported.
+entrypoint: sprisk_clean.embed_images:embed_images
+fits_on_train: true
+inputs:
+  - { name: train, kind: table }
+  - { name: test, kind: table }
+  - { name: train_words, kind: matrix, optional: true }
+  - { name: test_words, kind: matrix, optional: true }
+outputs:
+  - { name: train, kind: table }
+  - { name: test, kind: table }
+  - { name: train_words, kind: matrix, description: "Text and frozen visual features for training rows." }
+  - { name: test_words, kind: matrix, description: "Text and frozen visual features for test rows." }
+  - { name: evidence, kind: report }
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [image_dir, image_id_column, product_id_column]
+  properties:
+    image_dir: { type: string, minLength: 1, x-sprisk-local-path: true, description: "Directory containing image_{imageid}_product_{productid}.jpg files." }
+    image_id_column: { type: string, minLength: 1, x-sprisk-column: true }
+    product_id_column: { type: string, minLength: 1, x-sprisk-column: true }
+    batch_size: { type: integer, minimum: 1, maximum: 256, default: 64 }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 4096, gpu: none, timeout_seconds: 7200 }

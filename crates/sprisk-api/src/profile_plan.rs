@@ -2,7 +2,8 @@
 
 use serde_json::json;
 use sprisk_contracts::{
-    ArtifactId, ColumnRole, DatasetProfile, ProfilePlan, QuestionVersion, TaskType, parse,
+    ArtifactId, AssetBindingModality, ColumnRole, DatasetProfile, ProfilePlan, QuestionVersion,
+    TaskType, parse,
 };
 
 /// Select input-scope views only from immutable question fields and stored profile facts.
@@ -106,6 +107,28 @@ pub fn input_plan(
                 "Temporal integrity",
                 "Inspect the declared time field for ordering, coverage and temporal split risk.",
                 "The question ledger declares a time column, so temporal evidence is required before splitting.",
+            ));
+        }
+        // Asset roots are ledger facts a person declared. A matching column alone does not
+        // show that the files exist or were inspected.
+        for asset in &question.asset_bindings {
+            let (id, title, modality) = match asset.modality {
+                AssetBindingModality::Image => ("images", "Image exploration", "image"),
+                AssetBindingModality::Audio => ("audio", "Audio exploration", "audio"),
+                AssetBindingModality::Video => ("video", "Video exploration", "video"),
+            };
+            // Two folders of one kind still make one view.
+            if sections.iter().any(|s| s["id"] == id) {
+                continue;
+            }
+            sections.push(section(
+                id,
+                title,
+                &format!("Inspect the explicitly bound {modality} assets and their coverage."),
+                &format!(
+                    "The question ledger explicitly binds {modality} assets to '{}'.",
+                    asset.link_column.as_str()
+                ),
             ));
         }
     }

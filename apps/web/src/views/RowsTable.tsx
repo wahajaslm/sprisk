@@ -8,8 +8,9 @@ export const isNumeric = (dataType: string) => /^(U?Int|Float|Decimal)/.test(dat
 export function Cell({ value, dataType }: { value: string | undefined; dataType: string }) {
   const number = /Float|Decimal/.test(dataType) ? Number(value) : Number.NaN;
   const short = Number.isFinite(number) ? String(Number(number.toPrecision(6))) : value;
+  const text = isText(dataType);
   return (
-    <td className={isText(dataType) ? "text" : undefined} title={short !== value ? value : undefined}>
+    <td className={text ? "text" : undefined} title={text || short !== value ? value : undefined}>
       {short}
     </td>
   );

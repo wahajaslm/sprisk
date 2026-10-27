@@ -1,10 +1,11 @@
-import type { DatasetProfile, LoadedTable, ProfilePlan } from "@sprisk/contracts";
+import type { DatasetProfile, LoadedTable, ProfilePlan, QuestionVersion } from "@sprisk/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DatasetsPage } from "../src/views/datasets/DatasetsPage.tsx";
+import { ExploreTab } from "../src/views/datasets/ExploreTab.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { PV, RUN, loadOutputs } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
@@ -314,6 +315,46 @@ describe("datasets", () => {
     const note = screen.getByRole("article", { name: "Text quality of note" });
     expect(within(note).getByRole("list", { name: "Text quality of note" })).toHaveTextContent("filled90%");
     expect(within(note).getByRole("img", { name: "Words per value in note" })).toBeInTheDocument();
+  });
+
+  describe("bound assets", () => {
+    const QV = "qv_01JABCDEFGHJKMNPQRSTVWXYZ0";
+    const question = (assets: QuestionVersion["asset_bindings"]): QuestionVersion => ({
+      schema_version: "sprisk.question_version/v1",
+      id: QV,
+      investigation_id: "inv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      objective: { value: "Tell each listing's product type.", origin: "explicit" },
+      task: { value: "classification", origin: "explicit" },
+      assumptions: [],
+      unknowns: [],
+      acceptance_criteria: [],
+      ...(assets ? { asset_bindings: assets } : {}),
+      created_at: "2026-10-27T10:00:00Z",
+    });
+    const showModalities = (answer: () => Response) => {
+      server.use(
+        http.get("/api/artifacts/:id/profile", () => HttpResponse.json(profile)),
+        http.get("/api/artifacts/:id/profile_plan", ({ params }) => HttpResponse.json({ ...profilePlan, artifact_id: params.id })),
+        http.get(`/api/question_versions/${QV}`, answer),
+      );
+      renderWithApi(<ExploreTab dataset={iris} questionVersionId={QV} view="Modalities" />);
+    };
+
+    it("lists the folders the question binds to rows", async () => {
+      showModalities(() => HttpResponse.json(question([{ modality: "image", asset_root: "images", link_column: "imageid", origin: "explicit" }])));
+      expect(await screen.findByRole("list", { name: "Bound assets" })).toHaveTextContent("imageimageid · declared root");
+    });
+
+    it("shows nothing when the question binds none", async () => {
+      showModalities(() => HttpResponse.json(question(undefined)));
+      await screen.findByRole("article", { name: "species" });
+      expect(screen.queryByRole("list", { name: "Bound assets" })).not.toBeInTheDocument();
+    });
+
+    it("says so when the question cannot be read", async () => {
+      showModalities(() => HttpResponse.json({ title: "no such question" }, { status: 404 }));
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+    });
   });
 
   it("keeps where values are missing along the rows", async () => {

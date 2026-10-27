@@ -6,7 +6,7 @@ use sprisk_methodology::engine::{
     Action, HeadRun, SHARES_NODE, Start, look_asks, next_action, start, unconfirmed_reads,
     with_test_scoring,
 };
-use sprisk_methodology::{Defaults, RuleCatalog};
+use sprisk_methodology::{Defaults, ResolveError, RuleCatalog};
 
 mod repo;
 use repo::rules_with_retired;
@@ -437,6 +437,43 @@ fn the_first_flow_is_a_load_per_source_a_split_and_a_baseline_on_the_target() {
         ],
         "the second source has no reader: the join rule joins it"
     );
+}
+
+#[test]
+fn the_first_flow_respects_a_declared_entity_boundary() {
+    let Start::Flow { nodes, .. } = start(
+        &question(json!({
+            "entity_column": { "value": "productid", "origin": "explicit" }
+        })),
+        &["/data/products.csv".to_owned()],
+        &defaults(),
+    )
+    .unwrap() else {
+        panic!("expected a flow");
+    };
+    assert_eq!(
+        nodes[1],
+        json!({
+            "id": "split",
+            "operator": "sprisk.validation.group_split@1.0.0",
+            "params": { "group_column": "productid", "test_fraction": 0.2, "seed": 0 }
+        })
+    );
+}
+
+#[test]
+fn a_declared_entity_with_no_group_split_registered_is_refused() {
+    let refused = start(
+        &question(json!({
+            "entity_column": { "value": "productid", "origin": "explicit" }
+        })),
+        &["/data/products.csv".to_owned()],
+        &Defaults {
+            group_split: None,
+            ..defaults()
+        },
+    );
+    assert!(matches!(refused, Err(ResolveError::NoGroupSplit)));
 }
 
 #[test]

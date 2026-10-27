@@ -10,10 +10,14 @@ from typing import Any
 import polars as pl
 import pytest
 import yaml
+from asset_files import tiny_clip, write_image, write_wave
 from polars.testing import assert_frame_equal
 from scipy import sparse
 
+from sprisk_clean import embed_images
+
 PLUGINS = Path(__file__).parents[2]
+ASSETS = "<asset dir>"
 # Settings that make each step do real work (on column x, y for encoding, t for grouping,
 # d for dates, s for words).
 SETTINGS: dict[str, dict[str, Any]] = {
@@ -29,8 +33,23 @@ SETTINGS: dict[str, dict[str, Any]] = {
     "sprisk.clean.power_transform@1.0.0": {"columns": ["x"]},
     "sprisk.clean.vectorize_text@1.1.0": {"columns": ["s"]},
     "sprisk.clean.spectral_gating@1.0.0": {"signal_column": "x", "snr_column": "y"},
+    # Asset steps read one file per row, named by t (and y for images); see `assets`. One
+    # image per batch: batching changes float32 sums by 1e-7, which is not leakage.
+    "sprisk.clean.featurize_audio@1.0.0": {"audio_dir": ASSETS, "audio_path_column": "t"},
+    "sprisk.clean.opensmile_audio@1.0.0": {"audio_dir": ASSETS, "audio_path_column": "t"},
+    "sprisk.clean.embed_images@1.0.0": {
+        "image_dir": ASSETS,
+        "image_id_column": "t",
+        "product_id_column": "y",
+        "batch_size": 1,
+    },
 }
 TRAIN_PORTS = ("train", "train_words")
+
+
+@pytest.fixture(autouse=True)
+def no_real_clip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(embed_images, "load_clip", tiny_clip)
 
 
 def claimed() -> list[tuple[str, Callable[..., dict[str, pl.DataFrame]]]]:
@@ -67,11 +86,30 @@ TEST = pl.DataFrame(
 )
 
 
+@pytest.fixture(scope="module")
+def assets(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    root = tmp_path_factory.mktemp("assets")
+    for at, name in enumerate("abc"):
+        write_wave(root / name, 3000 * (at + 1))
+        for product in (0, 1):
+            write_image(root / f"image_{name}_product_{product}.jpg", (80 * at, 100 * product, 50))
+    return root
+
+
+def settings(ref: str, assets: Path) -> dict[str, Any]:
+    return {key: assets if value == ASSETS else value for key, value in SETTINGS[ref].items()}
+
+
 @pytest.mark.parametrize(("ref", "step"), claimed())
-def test_the_train_outputs_ignore_the_test_rows(ref: str, step: Callable[..., Any]) -> None:
+def test_the_train_outputs_ignore_the_test_rows(
+    ref: str, step: Callable[..., Any], assets: Path
+) -> None:
     # Words the train rows use too: learning from test rows would change their weights.
     changed = TEST.with_columns(pl.col("x") * 1000, pl.col("s") + " red hat")
-    first, other = step(TRAIN, TEST, **SETTINGS[ref]), step(TRAIN, changed, **SETTINGS[ref])
+    first, other = (
+        step(TRAIN, TEST, **settings(ref, assets)),
+        step(TRAIN, changed, **settings(ref, assets)),
+    )
     for port in TRAIN_PORTS:
         if port in first:
             assert_same(first[port], other[port])
@@ -79,10 +117,10 @@ def test_the_train_outputs_ignore_the_test_rows(ref: str, step: Callable[..., An
 
 @pytest.mark.parametrize(("ref", "step"), claimed())
 def test_each_test_row_depends_only_on_itself_and_the_train_rows(
-    ref: str, step: Callable[..., Any]
+    ref: str, step: Callable[..., Any], assets: Path
 ) -> None:
-    together = step(TRAIN, TEST, **SETTINGS[ref])
-    alone = [step(TRAIN, TEST[i : i + 1], **SETTINGS[ref]) for i in range(4)]
+    together = step(TRAIN, TEST, **settings(ref, assets))
+    alone = [step(TRAIN, TEST[i : i + 1], **settings(ref, assets)) for i in range(4)]
     assert_frame_equal(together["test"], pl.concat(a["test"] for a in alone), check_exact=False)
     if "test_words" in together:
         rows = sparse.vstack([a["test_words"][0] for a in alone])

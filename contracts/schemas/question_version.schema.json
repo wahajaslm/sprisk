@@ -58,12 +58,28 @@
           "description": "Which column means each concept the packs ask for, in this project (ADR-0063). One binding per concept. Absent: none stated.",
           "items": { "$ref": "#/$defs/Binding" }
         },
+        "asset_bindings": {
+          "type": "array",
+          "description": "Explicitly declared external assets linked to rows. Asset roots are never inferred or scanned implicitly.",
+          "items": { "$ref": "#/$defs/AssetBinding" }
+        },
         "answers": {
           "type": "array",
           "description": "A person's answers to the methods' asks, one per decision key (ADR-0063 amendment). Absent: none given.",
           "items": { "$ref": "#/$defs/DecisionAnswer" }
         },
         "created_at": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "AssetBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modality", "asset_root", "link_column", "origin"],
+      "properties": {
+        "modality": { "type": "string", "enum": ["image", "audio", "video"] },
+        "asset_root": { "type": "string", "minLength": 1 },
+        "link_column": { "type": "string", "minLength": 1 },
+        "origin": { "type": "string", "enum": ["explicit", "confirmed"] }
       }
     },
     "SuccessBarFact": {

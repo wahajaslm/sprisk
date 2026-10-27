@@ -653,7 +653,7 @@ async fn list_concepts(State(state): State<AppState>) -> Result<Json<ConceptSet>
 }
 
 async fn list_methodology_rules(State(state): State<AppState>) -> Json<Vec<MethodologyRule>> {
-    Json(state.rules.rules().cloned().collect())
+    Json(state.rules.all_rules())
 }
 
 async fn get_methodology_rule_source(
@@ -3241,7 +3241,7 @@ async fn profile_for(
     }
     let made = state
         .profiler
-        .profile(&local_table(&artifact)?, target)
+        .profile(&local_table(artifact)?, target)
         .await?;
     state
         .store

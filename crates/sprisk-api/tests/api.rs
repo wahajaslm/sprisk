@@ -1636,6 +1636,54 @@ async fn a_profile_plan_follows_the_question_ledger_and_profile_facts() {
     );
 }
 
+/// Asset folders are views only when a person bound them in the ledger: one view per kind.
+#[tokio::test]
+async fn a_profile_plan_shows_one_view_per_kind_of_bound_asset() {
+    let api = api().await;
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["asset_bindings"] = json!([
+        { "modality": "image", "asset_root": "images/train", "link_column": "imageid", "origin": "explicit" },
+        { "modality": "image", "asset_root": "images/test", "link_column": "imageid", "origin": "confirmed" },
+        { "modality": "audio", "asset_root": "clips", "link_column": "clip", "origin": "explicit" },
+    ]);
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    run_to_end(&api).await;
+    let (_, datasets) = call(&api.app, "GET", "/loaded_tables", None).await;
+    let artifact = datasets[0]["artifact"]["id"].as_str().unwrap();
+
+    let (status, plan) = call(
+        &api.app,
+        "GET",
+        &format!(
+            "/artifacts/{artifact}/profile_plan?question_version_id=qv_01JABCDEFGHJKMNPQRSTVWXYZ0"
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{plan}");
+    let assets: Vec<&Value> = plan["sections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|s| s["id"] == "images" || s["id"] == "audio")
+        .collect();
+    assert_eq!(assets.len(), 2, "{plan}");
+    assert_eq!(
+        assets[0]["reason"],
+        "The question ledger explicitly binds image assets to 'imageid'."
+    );
+    assert_eq!(assets[1]["id"], "audio");
+}
+
 /// The Explore page compares a split's train rows with its test rows (ADR-0065).
 #[tokio::test]
 async fn a_table_is_compared_with_another_column_by_column() {
@@ -2511,7 +2559,25 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 40);
+    assert_eq!(rules.len(), 61);
+
+    // Methods are shown as rules, in their own words, with their options as alternatives.
+    let split = rules
+        .iter()
+        .find(|r| r["id"] == "methodology.supervised.split_method@1.0.0")
+        .unwrap();
+    assert_eq!(split["stage"], "split");
+    assert_eq!(split["decides"], "split.method");
+    assert_eq!(split["status"], "active");
+    assert_eq!(split["alternatives"].as_array().unwrap().len(), 4);
+    assert_eq!(
+        split["alternatives"][1]["description"],
+        "Keep each item's rows on one side"
+    );
+    assert_eq!(
+        split["verification"]["invariant"],
+        "No item has rows in both train and test. No test row has the same features as a train row. Every test row is later than the latest train row."
+    );
     // The words people read go with each rule (ADR-0045 amendment).
     let clustering = rules
         .iter()

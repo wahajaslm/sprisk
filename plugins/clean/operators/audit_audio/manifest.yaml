@@ -1,0 +1,23 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.audit_audio@1.0.0
+title: Audio asset audit
+capability_class: analyzer
+description: "Audits row-linked audio assets before modelling: duration, sample rate, channels, silence, clipping, missing files and decode failures."
+entrypoint: sprisk_clean.audio_assets:audit_audio
+scope: all
+attach: { role: split, side: input }
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: evidence, kind: report }]
+produces:
+  audio.asset_quality:
+    fields: { rows: integer, found: integer, missing: integer, unreadable: integer, coverage: number }
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [audio_dir, audio_path_column]
+  properties:
+    audio_dir: { type: string, minLength: 1, x-sprisk-local-path: true, description: "Root directory of audio files." }
+    audio_path_column: { type: string, minLength: 1, x-sprisk-column: true, description: "Relative audio-file path for each row." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 7200 }

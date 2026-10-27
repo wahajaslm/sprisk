@@ -398,6 +398,18 @@ fn a_producer_on_the_test_rows_may_name_the_label_as_a_column_it_drops() {
 }
 
 #[test]
+fn a_decision_whose_area_is_no_stage_is_refused() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        SPLIT,
+        "decides: evaluation.split_method",
+        "decides: sampling.split_method",
+    );
+    assert!(refused(pack.path()).contains("decision sampling.split_method names no stage"));
+}
+
+#[test]
 fn an_option_naming_an_unregistered_operator_is_refused() {
     let pack = split_decision();
     edit(pack.path(), SPLIT, "group_split@1.0.0", "group_split@9.0.0");
