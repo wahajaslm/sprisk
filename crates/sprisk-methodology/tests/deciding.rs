@@ -1397,3 +1397,84 @@ fn a_model_replaced_by_another_keeps_the_settings_the_new_model_takes() {
                  "params": { "target": "churned", "task": "classification", "exclude": ["id"] } }])
     );
 }
+
+const MODEL_CHOICE: &str = "models.model_choice";
+
+/// The repo's packs with a compared method on the model step (ADR-0063 D3).
+fn packs_with_a_compared_method() -> tempfile::TempDir {
+    let packs = tempfile::tempdir().unwrap();
+    copy_dir(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology"),
+        packs.path(),
+    );
+    let folder = packs.path().join("supervised/methods/model_choice");
+    std::fs::create_dir_all(&folder).unwrap();
+    let option = |id: &str, operator: &str| {
+        json!({ "id": id, "label": id, "description": "A model.", "condition": "always",
+                "when": "always", "rationale": "Compared on the same folds.",
+                "action": { "replace": { "role": "model", "operator": operator } }, "verify": [] })
+    };
+    let method = json!({
+        "schema_version": "sprisk.method/v2",
+        "id": "methodology.supervised.model_choice@1.0.0", "decides": MODEL_CHOICE,
+        "name": "Model choice", "activity": "Models", "question": "Which model?",
+        "pitfall": "A model picked before measuring.", "compare": true,
+        "needs": { "concepts": [], "evidence": [], "decisions": [] },
+        "options": [option("dummy_baseline", "sprisk.ml.dummy_baseline@3.0.0"),
+                    option("linear_model", "sprisk.ml.linear_model@3.0.0")],
+        "verifications": {}, "source": "Hastie et al. (2009), ch. 7.",
+    });
+    std::fs::write(folder.join("method.yaml"), method.to_string()).unwrap();
+    std::fs::write(
+        folder.join("method.py"),
+        "def decide(ctx):\n    return ctx.compare(['dummy_baseline', 'linear_model'], 'Both.')\n",
+    )
+    .unwrap();
+    packs
+}
+
+#[test]
+fn a_compared_method_waits_until_no_other_method_may_change_its_model_s_rows_or_settings() {
+    let ops = operators();
+    let packs = packs_with_a_compared_method();
+    let catalog = RuleCatalog::load_dir(packs.path(), &ops).unwrap();
+    let (flow, mut done) = after_the_split_decisions(&catalog);
+    done.retain(|m| m.decides != MODEL_CHOICE);
+    let q = titled();
+    let ready_now = |done: &[Made]| {
+        let effective = bindings(&q, done).unwrap();
+        let found = ready(
+            &catalog,
+            &q,
+            done,
+            &effective,
+            &BTreeMap::new(),
+            &ops,
+            &flow,
+        )
+        .unwrap();
+        found
+            .ready
+            .iter()
+            .map(|r| r.method.decides.to_string())
+            .collect::<Vec<_>>()
+    };
+    let waiting = ready_now(&done);
+    assert!(
+        !waiting.contains(&MODEL_CHOICE.to_owned()),
+        "feature methods may still insert before the model: {waiting:?}"
+    );
+    // The threshold sets the stated costs on the model the candidates are fit as.
+    let others: Vec<Made> = catalog
+        .methods()
+        .filter(|m| m.decides.as_str() != MODEL_CHOICE)
+        .map(|m| made(m.decides.as_str(), m.options[0].id.as_str(), json!([])))
+        .collect();
+    let all_but_threshold: Vec<Made> = others
+        .iter()
+        .filter(|m| m.decides != "evaluation.decision_threshold")
+        .cloned()
+        .collect();
+    assert!(!ready_now(&all_but_threshold).contains(&MODEL_CHOICE.to_owned()));
+    assert_eq!(ready_now(&others), [MODEL_CHOICE]);
+}

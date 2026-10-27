@@ -362,6 +362,21 @@ pub fn ready<'c>(
                 continue 'methods;
             }
         }
+        // A compared method fits its candidates on the rows its step reads, with its
+        // settings: it waits while any other method may change either, whatever the order.
+        if method.compare == Some(true) {
+            for changed in changed_steps(method, pipeline, &by_id) {
+                let Changed::Replaced(at) = changed else {
+                    continue;
+                };
+                if open
+                    .iter()
+                    .any(|other| other.order != order && other.changes_input_of(at, pipeline))
+                {
+                    continue 'methods;
+                }
+            }
+        }
         let mut evidence = Map::new();
         for kind in &method.needs.evidence {
             if let Some(fields) = measured.get(kind.as_str()) {
@@ -454,17 +469,31 @@ impl Open<'_> {
                 earlier || (writes && !self.writes_measured.contains(&at))
             }
             Changed::Replaced(s) | Changed::InsertedBefore(s) => before.contains(s),
+            // A setting changes no rows.
+            Changed::Set(_) => false,
+        })
+    }
+
+    /// Whether this method may still change the rows step `at` reads, or its settings.
+    fn changes_input_of(&self, at: &str, pipeline: &PipelineVersion) -> bool {
+        let before = upstream(pipeline, at);
+        self.changes.iter().any(|c| match c {
+            Changed::InsertedBefore(s) => before.contains(s),
+            Changed::Replaced(s) => *s != at && before.contains(s),
+            Changed::Set(s) => *s == at,
         })
     }
 }
 
-/// A step a method's option changes: one it inserts a step before, or one it replaces.
+/// A step a method's option changes: one it inserts a step before, one it replaces, or one
+/// it gives settings.
 enum Changed<'p> {
     InsertedBefore(&'p str),
     Replaced(&'p str),
+    Set(&'p str),
 }
 
-/// The steps `method`'s options insert before or replace, found by role.
+/// The steps `method`'s options insert before, replace or set, found by role.
 fn changed_steps<'p>(
     method: &Method,
     pipeline: &'p PipelineVersion,
@@ -483,6 +512,10 @@ fn changed_steps<'p>(
         .iter()
         .filter_map(|a| a.replace.as_ref().map(|r| r.role))
         .collect();
+    let set: BTreeSet<OperatorRole> = actions
+        .iter()
+        .filter_map(|a| a.set.as_ref().map(|s| s.role))
+        .collect();
     let mut changed: Vec<Changed<'p>> = steps_with(pipeline, by_id, |r| inserted.contains(&r))
         .into_iter()
         .map(Changed::InsertedBefore)
@@ -491,6 +524,11 @@ fn changed_steps<'p>(
         steps_with(pipeline, by_id, |r| replaced.contains(&r))
             .into_iter()
             .map(Changed::Replaced),
+    );
+    changed.extend(
+        steps_with(pipeline, by_id, |r| set.contains(&r))
+            .into_iter()
+            .map(Changed::Set),
     );
     changed
 }
