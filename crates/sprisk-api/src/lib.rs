@@ -1454,12 +1454,23 @@ fn compared_decision(state: &AppState, node: &sprisk_contracts::Node) -> Option<
     rules
         .iter()
         .find(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist))
+        .map(|rule| rule.decides.as_str().to_owned())
+        .or_else(|| compared_method_of(state, node).map(|m| m.decides.to_string()))
         .or_else(|| {
             rules
                 .first()
                 .filter(|_| keeps_train_rows(&state.registry, node))
+                .map(|rule| rule.decides.as_str().to_owned())
         })
-        .map(|rule| rule.decides.as_str().to_owned())
+}
+
+/// The compared method whose options swap `node` (ADR-0063 D3), if any.
+fn compared_method_of<'s>(
+    state: &'s AppState,
+    node: &sprisk_contracts::Node,
+) -> Option<&'s sprisk_contracts::Method> {
+    let operator = state.registry.get(node.operator.as_str())?;
+    sprisk_methodology::deciding::compared_method(&state.rules, operator)
 }
 
 /// Why `rule` cannot decide `node`, when it measures train rows and `node` has none: it sits
@@ -1574,13 +1585,21 @@ async fn propose(
     let rule = state
         .rules
         .rules_for_operator(node.operator.as_str())
-        .find(|rule| only.is_none_or(|only| rule.decides.as_str() == only))
-        .ok_or_else(|| {
-            not_applicable(format!(
-                "no methodology rule decides operator {}",
-                node.operator.as_str()
-            ))
-        })?;
+        .find(|rule| only.is_none_or(|only| rule.decides.as_str() == only));
+    let Some(rule) = rule else {
+        // A compared method offers a person its options as the step's proposal.
+        let method = compared_method_of(state, node)
+            .filter(|m| only.is_none_or(|only| m.decides.as_str() == only))
+            .ok_or_else(|| {
+                not_applicable(format!(
+                    "no methodology rule decides operator {}",
+                    node.operator.as_str()
+                ))
+            })?;
+        let proposal = compared_proposal(state, &pipeline, &question, method, node_id)?;
+        state.store.insert_methodology_proposal(&proposal).await?;
+        return Ok((StatusCode::CREATED, Json(proposal)));
+    };
     let proposal = decide(
         state,
         &pipeline,
@@ -1593,6 +1612,33 @@ async fn propose(
     .await?;
     state.store.insert_methodology_proposal(&proposal).await?;
     Ok((StatusCode::CREATED, Json(proposal)))
+}
+
+/// A compared method's options as the proposal for step `node_id`, on the bindings the
+/// question states (ADR-0063 D3).
+fn compared_proposal(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+    question: &QuestionVersion,
+    method: &sprisk_contracts::Method,
+    node_id: &str,
+) -> Result<DecisionProposal, ApiError> {
+    let effective = sprisk_methodology::deciding::bindings(question, &[])
+        .map_err(|e| not_applicable(e.to_string()))?;
+    let operators: Vec<sprisk_contracts::Operator> = state.registry.operators().cloned().collect();
+    let basis = sprisk_methodology::deciding::Basis {
+        bindings: &effective.bindings,
+        pipeline,
+        operators: &operators,
+        measured: &std::collections::BTreeMap::new(),
+        question,
+    };
+    let stamp = sprisk_methodology::Stamp {
+        id: &format!("mpr_{}", ulid::Ulid::new()),
+        created_at: &now(),
+    };
+    sprisk_methodology::deciding::compared_proposal(method, &basis, node_id, stamp)
+        .map_err(|e| not_applicable(e.to_string()))
 }
 
 /// The proposal `rule` makes for step `node`, decided by the rule's Python `decide()`. Every
@@ -2509,11 +2555,14 @@ async fn create_study(
                 .rules
                 .rules_for_operator(n.operator.as_str())
                 .any(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist))
+                || compared_method_of(&state, n).is_some()
         });
     if !shortlisted {
         return Err(ApiError::BadRequest {
             code: "not_studied",
-            message: format!("step {node_id} is not a model step that a shortlist rule decides"),
+            message: format!(
+                "step {node_id} is not a model step that a shortlist rule or a compared method decides"
+            ),
         });
     }
     let question_id =

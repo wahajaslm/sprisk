@@ -2946,7 +2946,10 @@ export interface MethodologyAlternative {
 export interface DecisionProposal {
   schema_version: "sprisk.decision_proposal/v1";
   id: MethodologyProposalId;
-  rule: CheckRef;
+  /**
+   * The rule whose decide() made it, or the compared method whose options it offers a person (ADR-0063 D3).
+   */
+  rule: string;
   question_version_id: QuestionVersionId;
   pipeline_version_id: PipelineVersionId;
   subject_node_id: NodeId;

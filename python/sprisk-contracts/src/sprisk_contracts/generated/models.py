@@ -2707,7 +2707,12 @@ class DecisionProposal(StrictModel):
     )
     schema_version: Literal["sprisk.decision_proposal/v1"]
     id: MethodologyProposalId
-    rule: CheckRef
+    rule: Annotated[
+        CheckRef,
+        Field(
+            description="The rule whose decide() made it, or the compared method whose options it offers a person (ADR-0063 D3)."
+        ),
+    ]
     question_version_id: QuestionVersionId
     pipeline_version_id: PipelineVersionId
     subject_node_id: NodeId

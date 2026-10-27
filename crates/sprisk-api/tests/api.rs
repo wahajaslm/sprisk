@@ -7047,8 +7047,9 @@ source: "Hastie, Tibshirani & Friedman (2009), ch. 7."
 const SHORTLIST_MODULE: &str = "def decide(ctx):\n    \
     return ctx.compare(['dummy_baseline', 'linear_model', 'random_forest'], 'All three.')\n";
 
-#[tokio::test(flavor = "multi_thread")]
-async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner() {
+/// An API whose packs have the compared shortlist method in the shortlist rule's place. The
+/// packs live as long as the returned folder.
+async fn api_with_shortlist_method() -> (Api, tempfile::TempDir) {
     let mut api = api().await;
     let packs = tempfile::tempdir().unwrap();
     let methodology_root = packs.path().join("methodology");
@@ -7067,6 +7068,12 @@ async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner(
         .unwrap(),
     );
     api.app = router(api.state.clone());
+    (api, packs)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner() {
+    let (api, _packs) = api_with_shortlist_method().await;
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
@@ -7094,4 +7101,62 @@ async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner(
     assert!(decision["selection_id"].is_string(), "{decision}");
     // Loop-back reads the comparison the method's decision won by, and the walk scores.
     assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+}
+
+/// The Experiments page's path (ADR-0063 D3): a person compares every option of the compared
+/// method that decides the model step, studies them, and applies the winner, as with a rule's
+/// shortlist.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_person_compares_a_compared_method_s_options_and_applies_the_winner() {
+    let (api, _packs) = api_with_shortlist_method().await;
+    learnable_model_flow(&api).await;
+
+    let (status, selection) = select_model(&api, "model").await;
+    assert_eq!(status, StatusCode::CREATED, "{selection}");
+    let proposal = &selection["proposal"];
+    assert_eq!(
+        proposal["rule"], "methodology.supervised.model_shortlist@1.0.0",
+        "{proposal}"
+    );
+    assert_eq!(
+        proposal["shortlist"],
+        json!(["dummy_baseline", "linear_model", "random_forest"])
+    );
+    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let decided = output(&api, &attempts, "select_model", "decision").await;
+    let winner = decided["winner"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{decided}"));
+    assert_ne!(winner, "dummy_baseline", "{decided}");
+    let (status, study) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/studies/model",
+        Some(json!({
+            "idempotency_key": "method-study-0001", "strategy": "random", "seed": 7,
+            "max_trials": 5, "max_wall_seconds": 600, "guardrails": [],
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{study}");
+
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice = json!({ "alternative_id": winner, "idempotency_key": "test-method-winner" });
+    let (status, applied) = call(&api.app, "POST", &uri, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    assert!(applied["decision"]["selection_id"].is_string(), "{applied}");
+    let model = applied["pipeline"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "model")
+        .unwrap();
+    // The swapped-in model keeps the step's target, task and features.
+    assert_eq!(model["params"]["target"], "returned_within_30d", "{model}");
+    assert_eq!(model["params"]["features"], json!(["age"]), "{model}");
+
 }

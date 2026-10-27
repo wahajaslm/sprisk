@@ -887,3 +887,73 @@ fn one_step(
         ))),
     }
 }
+
+/// The compared method that decides a step running operator `operator` (ADR-0063 D3): one
+/// whose options swap a step of that operator's role. None when no compared method does.
+pub fn compared_method<'c>(
+    catalog: &'c RuleCatalog,
+    operator: &Operator,
+) -> Option<&'c Method> {
+    let role = operator.role?;
+    catalog.methods().find(|m| {
+        m.compare == Some(true)
+            && m.options
+                .iter()
+                .filter_map(|o| o.action.as_ref()?.replace.as_ref())
+                .any(|r| r.role == role)
+    })
+}
+
+/// A compared method's options offered to a person for step `node_id` (ADR-0063 D3): every
+/// option is on the shortlist, each swapping the step for its model on the basis's flow, so a
+/// person compares, studies and applies them as a rule's shortlist. Nothing is recommended:
+/// the comparison is.
+pub fn compared_proposal(
+    method: &Method,
+    basis: &Basis,
+    node_id: &str,
+    stamp: crate::Stamp,
+) -> Result<sprisk_contracts::DecisionProposal, ResolveError> {
+    let mut alternatives = Vec::with_capacity(method.options.len());
+    for option in &method.options {
+        let applied = apply_option(method, option.id.as_str(), MethodAssurance::Confirmed, basis)?;
+        let [effect @ GraphEffect::ReplaceNode { node_id: swapped, .. }] = applied.effects.as_slice()
+        else {
+            return Err(ResolveError::Selection(format!(
+                "option {} of {} does not swap exactly one step",
+                option.id.as_str(),
+                method.id.as_str()
+            )));
+        };
+        if swapped.as_str() != node_id {
+            return Err(ResolveError::Selection(format!(
+                "option {} of {} swaps step {}, not {node_id}",
+                option.id.as_str(),
+                method.id.as_str(),
+                swapped.as_str()
+            )));
+        }
+        alternatives.push(json!({
+            "id": option.id, "label": option.label, "description": option.description,
+            "applicability": "applicable", "reason": option.rationale, "effect": effect,
+        }));
+    }
+    let fingerprint = json!({ "rule": method.id, "question": basis.question,
+                              "pipeline": basis.pipeline, "node_id": node_id });
+    let fingerprint = format!(
+        "sha256:{}",
+        hex::encode(<sha2::Sha256 as sha2::Digest>::digest(serde_json::to_vec(
+            &fingerprint
+        )?))
+    );
+    Ok(parse(
+        &json!({
+            "schema_version": "sprisk.decision_proposal/v1", "id": stamp.id, "rule": method.id,
+            "question_version_id": basis.question.id, "pipeline_version_id": basis.pipeline.id,
+            "subject_node_id": node_id, "evidence": [], "alternatives": alternatives,
+            "shortlist": method.options.iter().map(|o| &o.id).collect::<Vec<_>>(),
+            "fingerprint": fingerprint, "created_at": stamp.created_at,
+        })
+        .to_string(),
+    )?)
+}

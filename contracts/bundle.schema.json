@@ -4393,7 +4393,8 @@
           "$ref": "#/$defs/MethodologyProposalId"
         },
         "rule": {
-          "$ref": "#/$defs/CheckRef"
+          "$ref": "#/$defs/CheckRef",
+          "description": "The rule whose decide() made it, or the compared method whose options it offers a person (ADR-0063 D3)."
         },
         "question_version_id": {
           "$ref": "#/$defs/QuestionVersionId"
