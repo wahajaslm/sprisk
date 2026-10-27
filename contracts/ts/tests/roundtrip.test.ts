@@ -42,6 +42,7 @@ const entities: [keyof Entities, string][] = [
   ["DatasetProfile", "dataset_profile"],
   ["DatasetVersion", "dataset_version"],
   ["CreateDatasetVersion", "create_dataset_version"],
+  ["SourceProfileRequest", "source_profile_request"],
   ["KeyMatches", "key_matches"],
   ["TableShift", "table_shift"],
   ["ClassificationReport", "classification_report"],

@@ -26,7 +26,10 @@ def profile_of(
 ) -> DatasetProfile:
     """As Rust reads it: the JSON checked against the contract."""
     return DatasetProfile.model_validate_json(
-        json.dumps(raw_profile(data, total_rows, total_columns), allow_nan=False)
+        json.dumps(
+            raw_profile(data, data.height if total_rows is None else total_rows, total_columns),
+            allow_nan=False,
+        )
     )
 
 
@@ -466,7 +469,7 @@ def test_no_label_section_without_the_target_column_and_no_relations_for_many_va
 
 def profile_of_target(data: pl.DataFrame, target: str) -> DatasetProfile:
     return DatasetProfile.model_validate_json(
-        json.dumps(raw_profile(data, target=target), allow_nan=False)
+        json.dumps(raw_profile(data, data.height, target=target), allow_nan=False)
     )
 
 

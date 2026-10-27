@@ -15,7 +15,7 @@ export function summarizeDatasetProfile(profile: DatasetProfile | undefined): Co
   // A registered CSV source's total is not counted (ADR-0067); the counts then cover the profiled rows.
   const rows = profile.total_rows ?? profile.profiled_rows;
   return {
-    total_rows: rows,
+    ...(profile.total_rows !== undefined ? { total_rows: profile.total_rows } : {}),
     total_columns: profile.total_columns,
     columns: profile.columns.map((c) => {
       const isCandidateTarget = c.distinct > 1 && c.distinct <= 50;

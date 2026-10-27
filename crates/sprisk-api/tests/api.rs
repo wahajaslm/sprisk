@@ -6766,3 +6766,52 @@ async fn a_folder_with_a_symlink_out_of_the_data_roots_is_refused() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "path_outside_data_roots");
 }
+
+#[tokio::test]
+async fn a_folder_mixing_formats_or_a_uri_carrying_a_secret_is_refused() {
+    let api = api().await;
+    let folder = api._dir.path().join("mixed");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::write(folder.join("a.csv"), "x\n1\n").unwrap();
+    std::fs::write(folder.join("b.parquet"), "x").unwrap();
+    for (location, code) in [
+        (folder.display().to_string(), "mixed_formats"),
+        (
+            "s3://lake/x.csv?X-Amz-Signature=abc".to_owned(),
+            "invalid_location",
+        ),
+    ] {
+        let request = json!({ "location": location });
+        let (status, body) = call(&api.app, "POST", "/dataset_versions", Some(request)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert_eq!(body["errors"][0]["code"], code, "{body}");
+        assert!(!body.to_string().contains("Signature=abc"), "{body}");
+    }
+}
+
+#[tokio::test]
+async fn an_object_store_source_is_not_profiled_yet() {
+    let api = api().await;
+    let remote: sprisk_contracts::DatasetVersion = parse(
+        &json!({
+            "schema_version": "sprisk.dataset_version/v1",
+            "id": "dsv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+            "name": "events",
+            "location": "s3://lake/events/",
+            "format": "parquet",
+            "file_count": 2,
+            "size_bytes": 10,
+            "fingerprint": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "created_at": "2026-10-27T10:00:00Z",
+        })
+        .to_string(),
+    )
+    .unwrap();
+    api.store.insert_dataset_version(&remote).await.unwrap();
+
+    let path = "/dataset_versions/dsv_01JABCDEFGHJKMNPQRSTVWXYZ0/profile";
+    let (status, body) = call(&api.app, "GET", path, None).await;
+
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "profile_not_local");
+}

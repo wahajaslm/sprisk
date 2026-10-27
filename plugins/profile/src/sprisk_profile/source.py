@@ -1,11 +1,10 @@
 """A profile of a registered data source, read in place (ADR-0067).
 
-Run as `python -m sprisk_profile.source` with the format (`csv` or `parquet`) on the first line
-of stdin, the label column or an empty line on the second, then one file path per line. Rust
-lists the files, checks them against the data roots and the version's fingerprint, and starts
-one short process per request. Nothing is copied: Polars reads the first rows of the files where
-they are. A Parquet total comes from the files' metadata; a CSV is read only as far as the
-sample, so a larger one has no counted total.
+Run as `python -m sprisk_profile.source` with a `SourceProfileRequest` as JSON on stdin. Rust
+lists the files, checks them against the data roots and the version's fingerprint, sends their
+resolved paths, and starts one short process per request. Nothing is copied: Polars reads the
+first rows of the files where they are. A Parquet total comes from the files' metadata; a CSV
+is read only as far as the sample, so a larger one has no counted total.
 """
 
 import json
@@ -13,6 +12,9 @@ import sys
 from typing import Any
 
 import polars as pl
+from pydantic import ValidationError
+
+from sprisk_contracts import SourceProfileRequest
 
 from .dataset import MAX_COLUMNS, MAX_ROWS, profile
 
@@ -26,9 +28,11 @@ def read_source(
     """The first rows and columns of the files, their total rows (None: not counted) and their
     column count."""
     if format == "parquet":
-        scan = pl.scan_parquet(files)
+        # glob=False: a path is read as named. A name like `*.csv` must not reach files Rust
+        # never checked against the data roots.
+        scan = pl.scan_parquet(files, glob=False)
     elif format == "csv":
-        scan = pl.scan_csv(files, null_values=CSV_MISSING)
+        scan = pl.scan_csv(files, null_values=CSV_MISSING, glob=False)
     else:
         raise ValueError(f"unknown format {format!r}")
     names = scan.collect_schema().names()
@@ -45,16 +49,18 @@ def profile_source(
     format: str, files: list[str], target: str | None = None, max_rows: int = MAX_ROWS
 ) -> dict[str, Any]:
     data, rows, columns = read_source(format, files, max_rows=max_rows)
-    return profile(data, rows, columns, target, counted=rows is not None)
+    return profile(data, rows, columns, target)
 
 
 def main() -> None:
-    format, target, *files = sys.stdin.read().split("\n")
-    files = [f for f in files if f]
-    if not files:
+    try:
+        request = SourceProfileRequest.model_validate_json(sys.stdin.read())
+    except ValidationError as e:
+        sys.exit(f"invalid request: {e}")
+    if not request.files:
         sys.exit("no files to profile")
     try:
-        made = profile_source(format, files, target.strip() or None)
+        made = profile_source(request.format, [f.root for f in request.files], request.target)
     except (ValueError, OSError, pl.exceptions.PolarsError) as e:
         sys.exit(f"cannot read the source: {e}")
     sys.stdout.write(json.dumps(made, allow_nan=False))

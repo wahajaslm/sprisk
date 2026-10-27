@@ -49,7 +49,9 @@ pub struct ListLimits {
 }
 
 /// Reads a location: an absolute path, or a `file://`, `s3://`, `gs://` or `az://` URI.
-/// Control characters are refused: a path is passed to the profiler one per line.
+/// A URI with a user, password, query or fragment is refused: that is where a key or a signed
+/// token would ride, and the location is kept and shown (rule 6). Control characters are
+/// refused too.
 pub fn parse_location(raw: &str) -> Result<Location, StoreError> {
     let invalid = |why: &str| StoreError::InvalidLocation(format!("{raw:?}: {why}"));
     if raw.chars().any(char::is_control) {
@@ -59,6 +61,17 @@ pub fn parse_location(raw: &str) -> Result<Location, StoreError> {
         return Ok(Location::Local(PathBuf::from(raw)));
     }
     let url = Url::parse(raw).map_err(|_| invalid("not an absolute path or a URI"))?;
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        // Never echo it: it may hold a credential.
+        return Err(StoreError::InvalidLocation(format!(
+            "a {}:// location may not carry a user, password, query or fragment; credentials come from the environment",
+            url.scheme()
+        )));
+    }
     match url.scheme() {
         "file" => url
             .to_file_path()
@@ -77,11 +90,14 @@ pub fn parse_location(raw: &str) -> Result<Location, StoreError> {
 /// check each file again.
 pub async fn list_local(path: &Path, limits: ListLimits) -> Result<SourceFiles, StoreError> {
     let store = LocalFileSystem::new();
-    let prefix = ObjectPath::from_absolute_path(path)?;
+    let prefix = ObjectPath::from_absolute_path(path)
+        .map_err(|e| StoreError::InvalidLocation(format!("{}: {e}", path.display())))?;
     let found = list(&store, &prefix, &path.display().to_string(), limits).await?;
     let mut files = Vec::with_capacity(found.len());
     for meta in &found {
-        let local = store.path_to_filesystem(&meta.location)?;
+        let local = store
+            .path_to_filesystem(&meta.location)
+            .map_err(|e| unreadable(&path.display().to_string(), &e))?;
         files.push((local.display().to_string(), meta));
     }
     describe(&path.display().to_string(), files)
@@ -95,28 +111,38 @@ pub async fn list_remote(url: &Url, limits: ListLimits) -> Result<SourceFiles, S
         ObjectStoreScheme::AmazonS3 => Arc::new(
             object_store::aws::AmazonS3Builder::from_env()
                 .with_url(url.as_str())
-                .build()?,
+                .build()
+                .map_err(|e| unreadable(url.as_str(), &e))?,
         ),
         ObjectStoreScheme::GoogleCloudStorage => Arc::new(
             object_store::gcp::GoogleCloudStorageBuilder::from_env()
                 .with_url(url.as_str())
-                .build()?,
+                .build()
+                .map_err(|e| unreadable(url.as_str(), &e))?,
         ),
         ObjectStoreScheme::MicrosoftAzure => Arc::new(
             object_store::azure::MicrosoftAzureBuilder::from_env()
                 .with_url(url.as_str())
-                .build()?,
+                .build()
+                .map_err(|e| unreadable(url.as_str(), &e))?,
         ),
         _ => return Err(StoreError::UnsupportedScheme(url.scheme().to_owned())),
     };
     let found = list(store.as_ref(), &prefix, url.as_str(), limits).await?;
-    let mut base = url.clone();
-    base.set_path("");
     let files = found
         .iter()
-        .map(|meta| (format!("{base}{}", meta.location), meta))
+        .map(|meta| (object_uri(url, &meta.location), meta))
         .collect();
     describe(url.as_str(), files)
+}
+
+/// The URI of one object in the bucket `url` names: `s3://lake/events/a.csv`.
+fn object_uri(url: &Url, object: &ObjectPath) -> String {
+    format!(
+        "{}://{}/{object}",
+        url.scheme(),
+        url.host_str().unwrap_or_default()
+    )
 }
 
 /// The object at `prefix`, or every object under it. Empty is not found; more than
@@ -131,11 +157,15 @@ async fn list(
         match store.head(prefix).await {
             Ok(meta) => return Ok(vec![meta]),
             Err(object_store::Error::NotFound { .. }) => {}
-            Err(e) => return Err(StoreError::from(e)),
+            Err(e) => return Err(unreadable(location, &e)),
         }
         let mut found = Vec::new();
         let mut stream = store.list(Some(prefix));
-        while let Some(meta) = stream.try_next().await? {
+        while let Some(meta) = stream
+            .try_next()
+            .await
+            .map_err(|e| unreadable(location, &e))?
+        {
             if found.len() == limits.max_files {
                 return Err(StoreError::TooManyFiles {
                     location: location.to_owned(),
@@ -153,6 +183,24 @@ async fn list(
         return Err(StoreError::SourceNotFound(location.to_owned()));
     }
     Ok(found)
+}
+
+/// Why a store could not be listed, in words that hold no URL: an error's own text may carry
+/// a signed request (rule 6).
+fn unreadable(location: &str, e: &object_store::Error) -> StoreError {
+    let why = match e {
+        object_store::Error::PermissionDenied { .. } => "permission denied",
+        object_store::Error::Unauthenticated { .. } => {
+            "not signed in: no valid credentials in the environment"
+        }
+        object_store::Error::NotFound { .. } => "not found",
+        object_store::Error::InvalidPath { .. } => "not a valid object path",
+        _ => "the store could not be reached or failed",
+    };
+    StoreError::SourceUnreadable {
+        location: location.to_owned(),
+        why,
+    }
 }
 
 /// The data files' format, size and fingerprint. Names starting with `.` or `_` are tools'
@@ -241,12 +289,22 @@ mod tests {
             "/data/x\n.csv",
             "s3:///no-bucket",
             "file://host/x.csv",
+            "s3://AKIA:secret@lake/x.csv",
+            "az://c/x.csv?sv=1&sig=abc",
+            "gs://b/x.csv#frag",
         ] {
             assert!(
-                matches!(parse_location(raw), Err(StoreError::InvalidLocation(_))),
+                matches!(parse_location(raw), Err(StoreError::InvalidLocation(m)) if !m.contains("secret") && !m.contains("sig=")),
                 "{raw}"
             );
         }
+    }
+
+    #[test]
+    fn an_object_is_named_by_its_bucket_and_key() {
+        let url = Url::parse("s3://lake/events/").unwrap();
+        let object = ObjectPath::from("events/day=1/a.parquet");
+        assert_eq!(object_uri(&url, &object), "s3://lake/events/day=1/a.parquet");
     }
 
     #[tokio::test]

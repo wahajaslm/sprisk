@@ -60,9 +60,9 @@
       "description": "Column names, types and counts only: no rows and no values (ADR-0014 level 2).",
       "type": "object",
       "additionalProperties": false,
-      "required": ["total_rows", "total_columns", "columns"],
+      "required": ["total_columns", "columns"],
       "properties": {
-        "total_rows": { "type": "integer", "minimum": 0 },
+        "total_rows": { "type": "integer", "minimum": 0, "description": "Absent: not counted (a registered CSV source larger than its sample, ADR-0067); the counts then cover only the profiled rows." },
         "total_columns": { "type": "integer", "minimum": 0 },
         "columns": { "type": "array", "items": { "$ref": "#/$defs/CopilotColumnSummary" } }
       }

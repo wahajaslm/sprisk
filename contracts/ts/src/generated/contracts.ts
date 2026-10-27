@@ -1839,7 +1839,10 @@ export interface CopilotLedgerRequest {
  * Counts per column of the dataset in view. Omitted: no dataset is profiled yet.
  */
 export interface CopilotDatasetSummary {
-  total_rows: number;
+  /**
+   * Absent: not counted (a registered CSV source larger than its sample, ADR-0067); the counts then cover only the profiled rows.
+   */
+  total_rows?: number;
   total_columns: number;
   columns: CopilotColumnSummary[];
 }
@@ -1872,7 +1875,10 @@ export interface CopilotColumnSummary {
  * via the `definition` "CopilotDatasetSummary".
  */
 export interface CopilotDatasetSummary1 {
-  total_rows: number;
+  /**
+   * Absent: not counted (a registered CSV source larger than its sample, ADR-0067); the counts then cover only the profiled rows.
+   */
+  total_rows?: number;
   total_columns: number;
   columns: CopilotColumnSummary[];
 }
@@ -2000,6 +2006,23 @@ export interface DatasetVersion {
    */
   fingerprint: string;
   created_at: Timestamp;
+}
+/**
+ * What Rust sends the source profiler (python -m sprisk_profile.source, ADR-0067) on stdin: the files it listed and checked against the data roots, resolved through symlinks. Python reads only these, never a pattern.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SourceProfileRequest".
+ */
+export interface SourceProfileRequest {
+  format: DataFormat;
+  /**
+   * The label column to relate the others to. Dataset text (untrusted, rule 7). Absent: no label.
+   */
+  target?: string;
+  /**
+   * At least one. Local paths, in order.
+   */
+  files: string[];
 }
 /**
  * A method's method.yaml (ADR-0063): the decision it owns, what it needs, its options and what each option promises. Its method.py holds decide() and one verify_<name>() per verification.

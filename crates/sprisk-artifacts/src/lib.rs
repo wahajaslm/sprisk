@@ -60,8 +60,8 @@ pub enum StoreError {
     MixedFormats(String),
     #[error("listing {0} took too long")]
     ListTimeout(String),
-    #[error("invalid object path: {0}")]
-    ObjectPath(#[from] object_store::path::Error),
+    #[error("cannot list {location}: {why}")]
+    SourceUnreadable { location: String, why: &'static str },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -14,7 +14,9 @@ from sprisk_profile.dataset import profile as raw_profile
 
 
 def profile(data: pl.DataFrame) -> DatasetProfile:
-    return DatasetProfile.model_validate_json(json.dumps(raw_profile(data), allow_nan=False))
+    return DatasetProfile.model_validate_json(
+        json.dumps(raw_profile(data, data.height), allow_nan=False)
+    )
 
 
 def column(p: DatasetProfile, name: str) -> ColumnProfile:

@@ -50,6 +50,7 @@ export interface Entities {
   DatasetProfile: C.DatasetProfile;
   DatasetVersion: C.DatasetVersion;
   CreateDatasetVersion: C.CreateDatasetVersion;
+  SourceProfileRequest: C.SourceProfileRequest;
   KeyMatches: C.KeyMatches;
   TableShift: C.TableShift;
   ClassificationReport: C.ClassificationReport;

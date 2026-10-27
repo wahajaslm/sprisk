@@ -2107,14 +2107,14 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "total_rows",
         "total_columns",
         "columns"
       ],
       "properties": {
         "total_rows": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "Absent: not counted (a registered CSV source larger than its sample, ADR-0067); the counts then cover only the profiled rows."
         },
         "total_columns": {
           "type": "integer",
@@ -2301,6 +2301,36 @@
         },
         "created_at": {
           "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "SourceProfileRequest": {
+      "title": "SourceProfileRequest",
+      "description": "What Rust sends the source profiler (python -m sprisk_profile.source, ADR-0067) on stdin: the files it listed and checked against the data roots, resolved through symlinks. Python reads only these, never a pattern.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "files"
+      ],
+      "properties": {
+        "format": {
+          "$ref": "#/$defs/DataFormat"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "The label column to relate the others to. Dataset text (untrusted, rule 7). Absent: no label."
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "description": "At least one. Local paths, in order."
         }
       }
     },

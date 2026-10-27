@@ -623,6 +623,26 @@ class DatasetVersion(StrictModel):
     created_at: Timestamp
 
 
+class File(RootModel[str]):
+    root: Annotated[str, Field(max_length=4096, min_length=1)]
+
+
+class SourceProfileRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    format: DataFormat
+    target: Annotated[
+        str | None,
+        Field(
+            description="The label column to relate the others to. Dataset text (untrusted, rule 7). Absent: no label.",
+            max_length=256,
+            min_length=1,
+        ),
+    ] = None
+    files: Annotated[list[File], Field(description="At least one. Local paths, in order.")]
+
+
 class MethodRef(RootModel[str]):
     root: Annotated[
         str,
@@ -705,7 +725,7 @@ class Language(StrEnum):
     python = "python"
 
 
-class File(StrictModel):
+class File1(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -725,7 +745,7 @@ class MethodFiles(StrictModel):
         extra="forbid",
     )
     method: MethodRef
-    files: list[File]
+    files: list[File1]
 
 
 class MethodOptionId(RootModel[str]):
@@ -1032,7 +1052,7 @@ class Verification(StrictModel):
     invariant: Annotated[str, Field(min_length=1)]
 
 
-class File1(StrictModel):
+class File2(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1052,7 +1072,7 @@ class MethodologyRuleSource(StrictModel):
         extra="forbid",
     )
     rule: MethodologyRuleRef
-    files: Annotated[list[File1], Field(min_length=1)]
+    files: Annotated[list[File2], Field(min_length=1)]
 
 
 class Kind2(StrEnum):
@@ -2230,7 +2250,13 @@ class CopilotDatasetSummary(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    total_rows: Annotated[int, Field(ge=0)]
+    total_rows: Annotated[
+        int | None,
+        Field(
+            description="Absent: not counted (a registered CSV source larger than its sample, ADR-0067); the counts then cover only the profiled rows.",
+            ge=0,
+        ),
+    ] = None
     total_columns: Annotated[int, Field(ge=0)]
     columns: list[CopilotColumnSummary]
 
