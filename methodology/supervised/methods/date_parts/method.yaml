@@ -6,6 +6,7 @@ activity: Features
 question: Is a date reaching the model split into parts first?
 pitfall: A model cannot read a date. As a single number, December and January are far apart though they are neighbours, and as a category every date is its own value.
 applies_when: { task: [classification, regression] }
+changes: [dates]
 needs:
   concepts: []
   evidence: [features.dates]

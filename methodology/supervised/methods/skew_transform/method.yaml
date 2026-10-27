@@ -6,6 +6,7 @@ activity: Features
 question: Are numbers with a long tail transformed before the model?
 pitfall: A long tail lets a few large values pull a linear model's fit. Transforming with settings fit on all rows lets test rows shape the train rows.
 applies_when: { task: [classification, regression] }
+changes: [numbers]
 needs:
   concepts: []
   evidence: [features.skew]

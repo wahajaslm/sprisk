@@ -195,6 +195,23 @@ fn check_method(
             read.as_str()
         ));
     }
+    // The data flow draws a step before the model in the lane of each input it changes.
+    let before_model = method
+        .options
+        .iter()
+        .filter_map(|o| o.action.as_ref()?.insert.as_ref())
+        .any(|i| i.before == OperatorRole::Model);
+    match (before_model, method.changes.is_some()) {
+        (true, false) => {
+            return Err(
+                "inserts a step before the model, so it says which inputs it changes".into(),
+            );
+        }
+        (false, true) => {
+            return Err("says which inputs it changes, but inserts no step before the model".into());
+        }
+        _ => {}
+    }
     for option in &method.options {
         let in_option = |p: String| format!("option {}: {p}", option.id.as_str());
         if let Some(name) = option.verify.iter().find(|v| {

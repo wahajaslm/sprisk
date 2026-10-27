@@ -6,6 +6,7 @@ activity: Features
 question: How do categories reaching the model become numbers?
 pitfall: One-hot encoding a column with many categories makes a huge, sparse table. Reading category codes as amounts invents an order and steps between them.
 applies_when: { task: [classification, regression] }
+changes: [categories]
 needs:
   concepts: []
   evidence: [features.encoding]

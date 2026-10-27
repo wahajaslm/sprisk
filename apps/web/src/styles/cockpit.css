@@ -7240,3 +7240,28 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
   .qchat { grid-template-columns: 1fr; }
   .qchat-ledger { border-left: 0; padding-left: 0; border-top: 1px solid var(--border-panel); padding-top: var(--space-3); }
 }
+
+/* Data flow (Methodology): what each method does to the data, a lane per kind of model input. */
+.mth-data { flex: 1; min-width: 0; overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 22px; padding: 20px 24px; }
+.mth-data-row { display: grid; gap: 8px; min-width: 0; }
+.mth-data-row.scroll { overflow-x: auto; padding-bottom: 12px; }
+.mth-data-caption { display: block; font: var(--fw-medium) 10.5px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-label); }
+.mth-data-caption.merge { position: absolute; }
+.mth-data-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mth-data-then { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.mth-data-lanes { position: relative; margin-top: 6px; }
+.mth-data-lines { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.mth-data-lines path { fill: none; stroke: var(--alpha-35); stroke-width: 1.25; }
+.mth-data-lines path.merge { stroke: var(--soft); stroke-width: 2; }
+.mth-data-lane { position: absolute; display: grid; align-content: center; gap: 1px; padding-left: 6px; background: var(--bg-surface); }
+.mth-data-lane strong { font-size: var(--text-sm); color: var(--text-strong); font-weight: 600; }
+.mth-data-lane span { font-size: var(--text-xs); color: var(--muted); line-height: 14px; }
+.mth-data-block { position: absolute; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; border: 1px solid var(--border-panel); border-radius: var(--radius-lg); background: var(--panel); }
+.mth-data-block.model { font-weight: 600; color: var(--text-strong); border-color: var(--soft); }
+.mth-data-step { padding: 4px 8px; border: 1px solid var(--border-panel); border-radius: var(--radius-sm); background: var(--panel); color: var(--text-primary); font: var(--fs-12) var(--sans); text-align: left; cursor: pointer; }
+.mth-data-step.step { position: absolute; display: flex; align-items: center; gap: 6px; }
+.mth-data-step.span { border-color: var(--soft); }
+.mth-data-step.chip { background: transparent; }
+.mth-data-step.split { border-color: var(--soft); }
+.mth-data-step:hover { border-color: var(--ink-3); }
+.mth-data-step[aria-pressed="true"] { border-color: var(--white); color: var(--white); }

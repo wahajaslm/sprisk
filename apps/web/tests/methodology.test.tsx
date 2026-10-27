@@ -9,6 +9,7 @@ import multicollinearity from "../../../tests/contract/methodology_rule/valid/mu
 import repeatedItems from "../../../tests/contract/method/valid/binds-a-concept.json";
 import splitMethod from "../../../tests/contract/method/valid/split-method.json";
 import { useSelection } from "../src/workbench/selection.ts";
+import { dataFlow } from "../src/views/methodology/dataFlow.ts";
 import { decisionFlow } from "../src/views/methodology/decisionFlow.ts";
 import { MethodologyPage } from "../src/views/methodology/MethodologyPage.tsx";
 import { ruleTree, STAGES } from "../src/views/methodology/ruleTree.ts";
@@ -447,5 +448,76 @@ describe("decision flow", () => {
       expect(flow.links).toContainEqual(expect.objectContaining({ from: choice, to: decisions[1] }));
     }
     expect(flow.links.filter((l) => l.to === "end")).toHaveLength(splitMethod.options.length);
+  });
+});
+
+describe("data flow", () => {
+  // A method whose one option inserts a step before the model, changing `changes`.
+  const step = (name: string, changes: Method["changes"], decisions: string[] = [], decides = `features.${name}`, action: object = { insert: { before: "model", operator: `sprisk.clean.${name}@1.0.0`, node_id: name } }) => ({
+    ...repeatedItems,
+    id: `methodology.core.${name}@1.0.0`,
+    decides,
+    name,
+    ...(changes ? { changes } : {}),
+    needs: { ...repeatedItems.needs, decisions },
+    options: [{ ...repeatedItems.options[0]!, action }],
+  });
+
+  it("gives each kind of input its own lane, with a step changing two kinds where their lanes meet", () => {
+    const flow = dataFlow([
+      step("text", ["text"]),
+      step("image", ["image"], ["features.text"]),
+      step("rare", ["categories"]),
+      step("fill", ["numbers", "categories"], ["features.rare"]),
+      step("encode", ["categories"], ["features.fill"]),
+      step("scale", ["numbers"], ["features.fill"]),
+    ] as Method[]);
+    expect(flow.lanes.map((l) => l.kind)).toEqual(["numbers", "categories", "text", "image"]);
+    const at = (name: string) => flow.lanes.flatMap((l) => l.steps).find((s) => s.method.name === name)!;
+    // Image is drawn beside text, not after it: it changes another lane.
+    expect(at("image").column).toBe(0);
+    expect(at("text").column).toBe(0);
+    expect(at("rare").column).toBe(0);
+    expect(at("fill")).toMatchObject({ column: 1, lanes: ["numbers", "categories"] });
+    expect(at("encode").column).toBe(2);
+    expect(at("scale").column).toBe(2);
+    const lane = (kind: string) => flow.lanes.find((l) => l.kind === kind)!;
+    expect(lane("numbers").steps.map((s) => s.method.name)).toEqual(["fill", "scale"]);
+    expect(lane("categories").steps.map((s) => s.method.name)).toEqual(["rare", "fill", "encode"]);
+  });
+
+  it("draws the methods' lanes on the Data flow tab, and the picked step's card beside them", async () => {
+    serve([multicollinearity as MethodologyRule]);
+    const text = { ...step("text_representation", ["text"]), name: "Text representation" };
+    const image = { ...step("image_features", ["image"]), name: "Image representation", applies_when: { task: ["classification"], assets: ["image"] } };
+    const threshold = { ...step("decision_threshold", undefined, [], "evaluation.decision_threshold", { set: { role: "model", settings: {} } }), name: "Decision threshold" };
+    server.use(http.get("/api/methods", () => HttpResponse.json([repeatedItems, splitMethod, text, image, threshold])));
+    renderWithApi(<MethodologyPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Data flow" }));
+
+    const canvas = await screen.findByRole("region", { name: "Data flow" });
+    expect(within(canvas).getByText("Free text")).toBeInTheDocument();
+    // Only the image lane needs files bound to the rows.
+    expect(within(canvas).getAllByText(/^only with/)).toHaveLength(1);
+    expect(within(canvas).getByText("only with image files")).toBeInTheDocument();
+    expect(within(canvas).getByText("On its output").parentElement).toHaveTextContent("Decision threshold");
+    await userEvent.click(within(canvas).getByRole("button", { name: /Text representation/ }));
+    expect(screen.getByRole("region", { name: "Text representation" })).toHaveTextContent("Choices");
+  });
+
+  it("puts steps on the whole table before the split, the split, and model settings after the model", () => {
+    const flow = dataFlow([
+      step("join", undefined, [], "data.join", { insert: { before: "split", operator: "sprisk.io.join@1.0.0", node_id: "join" } }),
+      step("threshold", undefined, [], "evaluation.threshold", { set: { role: "model", settings: {} } }),
+      { ...splitMethod },
+      repeatedItems,
+      step("text", ["text"]),
+    ] as Method[]);
+    expect(flow.table.map((m) => m.name)).toEqual(["join"]);
+    expect(flow.split?.id).toBe(splitMethod.id);
+    expect(flow.afterModel.map((m) => m.name)).toEqual(["threshold"]);
+    // Duplicate analysis names a concept and adds no step.
+    expect(flow.noStep.map((m) => m.id)).toEqual([repeatedItems.id]);
+    expect(flow.lanes.map((l) => l.kind)).toEqual(["text"]);
   });
 });

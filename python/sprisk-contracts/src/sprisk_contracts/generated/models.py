@@ -670,6 +670,15 @@ class SourceProfileRequest(StrictModel):
     files: Annotated[list[File], Field(description="At least one. Local paths, in order.")]
 
 
+class Change(StrEnum):
+    numbers = "numbers"
+    categories = "categories"
+    dates = "dates"
+    text = "text"
+    image = "image"
+    audio = "audio"
+
+
 class MethodRef(RootModel[str]):
     root: Annotated[
         str,
@@ -4673,6 +4682,13 @@ class Method(StrictModel):
         ),
     ]
     applies_when: MethodAppliesWhen | None = None
+    changes: Annotated[
+        list[Change] | None,
+        Field(
+            description="The kinds of model input its step changes, each a lane in the data flow; a step changing two kinds is where those lanes meet. Absent: its step works on the whole table, or it adds no step.",
+            min_length=1,
+        ),
+    ] = None
     needs: MethodNeeds
     options: list[MethodOption]
     verifications: Annotated[

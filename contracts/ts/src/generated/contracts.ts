@@ -2116,6 +2116,15 @@ export interface Method {
    */
   pitfall: string;
   applies_when?: MethodAppliesWhen;
+  /**
+   * The kinds of model input its step changes, each a lane in the data flow; a step changing two kinds is where those lanes meet. Absent: its step works on the whole table, or it adds no step.
+   *
+   * @minItems 1
+   */
+  changes?: [
+    "numbers" | "categories" | "dates" | "text" | "image" | "audio",
+    ...("numbers" | "categories" | "dates" | "text" | "image" | "audio")[]
+  ];
   needs: MethodNeeds;
   options: MethodOption[];
   /**

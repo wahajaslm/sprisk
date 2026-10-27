@@ -6,6 +6,7 @@ activity: Features
 question: Which text reaching the model is free text, and how does it become numbers?
 pitfall: Free text has a different value in almost every row, so one-hot makes a column per row. Fitting the words or their weights on all rows lets test words shape the features.
 applies_when: { task: [classification, regression] }
+changes: [text]
 needs:
   concepts: []
   evidence: [features.free_text]

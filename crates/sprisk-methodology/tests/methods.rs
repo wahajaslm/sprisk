@@ -613,6 +613,31 @@ fn a_method_inserting_a_step_loads() {
 }
 
 #[test]
+fn a_step_before_the_model_that_does_not_say_what_it_changes_is_refused() {
+    let pack = text_spelling();
+    edit(pack.path(), SPELLING, "before: split", "before: model");
+    assert!(
+        refused(pack.path())
+            .contains("inserts a step before the model, so it says which inputs it changes")
+    );
+}
+
+#[test]
+fn a_method_saying_what_it_changes_without_a_step_before_the_model_is_refused() {
+    let pack = text_spelling();
+    edit(
+        pack.path(),
+        SPELLING,
+        "\nneeds:",
+        "\nchanges: [text]\nneeds:",
+    );
+    assert!(
+        refused(pack.path())
+            .contains("says which inputs it changes, but inserts no step before the model")
+    );
+}
+
+#[test]
 fn an_insert_of_an_unregistered_operator_is_refused() {
     let pack = text_spelling();
     edit(

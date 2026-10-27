@@ -6,6 +6,7 @@ activity: Features
 question: Are category columns too wide for one 0/1 column each left out of the model?
 pitfall: One-hot encoding a column with many categories makes a huge, sparse table. Encoding it by its target without cross-fitting leaks the target.
 applies_when: { task: [classification, regression] }
+changes: [categories]
 needs:
   concepts: []
   evidence: [features.encoding]

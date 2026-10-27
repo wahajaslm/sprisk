@@ -2494,6 +2494,23 @@
         "applies_when": {
           "$ref": "#/$defs/MethodAppliesWhen"
         },
+        "changes": {
+          "type": "array",
+          "description": "The kinds of model input its step changes, each a lane in the data flow; a step changing two kinds is where those lanes meet. Absent: its step works on the whole table, or it adds no step.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "numbers",
+              "categories",
+              "dates",
+              "text",
+              "image",
+              "audio"
+            ]
+          }
+        },
         "needs": {
           "$ref": "#/$defs/MethodNeeds"
         },

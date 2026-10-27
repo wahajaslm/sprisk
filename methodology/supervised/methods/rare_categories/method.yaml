@@ -6,6 +6,7 @@ activity: Features
 question: Which categories are too rare for a model to learn from, and are grouped?
 pitfall: A category seen a handful of times gives a model almost nothing to learn from, and one 0/1 column each makes too many columns. Shares counted on all rows would let test rows decide what is rare.
 applies_when: { task: [classification, regression] }
+changes: [categories]
 needs:
   concepts: []
   evidence: [features.categories]
