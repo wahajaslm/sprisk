@@ -277,7 +277,7 @@ export type MethodAssurance = "confirmed" | "rule";
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodAnswer".
  */
-export type MethodAnswer = MethodDecided | MethodRefused | MethodVerified;
+export type MethodAnswer = MethodDecided | MethodShortlisted | MethodRefused | MethodVerified;
 /**
  * What verify_<name>() found. pass: the promise holds. fail: it does not. inconclusive: the evidence cannot say, such as one side with no groups. Never stale: only the control plane knows what changed since.
  *
@@ -2117,6 +2117,10 @@ export interface Method {
   pitfall: string;
   applies_when?: MethodAppliesWhen;
   /**
+   * Its decide() answers with a shortlist, not one option: the engine compares those options on the same folds and takes the winner by ADR-0050 (one-standard-error rule, baseline test). Each option replaces one step. Absent: false.
+   */
+  compare?: boolean;
+  /**
    * The kinds of model input its step changes, each a lane in the data flow; a step changing two kinds is where those lanes meet. Absent: its step works on the whole table, or it adds no step.
    *
    * @minItems 1
@@ -2467,6 +2471,26 @@ export interface MethodDecided {
   option: MethodOptionId;
   /**
    * Why, for a person. For ask, the question itself.
+   */
+  reason: string;
+}
+/**
+ * A compared method's decide() (`compare: true`, ADR-0063 D3): the options worth comparing. The engine compares them on the same folds and takes the winner; decide() never picks it.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodShortlisted".
+ */
+export interface MethodShortlisted {
+  answer: "shortlisted";
+  method: MethodRef;
+  /**
+   * Two or more of the method's options, in its own order: a comparison needs something to compare.
+   *
+   * @minItems 2
+   */
+  shortlist: [MethodOptionId, MethodOptionId, ...MethodOptionId[]];
+  /**
+   * Why these options, and why any other was left out, for a person.
    */
   reason: string;
 }
@@ -3056,6 +3080,10 @@ export interface MethodologyDecisionByMethod {
    */
   effects?: GraphEffect[];
   /**
+   * The SelectionDecision a compared method's option won by (ADR-0063 D3, ADR-0050). Absent for any other method.
+   */
+  selection_id?: string;
+  /**
    * The bindings the option made. Absent: none.
    */
   bindings?: Binding[];
@@ -3118,6 +3146,10 @@ export interface PipelineVersion {
    * The shortlist proposal whose models this version cross-validates (ADR-0046). A comparison is a side version, not an edit: it has no parent_id, so the proposal stays applicable. Absent on every other version.
    */
   compares?: string;
+  /**
+   * methodology.<pack>.<method>@<semver>
+   */
+  compares_method?: string;
   nodes: Node[];
   edges: Edge[];
   created_at: Timestamp;

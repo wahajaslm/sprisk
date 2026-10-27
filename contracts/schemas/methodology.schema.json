@@ -718,6 +718,7 @@
         "base_pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId" },
         "pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId", "description": "The version the option made. Absent when it changed no step." },
         "effects": { "type": "array", "items": { "$ref": "#/$defs/GraphEffect" }, "description": "The patch the option applied, in order. Absent: it changed no step." },
+        "selection_id": { "$ref": "#/$defs/ArtifactId", "description": "The SelectionDecision a compared method's option won by (ADR-0063 D3, ADR-0050). Absent for any other method." },
         "bindings": { "type": "array", "items": { "$ref": "#/$defs/Binding" }, "description": "The bindings the option made. Absent: none." },
         "promises": { "type": "array", "items": { "$ref": "#/$defs/VerificationName" }, "description": "The verifications the option promises, by name. Absent: none." },
         "evidence": { "type": "array", "items": { "$ref": "#/$defs/UsedEvidence" }, "description": "What the method read, whether it chose or a person answered. Absent: it read none." },

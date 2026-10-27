@@ -208,7 +208,9 @@ fn check_method(
             );
         }
         (false, true) => {
-            return Err("says which inputs it changes, but inserts no step before the model".into());
+            return Err(
+                "says which inputs it changes, but inserts no step before the model".into(),
+            );
         }
         _ => {}
     }

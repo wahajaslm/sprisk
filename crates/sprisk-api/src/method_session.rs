@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use sprisk_contracts::{
-    MethodAnswer, MethodDecided, MethodRefused, MethodRequest, MethodVerified, VerificationRequest,
-    parse,
+    MethodAnswer, MethodDecided, MethodRefused, MethodRequest, MethodShortlisted, MethodVerified,
+    VerificationRequest, parse,
 };
 
 use crate::bounded::ProcessError;
@@ -28,16 +28,50 @@ impl MethodRunner {
 
 pub struct MethodSession(LineSession);
 
+/// What a method's decide() answered: one option, or, for a compared method, the options the
+/// engine compares (ADR-0063 D3).
+#[derive(Debug)]
+pub enum Decision {
+    Decided(MethodDecided),
+    Shortlisted(MethodShortlisted),
+}
+
 impl MethodSession {
     /// What the method's decide() returned. A method that refuses leaves the process running
     /// for the next one; a timeout or a broken answer kills it.
-    pub async fn decide(&mut self, request: &MethodRequest) -> Result<MethodDecided, ProcessError> {
+    pub async fn decide(&mut self, request: &MethodRequest) -> Result<Decision, ProcessError> {
         let method = request.method.as_str();
         match self.exchange(method, request).await? {
             // A method printing a forged answer must not answer for another method.
-            MethodAnswer::Decided(decided) if decided.method == request.method => Ok(decided),
+            MethodAnswer::Decided(decided) if decided.method == request.method => {
+                Ok(Decision::Decided(decided))
+            }
             MethodAnswer::Decided(decided) => {
                 self.forged(method, "another method", decided.method.as_str())
+            }
+            MethodAnswer::Shortlisted(listed) if listed.method != request.method => {
+                self.forged(method, "another method", listed.method.as_str())
+            }
+            MethodAnswer::Shortlisted(listed) => {
+                // The schema asks for two; the generated type does not hold it to that.
+                let distinct: std::collections::BTreeSet<&str> =
+                    listed.shortlist.iter().map(|o| o.as_str()).collect();
+                if distinct.len() < 2 || distinct.len() != listed.shortlist.len() {
+                    return Err(ProcessError::Failed(format!(
+                        "method {method} shortlisted fewer than two distinct options: a comparison needs at least two, each once"
+                    )));
+                }
+                if let Some(unknown) = listed
+                    .shortlist
+                    .iter()
+                    .find(|o| !request.options.contains(o))
+                {
+                    return Err(ProcessError::Failed(format!(
+                        "method {method} shortlisted {}, which it has no option for",
+                        unknown.as_str()
+                    )));
+                }
+                Ok(Decision::Shortlisted(listed))
             }
             MethodAnswer::Verified(verified) => {
                 self.forged(method, "a verification", verified.verification.as_str())
@@ -66,6 +100,9 @@ impl MethodSession {
             ),
             MethodAnswer::Decided(decided) => {
                 self.forged(method, "a decision", decided.option.as_str())
+            }
+            MethodAnswer::Shortlisted(listed) => {
+                self.forged(method, "a shortlist", listed.method.as_str())
             }
             MethodAnswer::Refused(refused) => Err(refusal(method, &refused)),
         }
@@ -154,7 +191,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ask = answer_file(dir.path(), "ask.json");
         let mut session = runner(&format!("while read line; do cat {ask}; done")).session();
-        let decided = session.decide(&request()).await.unwrap();
+        let Decision::Decided(decided) = session.decide(&request()).await.unwrap() else {
+            panic!("expected a decision");
+        };
         assert_eq!(decided.option.as_str(), "group_by_title");
         assert!(decided.reason.contains("same item"), "{:?}", decided.reason);
     }
@@ -191,6 +230,74 @@ mod tests {
             panic!("expected a refusal");
         };
         assert!(why.contains("another method"), "{why}");
+    }
+
+    /// The request a compared method gets: the model shortlist, with its three models.
+    fn shortlist_request() -> MethodRequest {
+        let mut request = request();
+        request.method = parse("\"methodology.supervised.model_shortlist@1.0.0\"").unwrap();
+        request.options = ["dummy_baseline", "linear_model", "random_forest"]
+            .iter()
+            .map(|o| parse(&format!("\"{o}\"")).unwrap())
+            .collect();
+        request
+    }
+
+    /// A shortlisted answer line with `shortlist`, for a shell script to print.
+    fn shortlisted_file(dir: &Path, shortlist: &[&str]) -> String {
+        let fixture = answer_file(dir, "shortlisted.json");
+        let mut answer: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&fixture).unwrap()).unwrap();
+        answer["shortlist"] = serde_json::json!(shortlist);
+        std::fs::write(&fixture, answer.to_string() + "\n").unwrap();
+        fixture
+    }
+
+    #[tokio::test]
+    async fn a_compared_method_s_shortlist_comes_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let line = shortlisted_file(dir.path(), &["dummy_baseline", "linear_model"]);
+        let mut session = runner(&format!("while read line; do cat {line}; done")).session();
+        let Decision::Shortlisted(shortlisted) =
+            session.decide(&shortlist_request()).await.unwrap()
+        else {
+            panic!("expected a shortlist");
+        };
+        let ids: Vec<&str> = shortlisted.shortlist.iter().map(|o| o.as_str()).collect();
+        assert_eq!(ids, ["dummy_baseline", "linear_model"]);
+    }
+
+    #[tokio::test]
+    async fn a_shortlist_of_one_option_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let line = shortlisted_file(dir.path(), &["linear_model"]);
+        let mut session = runner(&format!("while read line; do cat {line}; done")).session();
+        let Err(ProcessError::Failed(why)) = session.decide(&shortlist_request()).await else {
+            panic!("expected a refusal");
+        };
+        assert!(why.contains("at least two"), "{why}");
+    }
+
+    #[tokio::test]
+    async fn a_shortlist_repeating_an_option_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let line = shortlisted_file(dir.path(), &["linear_model", "linear_model"]);
+        let mut session = runner(&format!("while read line; do cat {line}; done")).session();
+        let Err(ProcessError::Failed(why)) = session.decide(&shortlist_request()).await else {
+            panic!("expected a refusal");
+        };
+        assert!(why.contains("each once"), "{why}");
+    }
+
+    #[tokio::test]
+    async fn a_shortlist_naming_an_option_the_method_lacks_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let line = shortlisted_file(dir.path(), &["dummy_baseline", "gradient_boosting"]);
+        let mut session = runner(&format!("while read line; do cat {line}; done")).session();
+        let Err(ProcessError::Failed(why)) = session.decide(&shortlist_request()).await else {
+            panic!("expected a refusal");
+        };
+        assert!(why.contains("gradient_boosting"), "{why}");
     }
 
     fn verification() -> VerificationRequest {

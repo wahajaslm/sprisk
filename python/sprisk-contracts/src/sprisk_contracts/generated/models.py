@@ -832,6 +832,28 @@ class MethodDecided(StrictModel):
     ]
 
 
+class MethodShortlisted(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    answer: Literal["shortlisted"]
+    method: MethodRef
+    shortlist: Annotated[
+        list[MethodOptionId],
+        Field(
+            description="Two or more of the method's options, in its own order: a comparison needs something to compare.",
+            min_length=2,
+        ),
+    ]
+    reason: Annotated[
+        str,
+        Field(
+            description="Why these options, and why any other was left out, for a person.",
+            min_length=1,
+        ),
+    ]
+
+
 class MethodRefused(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3632,9 +3654,9 @@ class VerificationRequest(StrictModel):
     ]
 
 
-class MethodAnswer(RootModel[MethodDecided | MethodRefused | MethodVerified]):
+class MethodAnswer(RootModel[MethodDecided | MethodShortlisted | MethodRefused | MethodVerified]):
     root: Annotated[
-        MethodDecided | MethodRefused | MethodVerified,
+        MethodDecided | MethodShortlisted | MethodRefused | MethodVerified,
         Field(
             description="The method session's one JSON line per request, tagged by `answer`: what decide() returned, what verify_<name>() found, or why the method refused its request. Any other failure ends the session.",
             title="MethodAnswer",
@@ -3818,6 +3840,12 @@ class MethodologyDecisionByMethod(StrictModel):
         list[GraphEffect] | None,
         Field(description="The patch the option applied, in order. Absent: it changed no step."),
     ] = None
+    selection_id: Annotated[
+        ArtifactId | None,
+        Field(
+            description="The SelectionDecision a compared method's option won by (ADR-0063 D3, ADR-0050). Absent for any other method."
+        ),
+    ] = None
     bindings: Annotated[
         list[Binding] | None, Field(description="The bindings the option made. Absent: none.")
     ] = None
@@ -3983,6 +4011,12 @@ class PipelineVersion(StrictModel):
         MethodologyProposalId | None,
         Field(
             description="The shortlist proposal whose models this version cross-validates (ADR-0046). A comparison is a side version, not an edit: it has no parent_id, so the proposal stays applicable. Absent on every other version."
+        ),
+    ] = None
+    compares_method: Annotated[
+        MethodRef | None,
+        Field(
+            description="The compared method whose shortlist this version cross-validates (ADR-0063 D3), a side version like one that `compares` a proposal. A version has at most one of the two. Absent on every other version."
         ),
     ] = None
     nodes: list[Node]
@@ -4682,6 +4716,12 @@ class Method(StrictModel):
         ),
     ]
     applies_when: MethodAppliesWhen | None = None
+    compare: Annotated[
+        bool | None,
+        Field(
+            description="Its decide() answers with a shortlist, not one option: the engine compares those options on the same folds and takes the winner by ADR-0050 (one-standard-error rule, baseline test). Each option replaces one step. Absent: false."
+        ),
+    ] = None
     changes: Annotated[
         list[Change] | None,
         Field(

@@ -156,9 +156,34 @@ def test_a_ruled_out_option_says_why_and_cannot_be_taken(tmp_path: Path) -> None
     assert answer["answer"] == "refused" and "shuffled" in answer["error"]
 
 
+def test_a_compared_method_shortlists_the_options_the_engine_compares(tmp_path: Path) -> None:
+    answer = decide_with(tmp_path, "return ctx.compare(['grouped', 'independent'], 'Both fit.')")
+    assert answer == {
+        "answer": "shortlisted",
+        "method": METHOD,
+        "shortlist": ["grouped", "independent"],
+        "reason": "Both fit.",
+    }
+
+
+@pytest.mark.parametrize(
+    ("options", "why"),
+    [
+        (["grouped"], "at least two"),
+        (["grouped", "grouped"], "each once"),
+        (["grouped", "shuffled"], "shuffled"),
+    ],
+)
+def test_a_shortlist_of_one_or_of_an_unknown_option_is_refused(
+    tmp_path: Path, options: list[str], why: str
+) -> None:
+    answer = decide_with(tmp_path, f"return ctx.compare({options!r}, 'Compare.')")
+    assert answer["answer"] == "refused" and why in answer["error"]
+
+
 def test_decide_must_return_a_choice_or_an_ask(tmp_path: Path) -> None:
     answer = decide_with(tmp_path, "return 'grouped'")
-    assert answer["answer"] == "refused" and "choose or ask" in answer["error"]
+    assert answer["answer"] == "refused" and "choose, ask or compare" in answer["error"]
 
 
 def test_a_module_without_decide_is_refused_and_the_session_goes_on(tmp_path: Path) -> None:

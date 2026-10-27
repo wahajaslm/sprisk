@@ -27,6 +27,14 @@ class Outcome:
     reason: str
 
 
+@dataclass(frozen=True)
+class Shortlist:
+    """A compared method's options for the engine to compare on the same folds (ADR-0063 D3)."""
+
+    options: list[str]
+    reason: str
+
+
 class Context:
     """What decide() may see: only what its method.yaml says it needs."""
 
@@ -77,6 +85,11 @@ class Context:
     def ask(self, option: str, question: str) -> Outcome:
         return Outcome("ask", self._option(option), question)
 
+    def compare(self, options: list[str], reason: str) -> Shortlist:
+        if len(set(options)) < 2 or len(set(options)) != len(options):
+            raise MethodError(f"{self._method}: a comparison needs at least two options, each once")
+        return Shortlist([self._option(o) for o in options], reason)
+
     def _declared(self, kind: str, name: str) -> None:
         if name not in (self._needs.get(kind) or []):
             raise MethodError(f"{self._method} reads {kind} {name} without declaring it")
@@ -116,10 +129,18 @@ def answer(request: MethodRequest) -> MethodAnswer:
     method = request.method.root
     try:
         outcome = load_function(Path(request.module), "decide")(Context(request))
-        if not isinstance(outcome, Outcome):
-            raise MethodError(f"{method}: decide() must return ctx.choose or ask")
+        if not isinstance(outcome, Outcome | Shortlist):
+            raise MethodError(f"{method}: decide() must return ctx.choose, ask or compare")
     except MethodError as e:
         return MethodAnswer.model_validate_json(json.dumps({"answer": "refused", "error": str(e)}))
+    if isinstance(outcome, Shortlist):
+        listed = {
+            "answer": "shortlisted",
+            "method": method,
+            "shortlist": outcome.options,
+            "reason": outcome.reason,
+        }
+        return MethodAnswer.model_validate_json(json.dumps(listed))
     return MethodAnswer.model_validate_json(
         json.dumps(
             {

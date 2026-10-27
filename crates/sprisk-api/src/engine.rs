@@ -27,7 +27,7 @@ use sprisk_methodology::measure::{Measuring, fitting, measure};
 use sprisk_methodology::verifying::{Checking, Measured, checked, checking, fresh, sealed_by};
 use sprisk_registry::evidence::EVIDENCE_PORT;
 
-use crate::method_session::MethodSession;
+use crate::method_session::{Decision, MethodSession};
 use crate::report::{self, Scored};
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, Query, apply_methodology, body,
@@ -463,10 +463,19 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             };
             return record_decide(state, walk, round, &read, taking).await;
         }
-        let decided = session
+        let decided = match session
             .decide(&request)
             .await
-            .map_err(|e| ApiError::Internal(format!("method {}: {e}", method.id.as_str())))?;
+            .map_err(|e| ApiError::Internal(format!("method {}: {e}", method.id.as_str())))?
+        {
+            Decision::Decided(decided) => decided,
+            Decision::Shortlisted(_) => {
+                return Err(ApiError::Internal(format!(
+                    "method {} answered with a shortlist, and the walk compares no method's options yet",
+                    method.id.as_str()
+                )));
+            }
+        };
         if decided.outcome == MethodDecidedOutcome::Ask {
             asks.push(method_ask(method, &request, &decided)?);
             continue;

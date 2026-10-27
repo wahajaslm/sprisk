@@ -1,0 +1,9 @@
+{
+  "answer": "shortlisted",
+  "method": "methodology.supervised.model_shortlist@1.0.0",
+  "shortlist": [
+    "dummy_baseline",
+    "linear_model"
+  ],
+  "reason": "Under 100 train rows: the forest is left out."
+}
