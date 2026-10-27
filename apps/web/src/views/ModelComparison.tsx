@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client.ts";
 import { isLive, useOperatorsByRef, useOperatorSource, useRuns } from "../api/hooks.ts";
-import { byRule, useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useMethods, useSelectModel } from "../api/methodology.ts";
+import { byRule, useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethods, useSelectModel } from "../api/methodology.ts";
 import { useFlowRuns, useSelectionDecision } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
 import { useSelection } from "../workbench/selection.ts";
@@ -51,34 +51,27 @@ export function ModelComparisons({ flowIds, head, versions, studied }: {
  * says when such a step has nothing to compare. A step its own decision just chose is not
  * selected again: the head is that choice. */
 function AutoSelect({ head }: { head: PipelineVersion }) {
-  return useComparedSteps(head).map(({ node, models }) => (
-    <AutoSelectStep key={`${head.id}/${node.id}`} head={head} nodeId={node.id} decisionId={node.methodology_decision_id} models={models} />
+  return useComparedSteps(head).map((node) => (
+    <AutoSelectStep key={`${head.id}/${node.id}`} head={head} nodeId={node.id} decisionId={node.methodology_decision_id} />
   ));
 }
 
-/** The head's steps Sprisk compares: steps whose role a compared method's options swap
- * (`models`, ADR-0063 D3), and steps a recommend rule decides that fit on train rows (ADR-0050). */
-export function useComparedSteps(head: PipelineVersion): { node: PipelineVersion["nodes"][number]; models: boolean }[] {
-  const rules = useMethodologyRules();
+/** The head's steps Sprisk compares: those whose role a compared method's options swap
+ * (ADR-0063 D3). */
+export function useComparedSteps(head: PipelineVersion): PipelineVersion["nodes"] {
   const methods = useMethods();
   const operators = useOperatorsByRef();
-  const active = (rules.data ?? []).filter((r) => r.status === "active");
   const comparedRoles = new Set(
     (methods.data ?? []).filter((m) => m.compare).flatMap((m) => m.options.flatMap((o) => o.action?.replace?.role ?? [])),
   );
-  const recommended = new Set(active.filter((r) => r.selection !== "shortlist").flatMap((r) => r.applies_to ?? []));
-  const fitsOnTrain = (operator: string) => operators.data?.get(operator)?.fits_on_train === true;
   const compared = (operator: string) => {
     const role = operators.data?.get(operator)?.role;
     return role !== undefined && comparedRoles.has(role);
   };
-  const name = (operator: string) => operator.split("@")[0] ?? "";
-  return head.nodes
-    .filter((n) => compared(n.operator) || (recommended.has(name(n.operator)) && fitsOnTrain(n.operator)))
-    .map((node) => ({ node, models: compared(node.operator) }));
+  return head.nodes.filter((n) => compared(n.operator));
 }
 
-function AutoSelectStep({ head, nodeId, decisionId, models }: { head: PipelineVersion; nodeId: string; decisionId: string | undefined; models: boolean }) {
+function AutoSelectStep({ head, nodeId, decisionId }: { head: PipelineVersion; nodeId: string; decisionId: string | undefined }) {
   const runs = useRuns(head.id);
   const decision = useMethodologyDecision(decisionId);
   const select = useSelectModel();
@@ -98,7 +91,7 @@ function AutoSelectStep({ head, nodeId, decisionId, models }: { head: PipelineVe
   if (nothing) return <p className="muted pad">{nodeId}: {nothing.message}</p>;
   if (select.isError) return <p role="alert" className="error pad">Sprisk could not compare the choices for {nodeId}: {select.error.message}</p>;
   if (!hasRun && !runs.isPending && !chosenHere) {
-    return <p className="muted pad">Run the pipeline, and Sprisk will compare {models ? "models" : "its choices"} for {nodeId}.</p>;
+    return <p className="muted pad">Run the pipeline, and Sprisk will compare models for {nodeId}.</p>;
   }
   return null;
 }

@@ -146,15 +146,6 @@ async fn api_with_clock(
             Duration::from_secs(30),
             2,
         ),
-        rule_runner: sprisk_api::RuleRunner::new(
-            vec![
-                python.display().to_string(),
-                "-m".into(),
-                "sprisk_workers.rule".into(),
-            ],
-            Duration::from_secs(30),
-            2,
-        ),
         method_runner: sprisk_api::MethodRunner::new(
             vec![
                 python.display().to_string(),
@@ -2251,36 +2242,6 @@ async fn a_flow_can_only_link_a_saved_question_revision() {
 }
 
 #[tokio::test]
-async fn a_step_s_proposal_can_be_asked_for_one_decision() {
-    let api = api().await;
-    cluster_proposal(&api).await;
-    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ8/methodology/proposals/cluster";
-
-    let (status, proposal) = call(
-        &api.app,
-        "POST",
-        &format!("{uri}/clustering.algorithm_choice"),
-        Some(json!({})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(
-        proposal["rule"],
-        "methodology.unsupervised.clustering_algorithm@1.0.0"
-    );
-
-    let (status, body) = call(
-        &api.app,
-        "POST",
-        &format!("{uri}/evaluation.decision_threshold"),
-        Some(json!({})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "methodology_not_applicable");
-}
-
-#[tokio::test]
 async fn an_unknown_methodology_proposal_is_not_found() {
     let api = api().await;
     let (status, body) = call(
@@ -2304,47 +2265,6 @@ async fn an_unknown_methodology_decision_is_not_found() {
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-}
-
-#[tokio::test]
-async fn clustering_methodology_is_resolved_previewed_and_applied_once() {
-    let api = api().await;
-    let proposal = cluster_proposal(&api).await;
-    assert_eq!(
-        proposal["recommended_alternative_id"],
-        "kmeans_centroid_clustering"
-    );
-    assert_eq!(
-        proposal["rule"],
-        "methodology.unsupervised.clustering_algorithm@1.0.0"
-    );
-    assert_eq!(proposal["alternatives"].as_array().unwrap().len(), 4);
-
-    let uri = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    // DBSCAN is not the recommendation, so choosing it needs a reason.
-    let bare = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-apply-dbscan-bare" });
-    let (status, body) = call(&api.app, "POST", &uri, Some(bare)).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "reason_required");
-    let request = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-apply-dbscan",
-                          "reason": "The clusters are not convex." });
-    let (status, applied) = call(&api.app, "POST", &uri, Some(request.clone())).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    assert_eq!(
-        applied["pipeline"]["parent_id"],
-        "plv_01JABCDEFGHJKMNPQRSTVWXYZ8"
-    );
-    assert_eq!(
-        applied["pipeline"]["nodes"][1]["operator"],
-        "sprisk.clustering.dbscan@1.0.0"
-    );
-    assert_eq!(
-        applied["pipeline"]["nodes"][1]["methodology_decision_id"],
-        applied["decision"]["id"]
-    );
 }
 
 /// The scaling flow with `nodes` and `edges` added after the scale step.
@@ -2445,6 +2365,14 @@ async fn model_flow(api: &Api) {
 }
 
 /// The model shortlist of step `model`: a model step has several rules, so it is named.
+/// The learnable model flow's model step proposal: the model shortlist's options.
+async fn model_proposal(api: &Api) -> Value {
+    learnable_model_flow(api).await;
+    let (status, proposal) = propose_model(api).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    proposal
+}
+
 async fn propose_model(api: &Api) -> (StatusCode, Value) {
     call(
         &api.app,
@@ -2593,7 +2521,7 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 63);
+    assert_eq!(rules.len(), 62);
 
     // Methods are shown as rules, in their own words, with their options as alternatives.
     let split = rules
@@ -2616,20 +2544,13 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
         split["verification"]["invariant"],
         "No item has rows in both train and test. No test row has the same features as a train row. Every test row is later than the latest train row."
     );
-    // The words people read go with each rule (ADR-0045 amendment).
-    let clustering = rules
+    // Decisions not built yet are drafts, listed in their own words (ADR-0063 slice 6).
+    let draft = rules
         .iter()
-        .find(|r| r["id"] == "methodology.unsupervised.clustering_algorithm@1.0.0")
+        .find(|r| r["id"] == "methodology.supervised.multicollinearity@1.0.0")
         .unwrap();
-    assert_eq!(clustering["stage"], "models");
-    assert_eq!(
-        clustering["question"],
-        "Which clustering algorithm should group the rows?"
-    );
-    assert_eq!(
-        clustering["alternatives"][0]["when"],
-        "always, as the baseline while cluster shape is not recorded"
-    );
+    assert_eq!(draft["status"], "draft");
+    assert_eq!(draft["decides"], "features.multicollinearity_strategy");
 }
 
 #[tokio::test]
@@ -2638,11 +2559,13 @@ async fn a_methodology_rule_source_is_its_files() {
     let (status, source) = call(
         &api.app,
         "GET",
-        "/methodology_rules/methodology.unsupervised.clustering_algorithm@1.0.0/source",
+        "/methodology_rules/methodology.supervised.multicollinearity@1.0.0/source",
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{source}");
+    // A draft has its manifest and no code.
+    assert_eq!(source["files"].as_array().unwrap().len(), 1, "{source}");
     assert_eq!(source["files"][0]["path"], "rule.yaml");
     assert_eq!(source["files"][0]["language"], "yaml");
 
@@ -2934,29 +2857,12 @@ async fn a_comparison_is_built_only_by_compare_and_never_edited_by_a_rule() {
     assert_eq!(body["errors"][0]["code"], "comparison_by_compare");
 
     let uri = format!(
-        "/pipeline_versions/{}/methodology/proposals/split",
+        "/pipeline_versions/{}/methodology/proposals/model/models.estimator_selection",
         comparison["id"].as_str().unwrap()
     );
     let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "comparison_not_editable");
-}
-
-#[tokio::test]
-async fn only_a_shortlist_proposal_can_be_compared() {
-    let api = api().await;
-    let proposal = cluster_proposal(&api).await;
-
-    let (status, body) = compare(&api, &proposal).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "methodology_not_applicable");
-    assert!(
-        body["errors"][0]["message"]
-            .as_str()
-            .unwrap()
-            .contains("has no shortlist to compare"),
-        "{body}"
-    );
 }
 
 #[tokio::test]
@@ -3292,63 +3198,24 @@ async fn two_requests_at_once_share_one_model_selection_and_one_run() {
     assert_eq!(comparisons, 1, "{versions}");
 }
 
-/// The clustering rule's proposal on a flow that loads and clusters: four alternatives,
-/// k-means recommended.
-async fn cluster_proposal(api: &Api) -> Value {
-    let question = json!({
-        "schema_version": "sprisk.question_version/v1",
-        "id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ8",
-        "investigation_id": "inv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-        "objective": { "value": "Customer clustering exploration", "origin": "explicit" },
-        "task": { "value": "exploration", "origin": "confirmed" },
-        "assumptions": [],
-        "unknowns": [],
-        "acceptance_criteria": [],
-        "created_at": "2026-10-15T10:00:00Z"
-    });
-    let (status, _) = call(&api.app, "POST", "/question_versions", Some(question)).await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let mut flow = pipeline(&api.csv);
-    flow["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ8");
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ8");
-    flow["nodes"].as_array_mut().unwrap().push(json!({
-        "id": "cluster",
-        "operator": "sprisk.clustering.kmeans@1.0.0",
-        "params": { "n_clusters": 3 }
-    }));
-    flow["edges"] = json!([{ "from": "load.data", "to": "cluster.data" }]);
-    let (status, _) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let (status, proposal) = call(
-        &api.app,
-        "POST",
-        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ8/methodology/proposals/cluster",
-        Some(json!({})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    proposal
-}
-
 #[tokio::test]
 async fn an_apply_key_reused_for_another_choice_conflicts_instead_of_replaying_the_first() {
     // SCI-07: a retry gets the same version; a changed payload under the same key conflicts.
     let api = api().await;
-    let proposal = cluster_proposal(&api).await;
+    let proposal = model_proposal(&api).await;
     let uri = format!(
         "/methodology_proposals/{}/apply",
         proposal["id"].as_str().unwrap()
     );
-    let first = json!({ "alternative_id": "kmeans_centroid_clustering", "idempotency_key": "test-reused-key" });
+    let first = json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-reused-key",
+                        "reason": "Chosen before comparing." });
     let (status, applied) = call(&api.app, "POST", &uri, Some(first)).await;
     assert_eq!(status, StatusCode::CREATED, "{applied}");
 
     for changed in [
-        json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-reused-key",
-                "reason": "The clusters are not convex." }),
-        json!({ "alternative_id": "kmeans_centroid_clustering", "idempotency_key": "test-reused-key",
+        json!({ "alternative_id": "ml_dummy_baseline", "idempotency_key": "test-reused-key",
+                "reason": "Chosen before comparing." }),
+        json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-reused-key",
                 "reason": "A reason the first request did not give." }),
     ] {
         let (status, body) = call(&api.app, "POST", &uri, Some(changed.clone())).await;
@@ -3369,18 +3236,19 @@ async fn an_apply_key_reused_for_another_choice_conflicts_instead_of_replaying_t
 #[tokio::test]
 async fn two_applies_at_once_with_one_key_and_different_choices_make_one_decision() {
     let api = api().await;
-    let proposal = cluster_proposal(&api).await;
+    let proposal = model_proposal(&api).await;
     let uri = format!(
         "/methodology_proposals/{}/apply",
         proposal["id"].as_str().unwrap()
     );
-    let kmeans = json!({ "alternative_id": "kmeans_centroid_clustering", "idempotency_key": "test-raced-key" });
-    let dbscan = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-raced-key",
-                         "reason": "The clusters are not convex." });
+    let linear = json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-raced-key",
+                         "reason": "Chosen before comparing." });
+    let baseline = json!({ "alternative_id": "ml_dummy_baseline", "idempotency_key": "test-raced-key",
+                           "reason": "Chosen before comparing." });
 
     let ((one, first), (two, second)) = tokio::join!(
-        call(&api.app, "POST", &uri, Some(kmeans)),
-        call(&api.app, "POST", &uri, Some(dbscan))
+        call(&api.app, "POST", &uri, Some(linear)),
+        call(&api.app, "POST", &uri, Some(baseline))
     );
 
     // The loser is refused: as a conflicting key, or as stale once the winner's version exists.
@@ -4312,137 +4180,6 @@ async fn german_credit_runs_as_stage_notebooks_with_one_chart_per_step() {
     assert!(
         code.ends_with("train, test = df[sorted(train_rows)], df[sorted(test_rows)]\n"),
         "{code}"
-    );
-}
-
-/// Load → Split → Forest on a classification question with no time or entity column.
-async fn forest_flow(api: &Api) {
-    forest_flow_with(api, json!({})).await;
-}
-
-/// `forest_flow` whose question also states `facts`.
-async fn forest_flow_with(api: &Api, facts: Value) {
-    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    let fields = q.as_object_mut().unwrap();
-    fields.remove("time_column");
-    fields.remove("entity_column");
-    fields.extend(facts.as_object().unwrap().clone());
-    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
-    flow["nodes"].as_array_mut().unwrap().extend([
-        json!({ "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
-                "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"} }),
-        json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
-                "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
-    ]);
-    flow["edges"] = json!([
-        {"from":"load.data","to":"split.data"},
-        {"from":"split.train","to":"model.train"}
-    ]);
-    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut csv = String::from("age,returned_within_30d\n");
-    for age in 20..80 {
-        csv.push_str(&format!("{age},{}\n", u8::from(age >= 50)));
-    }
-    std::fs::write(&api.csv, csv).unwrap();
-}
-
-async fn review(api: &Api) -> Value {
-    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (status, review) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(status, StatusCode::OK, "{review}");
-    review
-}
-
-fn statuses(review: &Value) -> Vec<(String, String)> {
-    review["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|i| {
-            (
-                i["decides"].as_str().unwrap().to_owned(),
-                i["status"].as_str().unwrap().to_owned(),
-            )
-        })
-        .collect()
-}
-
-#[tokio::test]
-async fn a_supervised_flow_s_review_lists_no_rule_since_methods_decide_it_in_walks() {
-    let api = api().await;
-    forest_flow(&api).await;
-    let (run, _) = run_to_end(&api).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-
-    // The question, the data, the split, the features, the models and loop-back are
-    // methods' decisions, made in walks (ADR-0063).
-    let review = review(&api).await;
-    assert_eq!(statuses(&review), [], "{review}");
-    assert_eq!(review["next"], json!([]), "{review}");
-}
-
-#[tokio::test]
-async fn a_flow_with_no_question_cannot_be_reviewed() {
-    let api = api().await;
-    let (status, body) = call(
-        &api.app,
-        "POST",
-        "/pipeline_versions",
-        Some(pipeline(&api.csv)),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (status, body) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "question_required", "{body}");
-}
-
-#[tokio::test]
-async fn an_unknown_flow_has_no_review() {
-    let api = api().await;
-    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (status, body) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-}
-
-#[tokio::test]
-async fn a_step_that_carries_the_rule_s_applied_decision_is_settled() {
-    let api = api().await;
-    let proposal = cluster_proposal(&api).await;
-    let other = proposal["alternatives"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| {
-            a["applicability"] == "applicable" && a["id"] != proposal["recommended_alternative_id"]
-        })
-        .unwrap();
-    let apply = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let choice = json!({ "alternative_id": other["id"], "reason": "the person prefers it",
-                         "idempotency_key": "review-override-1" });
-    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-
-    let uri = format!(
-        "/pipeline_versions/{}/methodology/review",
-        applied["pipeline"]["id"].as_str().unwrap()
-    );
-    let (status, review) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(status, StatusCode::OK, "{review}");
-    assert!(
-        statuses(&review).contains(&(
-            "clustering.algorithm_choice".to_owned(),
-            "settled".to_owned()
-        )),
-        "{review}"
     );
 }
 
@@ -5939,10 +5676,8 @@ source: "scikit-learn User Guide §3.1: ShuffleSplit."
 
 const SHUFFLE_MODULE: &str = r#"from typing import Any
 
-
 def decide(ctx: Any) -> Any:
     return ctx.choose("shuffled", "Rows are shuffled into train and test.")
-
 
 def verify_no_row_in_both(evidence: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]:
     if evidence["in_both"]:
@@ -6187,7 +5922,8 @@ async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
         "{flow}"
     );
     // The scored flow is sealed: changing or comparing it would choose by the test rows.
-    let uri = format!("/pipeline_versions/{head}/methodology/proposals/model");
+    let uri =
+        format!("/pipeline_versions/{head}/methodology/proposals/model/models.estimator_selection");
     let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "test_rows_scored", "{body}");

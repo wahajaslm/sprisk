@@ -1,5 +1,5 @@
-//! Methodology rules (ADR-0042): the rule catalog, what a rule's Python `decide()` reads,
-//! and the proposal built from its decision. Graph mutation stays an explicit API Apply.
+//! Methodology (ADR-0063): the catalog of methods, concepts and draft rules, how methods
+//! decide in a walk, and how options are compared. Graph mutation stays an explicit Apply.
 
 mod assets;
 mod catalog;
@@ -8,24 +8,21 @@ pub mod deciding;
 mod decision;
 mod defaults;
 pub mod engine;
-pub mod facts;
 pub mod flow_decisions;
 pub mod measure;
 mod methods;
 pub mod patch;
-pub mod review;
 pub mod search;
 pub mod verifying;
 pub use assets::{asset_params, binds_all};
-pub use catalog::{CatalogError, RuleCatalog, decides, reopened_stage};
+pub use catalog::{CatalogError, RuleCatalog};
 pub use compare::{
     Candidate, Candidates, Comparison, FOLDS, INNER_FOLDS, REPEATS, SEED, SELECT_NODE, Scoring,
-    StudySearch, TrialStep, comparison, preparation_comparison, study_comparison, trial_steps,
+    StudySearch, TrialStep, comparison, study_comparison, trial_steps,
 };
 pub use decision::{
-    Stamp, candidate_facts, candidates, flow_facts, input_facts, join_facts, key_columns,
-    observation, one_table_into, profile_facts, proposal, result_facts, target_facts,
-    train_rows_source, unread_sources, with_node_before, without_node,
+    Stamp, key_columns, one_table_into, train_rows_source, unread_sources, with_node_before,
+    without_node,
 };
 pub use defaults::Defaults;
 

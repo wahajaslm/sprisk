@@ -76,12 +76,10 @@ pub(crate) fn read_concepts(
     Ok(())
 }
 
-/// What a pack's methods may rely on: its concepts, the registered operators and the
-/// decisions the old rules make.
+/// What a pack's methods may rely on: its concepts and the registered operators.
 pub(crate) struct Provided<'a> {
     pub concepts: &'a BTreeMap<String, ConceptEntry>,
     pub operators: BTreeMap<String, &'a Operator>,
-    pub rule_decisions: BTreeSet<String>,
 }
 
 /// Refuses what no walk could satisfy, then returns the methods in decision order: a method
@@ -99,7 +97,6 @@ pub(crate) fn check(
     let decided: BTreeSet<String> = methods
         .iter()
         .map(|m| m.method.decides.to_string())
-        .chain(provided.rule_decisions.iter().cloned())
         .collect();
     for entry in &methods {
         check_method(&entry.method, provided, &decided)

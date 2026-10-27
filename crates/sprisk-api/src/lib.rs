@@ -16,7 +16,6 @@ mod notebook_code;
 mod profile;
 mod profile_plan;
 mod report;
-mod rules;
 mod split;
 pub use bounded::ProcessError;
 pub use copilot::{Copilot, CopilotConfigError};
@@ -26,7 +25,6 @@ pub use method_session::{MethodRunner, MethodSession};
 pub use notebook_code::CodeWriter;
 use profile::Profiles;
 pub use profile::{KeyMatcher, Profiler, Shifter, SourceProfiler};
-pub use rules::{RuleRunner, RuleSession};
 pub use split::{SplitError, Splitter};
 
 use axum::body::Bytes;
@@ -42,14 +40,13 @@ use sprisk_contracts::{
     CapabilityClass, CodeSplit, CodeSplitRequest, ConceptSet, CopilotChatReply, CopilotChatRequest,
     CopilotLedgerDraft, CopilotLedgerRequest, CreateRun, DatasetProfile, DecisionProposal,
     FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, Method, MethodFiles,
-    MethodologyAlternativeApplicability, MethodologyDecision, MethodologyDecisionByRule,
-    MethodologyDecisionId, MethodologyProposalId, MethodologyReview, MethodologyRule,
-    MethodologyRuleSelection, MethodologyRuleSource, ModelSelection, NotebookCode,
-    NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
-    NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion,
-    NotebookVersionId, Operator, OperatorRole, OperatorSource, PipelineVersion, PipelineVersionId,
-    Problem, ProfilePlan, QuestionVersion, QuestionVersionId, Run, RunId, RunStatus,
-    SelectionMetric, Study, StudyDetail, StudyId, StudyStatus, TaskType, Trial, parse,
+    MethodologyDecision, MethodologyDecisionByRule, MethodologyProposalId, MethodologyRule,
+    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
+    NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookSettings,
+    NotebookSettingsRequest, NotebookVariables, NotebookVersion, NotebookVersionId, Operator,
+    OperatorRole, OperatorSource, PipelineVersion, PipelineVersionId, Problem, ProfilePlan,
+    QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, SelectionMetric, Study, StudyDetail,
+    StudyId, StudyStatus, TaskType, Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -89,8 +86,6 @@ pub struct AppState {
     pub shifter: Shifter,
     /// Writes a ready-made step as plain Python for a notebook cell (ADR-0055).
     pub code_writer: CodeWriter,
-    /// Runs a methodology rule's Python decide() (ADR-0042).
-    pub rule_runner: RuleRunner,
     pub method_runner: MethodRunner,
     /// One live Python kernel per notebook being explored (ADR-0036).
     pub kernels: Kernels,
@@ -109,14 +104,6 @@ pub fn router(state: AppState) -> Router {
             post(create_question_version).get(list_question_versions),
         )
         .route("/question_versions/{id}", get(get_question_version))
-        .route(
-            "/pipeline_versions/{id}/methodology/proposals/{node_id}",
-            post(propose_node_methodology),
-        )
-        .route(
-            "/pipeline_versions/{id}/methodology/review",
-            get(review_methodology),
-        )
         .route(
             "/pipeline_versions/{id}/methodology/proposals/{node_id}/{decides}",
             post(propose_node_decision),
@@ -310,8 +297,6 @@ enum ApiError {
     Kernel(#[from] KernelError),
     #[error("profiling the table {0}")]
     Profile(#[from] ProcessError),
-    #[error("running the methodology rule {0}")]
-    Rule(ProcessError),
     #[error("{0} has no plain code yet")]
     NoPlainCode(String),
     #[error("writing the step's plain code {0}")]
@@ -409,14 +394,6 @@ impl ApiError {
             ApiError::Profile(ProcessError::Timeout(_)) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 vec![("profile_timeout", self.to_string())],
-            ),
-            ApiError::Rule(ProcessError::Timeout(_)) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                vec![("rule_timeout", self.to_string())],
-            ),
-            ApiError::Rule(ProcessError::Busy) => (
-                StatusCode::TOO_MANY_REQUESTS,
-                vec![("rule_busy", self.to_string())],
             ),
             ApiError::Profile(ProcessError::Busy) => (
                 StatusCode::TOO_MANY_REQUESTS,
@@ -1327,13 +1304,6 @@ async fn get_question_version(
     Ok(Json(state.store.get_question_version(&id(&raw)?).await?))
 }
 
-async fn propose_node_methodology(
-    State(state): State<AppState>,
-    Path((raw, node_id)): Path<(String, String)>,
-) -> Result<(StatusCode, Json<DecisionProposal>), ApiError> {
-    propose(&state, &raw, &node_id, None).await
-}
-
 /// The proposal of the one rule that makes `decides` for the step (ADR-0053).
 async fn propose_node_decision(
     State(state): State<AppState>,
@@ -1342,126 +1312,10 @@ async fn propose_node_decision(
     propose(&state, &raw, &node_id, Some(&decides)).await
 }
 
-/// Every applicable rule's status on this version, in decision order (ADR-0059). Each rule
-/// decides as `propose` would, but nothing is stored: a person asks for the proposal to apply.
-async fn review_methodology(
-    State(state): State<AppState>,
-    Path(raw): Path<String>,
-) -> Result<Json<MethodologyReview>, ApiError> {
-    use sprisk_methodology::review::{self, Outcome};
-
-    let pipeline = state.store.get_pipeline_version(&id(raw.as_str())?).await?;
-    let question_id =
-        pipeline
-            .question_version_id
-            .as_ref()
-            .ok_or_else(|| ApiError::BadRequest {
-                code: "question_required",
-                message: "link a question revision to this flow before reviewing its methodology"
-                    .into(),
-            })?;
-    let question = state.store.get_question_version(question_id).await?;
-    let task = question.task.value;
-    let planned = review::plan(&state.rules, &pipeline, |rule| {
-        review::fits_task(rule, task, state.registry.operators())
-    })
-    .map_err(|e| ApiError::Internal(e.to_string()))?;
-    let applied: Vec<MethodologyDecisionId> = pipeline
-        .nodes
-        .iter()
-        .filter_map(|n| n.methodology_decision_id.clone())
-        .collect();
-    let applied = state.store.methodology_decisions(&applied).await?;
-    let decided = |node: &sprisk_contracts::Node, rule: &MethodologyRule| {
-        let subject = node.id.as_str();
-        review::carries_decision(&pipeline, subject, |step| {
-            // A method's decision never settles a rule's item.
-            applied.iter().any(|d| match d {
-                MethodologyDecision::Rule(d) => {
-                    step.methodology_decision_id.as_ref() == Some(&d.id)
-                        && d.rule.as_str() == rule.id.as_str()
-                        && review::decided_for(subject, step.id.as_str(), d)
-                }
-                MethodologyDecision::Method(_) => false,
-            })
-        })
-    };
-
-    let mut items = Vec::with_capacity(planned.len());
-    let mut open = Vec::with_capacity(planned.len());
-    let mut profiles = Profiles::default();
-    let mut rules = state.rule_runner.session();
-    for (at, planned_rule) in planned.iter().enumerate() {
-        let outcome = if let Some(on) = review::waits_on(&pipeline, &planned, at, &open) {
-            Outcome::Waiting { on: on.to_owned() }
-        } else if let Some(why) = planned_rule
-            .subject
-            .and_then(|node| before_the_split(&state, &pipeline, node, planned_rule.rule))
-        {
-            Outcome::NotApplicable(why)
-        } else if let Some(node) = planned_rule.subject {
-            match decide(
-                &state,
-                &pipeline,
-                &question,
-                node,
-                planned_rule.rule,
-                &mut profiles,
-                &mut rules,
-            )
-            .await
-            {
-                Ok(proposal) => Outcome::Proposed {
-                    decided: decided(node, planned_rule.rule),
-                    proposal: Box::new(proposal),
-                },
-                Err(ApiError::BadRequest { code, message }) if code == EVIDENCE_UNAVAILABLE => {
-                    Outcome::NeedsRun(message)
-                }
-                Err(ApiError::BadRequest { code, message }) if code == NOT_APPLICABLE => {
-                    Outcome::NotApplicable(message)
-                }
-                Err(other) => return Err(other),
-            }
-        } else {
-            Outcome::NoSubject
-        };
-        let item =
-            review::item(planned_rule, outcome).map_err(|e| ApiError::Internal(e.to_string()))?;
-        open.push(review::is_open(&item));
-        items.push(item);
-    }
-    let next = review::next(&items);
-    let review = json!({
-        "schema_version": "sprisk.methodology_review/v1",
-        "pipeline_version_id": pipeline.id,
-        "items": items,
-        "next": next,
-    });
-    Ok(Json(
-        parse(&review.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?,
-    ))
-}
-
-/// The decision a comparison of `node` measures: its model shortlist when a shortlist rule
-/// decides it (ADR-0044), else the first rule of a step that fits on train rows (ADR-0050).
-/// None when nothing about the step is compared.
+/// The decision a comparison of `node` measures: that of the compared method whose options
+/// swap it (ADR-0063 D3). None when nothing about the step is compared.
 fn compared_decision(state: &AppState, node: &sprisk_contracts::Node) -> Option<String> {
-    let rules: Vec<_> = state
-        .rules
-        .rules_for_operator(node.operator.as_str())
-        .collect();
-    rules
-        .iter()
-        .find(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist))
-        .map(|rule| rule.decides.as_str().to_owned())
-        .or_else(|| compared_method_of(state, node).map(|m| m.decides.to_string()))
-        .or_else(|| {
-            rules
-                .first()
-                .filter(|_| keeps_train_rows(&state.registry, node))
-                .map(|rule| rule.decides.as_str().to_owned())
-        })
+    compared_method_of(state, node).map(|m| m.decides.to_string())
 }
 
 /// The compared method whose options swap `node` (ADR-0063 D3), if any.
@@ -1471,31 +1325,6 @@ fn compared_method_of<'s>(
 ) -> Option<&'s sprisk_contracts::Method> {
     let operator = state.registry.get(node.operator.as_str())?;
     sprisk_methodology::deciding::compared_method(&state.rules, operator)
-}
-
-/// Why `rule` cannot decide `node`, when it measures train rows and `node` has none: it sits
-/// before the split, or its rows cannot be traced to one. A run would not change that.
-fn before_the_split(
-    state: &AppState,
-    pipeline: &PipelineVersion,
-    node: &sprisk_contracts::Node,
-    rule: &MethodologyRule,
-) -> Option<String> {
-    if !sprisk_methodology::facts::needs_train_rows(rule.reads.iter().map(|r| r.as_str())) {
-        return None;
-    }
-    let is_split = |n: &sprisk_contracts::Node| is_split(&state.registry, n.operator.as_str());
-    let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
-    let traced = sprisk_methodology::train_rows_source(pipeline, node.id.as_str(), is_split, keeps);
-    let step = node.id.as_str();
-    traced.err().map(|e| {
-        if sprisk_methodology::review::after_a_split(pipeline, step, is_split) {
-            // After a split but untraceable: say why, since it may mean test rows reach it.
-            format!("Step {step} cannot be measured on train rows only: {e}")
-        } else {
-            format!("Step {step} runs before the split, so it has no train rows for this rule to measure.")
-        }
-    })
 }
 
 /// A step whose operator has the split role (ADR-0063).
@@ -1511,19 +1340,6 @@ fn keeps_train_rows(registry: &Registry, node: &sprisk_contracts::Node) -> bool 
     registry
         .get(node.operator.as_str())
         .is_some_and(|o| o.fits_on_train == Some(true))
-}
-
-/// Whether a step between a rule's step and a model keeps what the flow facts say about
-/// the model: it only drops rows, or is a Clean step fit on train rows (rescale, fill from
-/// train statistics, encode), so the model still sees the rule's columns up to an affine
-/// change. A zero fill is not: zero is another value once the column is scaled.
-fn keeps_flow_facts(registry: &Registry, node: &sprisk_contracts::Node) -> bool {
-    let zero_fill = node.operator.as_str().starts_with("sprisk.clean.impute@")
-        && node.params.get("method").and_then(|m| m.as_str()) == Some("zero");
-    let rows_only = registry
-        .get(node.operator.as_str())
-        .is_some_and(|o| matches!(o.role, Some(OperatorRole::RowFilter | OperatorRole::Split)));
-    rows_only || (keeps_train_rows(registry, node) && !zero_fill)
 }
 
 /// The evidence of how many train rows a model step reads, which a compared method's
@@ -1551,8 +1367,9 @@ fn evidence_unavailable(message: String) -> ApiError {
     }
 }
 
-/// The proposal of the rule that decides `node_id`, decided by the rule's Python `decide()`.
-/// `only` limits it to the rule that owns that decision. Every offered effect passes the compiler before it is stored.
+/// The proposal for step `node_id`: the options of the compared method that swaps it
+/// (ADR-0063 D3), for a person to compare. `only` limits it to the method that owns that
+/// decision. Every offered effect passes the compiler before it is stored.
 async fn propose(
     state: &AppState,
     raw: &str,
@@ -1586,34 +1403,15 @@ async fn propose(
             code: "node_not_found",
             message: format!("node {node_id} does not exist"),
         })?;
-    let rule = state
-        .rules
-        .rules_for_operator(node.operator.as_str())
-        .find(|rule| only.is_none_or(|only| rule.decides.as_str() == only));
-    let Some(rule) = rule else {
-        // A compared method offers a person its options as the step's proposal.
-        let method = compared_method_of(state, node)
-            .filter(|m| only.is_none_or(|only| m.decides.as_str() == only))
-            .ok_or_else(|| {
-                not_applicable(format!(
-                    "no methodology rule decides operator {}",
-                    node.operator.as_str()
-                ))
-            })?;
-        let proposal = compared_proposal(state, &pipeline, &question, method, node).await?;
-        state.store.insert_methodology_proposal(&proposal).await?;
-        return Ok((StatusCode::CREATED, Json(proposal)));
-    };
-    let proposal = decide(
-        state,
-        &pipeline,
-        &question,
-        node,
-        rule,
-        &mut Profiles::default(),
-        &mut state.rule_runner.session(),
-    )
-    .await?;
+    let method = compared_method_of(state, node)
+        .filter(|m| only.is_none_or(|only| m.decides.as_str() == only))
+        .ok_or_else(|| {
+            not_applicable(format!(
+                "no compared method decides operator {}",
+                node.operator.as_str()
+            ))
+        })?;
+    let proposal = compared_proposal(state, &pipeline, &question, method, node).await?;
     state.store.insert_methodology_proposal(&proposal).await?;
     Ok((StatusCode::CREATED, Json(proposal)))
 }
@@ -1628,15 +1426,11 @@ async fn compared_proposal(
     method: &sprisk_contracts::Method,
     node: &sprisk_contracts::Node,
 ) -> Result<DecisionProposal, ApiError> {
-    let profile =
-        train_profile_facts(state, pipeline, question, node, &mut Profiles::default()).await?;
+    let rows = train_rows(state, pipeline, node).await?;
     let mut evidence = serde_json::Map::new();
-    let mut shown = Vec::new();
-    if let Some(rows) = profile.get("rows") {
-        evidence.insert(TRAIN_ROWS.into(), json!({ "rows": rows }));
-        shown.push(json!({ "kind": "profile_fact", "label": "Train rows",
-                           "value": rows.to_string(), "origin": "measured" }));
-    }
+    evidence.insert(TRAIN_ROWS.into(), json!({ "rows": rows }));
+    let shown = vec![json!({ "kind": "profile_fact", "label": "Train rows",
+                             "value": rows.to_string(), "origin": "measured" })];
     let request =
         sprisk_methodology::deciding::person_request(&state.rules, method, question, evidence)
             .map_err(|e| not_applicable(e.to_string()))?;
@@ -1681,168 +1475,18 @@ async fn compared_proposal(
     .map_err(|e| not_applicable(e.to_string()))
 }
 
-/// The proposal `rule` makes for step `node`, decided by the rule's Python `decide()`. Every
-/// offered effect passes the compiler; nothing is stored.
-async fn decide(
+/// How many rows a split step's `train` port gives `node` in this version's latest run, as
+/// a compared method's shortlist reads them (ADR-0063 D3). Only train rows (rule 8).
+async fn train_rows(
     state: &AppState,
     pipeline: &PipelineVersion,
-    question: &QuestionVersion,
     node: &sprisk_contracts::Node,
-    rule: &MethodologyRule,
-    profiles: &mut Profiles,
-    rules: &mut RuleSession,
-) -> Result<DecisionProposal, ApiError> {
-    let node_id = node.id.as_str();
-    let rule_ref = rule.id.to_string();
-    let rule_ref = rule_ref.as_str();
-    let reads = || rule.reads.iter().map(|r| r.as_str());
-    let mut profile = if sprisk_methodology::facts::needs_train_rows(reads()) {
-        train_profile_facts(state, pipeline, question, node, profiles).await?
-    } else {
-        Default::default()
-    };
-    if sprisk_methodology::facts::needs_input_rows(reads()) {
-        profile.extend(input_profile_facts(state, pipeline, node, profiles).await?);
-    }
-    if sprisk_methodology::facts::needs_results(reads()) {
-        profile.extend(result_profile_facts(state, pipeline, node).await?);
-    }
-    if sprisk_methodology::facts::needs_join(reads()) {
-        profile.extend(join_profile_facts(state, pipeline, node).await?);
-    }
-
-    let resolve = |e: sprisk_methodology::ResolveError| not_applicable(e.to_string());
-    let mut flow = sprisk_methodology::flow_facts(
-        pipeline,
-        node_id,
-        |operator| state.registry.get(operator),
-        |n| keeps_flow_facts(&state.registry, n),
-    )
-    .map_err(resolve)?;
-    // A shortlist rule's alternatives are the registered models that fit the task (ADR-0044).
-    if rule.selection == Some(MethodologyRuleSelection::Shortlist) {
-        let task = question.task.value;
-        let candidates = sprisk_methodology::candidates(task, state.registry.operators())
-            .map_err(|e| ApiError::Internal(e.to_string()))?;
-        if candidates.is_empty() {
-            return Err(not_applicable(format!(
-                "no registered model fits a {task} question"
-            )));
-        }
-        flow.extend(sprisk_methodology::candidate_facts(&candidates));
-    }
-    let observation =
-        sprisk_methodology::observation(rule, question, flow, profile).map_err(resolve)?;
-    let decision = rules
-        .decide(state.rules.module(rule_ref)?, &observation)
-        .await
-        .map_err(ApiError::Rule)?;
-    let proposal = sprisk_methodology::proposal(
-        rule,
-        &decision,
-        question,
-        pipeline,
-        node_id,
-        &state.registry.operators().collect::<Vec<_>>(),
-        sprisk_methodology::Stamp {
-            id: &format!("mpr_{}", ulid::Ulid::new()),
-            created_at: &now(),
-        },
-    )
-    .map_err(resolve)?;
-
-    let mut proposal = proposal;
-    let mut picked: Vec<String> = proposal
-        .shortlist
-        .iter()
-        .map(|s| s.as_str().to_owned())
-        .collect();
-    picked.extend(
-        proposal
-            .recommended_alternative_id
-            .iter()
-            .map(|r| r.as_str().to_owned()),
-    );
-    for at in 0..proposal.alternatives.len() {
-        let alternative = &proposal.alternatives[at];
-        if alternative.effect.is_none() {
-            continue;
-        }
-        let value = serde_json::to_value(alternative)
-            .map_err(|error| ApiError::Internal(error.to_string()))?;
-        let preview = materialize_effect(
-            &state.registry,
-            pipeline,
-            &value,
-            "plv_01JABCDEFGHJKMNPQRSTVWXYZ9",
-            "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9",
-            &proposal.created_at.to_string(),
-        )?;
-        let Err(errors) = compile(&preview, &state.registry) else {
-            continue;
-        };
-        // An operator whose ports differ from the step's cannot take its place, such as one
-        // that reads a single table in place of train and test. Any other error fails the
-        // proposal.
-        let ports_only = errors.iter().all(|e| {
-            matches!(
-                e,
-                CompileError::NotAnInput(_)
-                    | CompileError::NotAnOutput(_)
-                    | CompileError::Unconnected(_)
-                    | CompileError::KindMismatch { .. }
-            )
-        });
-        if !ports_only {
-            return Err(ApiError::Compile(errors));
-        }
-        let why = errors
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("; ");
-        let id = alternative.id.as_str().to_owned();
-        let reason = format!("Applied to step {node_id}, the flow would not compile: {why}");
-        // A rule's own pick that cannot be applied here is no proposal at all.
-        if picked.contains(&id) {
-            return Err(not_applicable(format!("the rule picks {id}, but {reason}")));
-        }
-        let alternative = &mut proposal.alternatives[at];
-        alternative.applicability = MethodologyAlternativeApplicability::NotApplicable;
-        alternative.reason = reason
-            .parse()
-            .map_err(|error| ApiError::Internal(format!("reason of {id}: {error}")))?;
-        alternative.effect = None;
-    }
-    Ok(proposal)
-}
-
-/// Profile facts of the step's `columns` or `features`, measured on the table a split step's
-/// `train` port gives it in this version's latest run. A model that lists no features reads
-/// every column but its target (ADR-0056). Only train rows: a rule that saw held-out rows
-/// would leak them into the flow (rule 8). A version never changes, so its run matches it.
-async fn train_profile_facts(
-    state: &AppState,
-    pipeline: &PipelineVersion,
-    question: &QuestionVersion,
-    node: &sprisk_contracts::Node,
-    profiles: &mut Profiles,
-) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
+) -> Result<u64, ApiError> {
     let step = node.id.as_str();
     let is_split = |n: &sprisk_contracts::Node| is_split(&state.registry, n.operator.as_str());
     let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let source = sprisk_methodology::train_rows_source(pipeline, step, is_split, keeps)
         .map_err(|e| evidence_unavailable(e.to_string()))?;
-    let named: Option<Vec<String>> = ["columns", "features"]
-        .iter()
-        .find_map(|name| node.params.get(*name))
-        .and_then(|c| serde_json::from_value(c.clone()).ok());
-    let target = node.params.get("target").and_then(|t| t.as_str());
-    if named.is_none() && target.is_none() {
-        return Err(not_applicable(format!(
-            "step {step} names no columns, features or target"
-        )));
-    }
     let artifact = state
         .store
         .latest_outputs(std::slice::from_ref(&pipeline.id))
@@ -1852,86 +1496,17 @@ async fn train_profile_facts(
         .map(|o| o.artifact)
         .ok_or_else(|| {
             evidence_unavailable(format!(
-                "run the flow first: this rule measures the train rows {source} gives step {step}"
+                "run the flow first: the train rows {source} gives step {step} are counted"
             ))
         })?;
-    let profile = profiles
+    let profile = Profiles::default()
         .of(
             &state.profiler,
             artifact.content_hash.as_str(),
             &local_table(&artifact)?,
         )
         .await?;
-    // Unset: every column but the target and the key columns, as the model reads them.
-    let keys = sprisk_methodology::key_columns(question, pipeline);
-    let excluded: Vec<String> = match node.params.get("exclude") {
-        None => Vec::new(),
-        Some(given) => serde_json::from_value(given.clone()).map_err(|error| {
-            ApiError::Internal(format!(
-                "step {step}: exclude is not a list of names: {error}"
-            ))
-        })?,
-    };
-    let columns = named.unwrap_or_else(|| {
-        profile
-            .columns
-            .iter()
-            .map(|c| c.name.clone())
-            .filter(|name| Some(name.as_str()) != target)
-            .filter(|name| !keys.contains(name) && !excluded.contains(name))
-            .collect()
-    });
-    let mut facts = sprisk_methodology::profile_facts(&profile, &columns);
-    // The step's own target, else the question's when a person stated or confirmed it.
-    let stated = question
-        .target
-        .as_ref()
-        .filter(|t| t.origin != sprisk_contracts::Origin::Inferred);
-    let target = target.or_else(|| stated.map(|t| t.value.as_str()));
-    if let Some(target) = target {
-        facts.extend(sprisk_methodology::target_facts(&profile, target));
-    }
-    Ok(facts)
-}
-
-/// The cross-validation results of `node`'s model (ADR-0059): from this version's model
-/// selection of the step, else from the selection the step's model was chosen by when choosing
-/// it made this version, since that comparison scored exactly this flow. Train rows only, so a
-/// rule acting on them never tunes to the test rows.
-async fn result_profile_facts(
-    state: &AppState,
-    pipeline: &PipelineVersion,
-    node: &sprisk_contracts::Node,
-) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
-    let step = node.id.as_str();
-    let own = match state.store.selection_for(&pipeline.id, &node.id).await? {
-        Some((comparison, _)) => decision_of(state, &comparison).await?.map(|(d, _)| d),
-        None => None,
-    };
-    let selection = match own {
-        Some(selection) => Some(selection),
-        None => chosen_by(state, pipeline, node).await?,
-    };
-    let selection = selection.ok_or_else(|| {
-        evidence_unavailable(format!(
-            "compare the models first: this rule reads the cross-validation results of step {step}'s model selection, once it has decided"
-        ))
-    })?;
-    let looks = state.store.looks(&pipeline.id).await?;
-    sprisk_methodology::result_facts(&selection, node.operator.as_str(), looks)
-        .map_err(|e| not_applicable(e.to_string()))
-}
-
-/// The SelectionDecision `node`'s model was chosen by, when that choice made `pipeline`.
-async fn chosen_by(
-    state: &AppState,
-    pipeline: &PipelineVersion,
-    node: &sprisk_contracts::Node,
-) -> Result<Option<sprisk_contracts::SelectionDecision>, ApiError> {
-    match chosen_selection(state, pipeline, node).await? {
-        Some(artifact) => Ok(Some(read_selection(state, &artifact).await?)),
-        None => Ok(None),
-    }
+    Ok(profile.profiled_rows)
 }
 
 /// The artifact holding the SelectionDecision `node`'s model was chosen by, when that choice
@@ -1958,74 +1533,6 @@ pub(crate) async fn chosen_selection(
         return Ok(None);
     };
     Ok(Some(state.store.get_artifact(&selection).await?))
-}
-
-/// How the rows `node` reads match the one loaded table no step reads (ADR-0059), measured on
-/// all rows of both: key matching is structure, nothing fitted. With no such table, or
-/// several, only their count.
-async fn join_profile_facts(
-    state: &AppState,
-    pipeline: &PipelineVersion,
-    node: &sprisk_contracts::Node,
-) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
-    let unread = sprisk_methodology::unread_sources(pipeline, |o| state.registry.get(o))
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-    let [other] = unread.as_slice() else {
-        return Ok(sprisk_methodology::join_facts(unread.len(), None));
-    };
-    let step = node.id.as_str();
-    let edge = sprisk_methodology::one_table_into(pipeline, step).map_err(not_applicable)?;
-    let rows = latest_table(state, pipeline, edge.from.step_and_port(), step).await?;
-    let other_rows = latest_table(state, pipeline, other.step_and_port(), step).await?;
-    let matches = state
-        .key_matcher
-        .matches(&local_table(&rows)?, &local_table(&other_rows)?)
-        .await?;
-    Ok(sprisk_methodology::join_facts(1, Some(&matches)))
-}
-
-/// The table output `port` of step `source` held in this version's latest run, for a rule
-/// deciding step `step`.
-async fn latest_table(
-    state: &AppState,
-    pipeline: &PipelineVersion,
-    (source, port): (&str, &str),
-    step: &str,
-) -> Result<sprisk_contracts::Artifact, ApiError> {
-    state
-        .store
-        .latest_outputs(std::slice::from_ref(&pipeline.id))
-        .await?
-        .into_iter()
-        .find(|o| o.node_id == source && o.port == port)
-        .map(|o| o.artifact)
-        .ok_or_else(|| {
-            evidence_unavailable(format!(
-                "run the flow first: this rule measures the rows {source} gives step {step}"
-            ))
-        })
-}
-
-/// The structure of the rows `node` reads, measured on all of them (ADR-0059): types,
-/// duplicates and values that do not read as numbers, never statistics, so a step before the
-/// split can be decided without test rows shaping a fitted value.
-async fn input_profile_facts(
-    state: &AppState,
-    pipeline: &PipelineVersion,
-    node: &sprisk_contracts::Node,
-    profiles: &mut Profiles,
-) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
-    let step = node.id.as_str();
-    let edge = sprisk_methodology::one_table_into(pipeline, step).map_err(not_applicable)?;
-    let artifact = latest_table(state, pipeline, edge.from.step_and_port(), step).await?;
-    let profile = profiles
-        .of(
-            &state.profiler,
-            artifact.content_hash.as_str(),
-            &local_table(&artifact)?,
-        )
-        .await?;
-    Ok(sprisk_methodology::input_facts(&profile))
 }
 
 async fn apply_methodology(
@@ -2326,8 +1833,7 @@ async fn build_comparison(
     }
 }
 
-/// `proposal`'s comparison, built and checked but not stored: of its shortlist's models, or,
-/// for a recommend rule's proposal, of the ways of doing its preparation step (ADR-0050).
+/// `proposal`'s comparison of its shortlist's models, built and checked but not stored.
 async fn comparison_version(
     state: &AppState,
     proposal: &DecisionProposal,
@@ -2349,17 +1855,7 @@ async fn comparison_version(
         stated: question.success_bar.as_ref().map(|bar| bar.value.metric),
         look: state.store.looks(&base.id).await? + 1,
     };
-    let built = if proposal.shortlist.is_empty() {
-        let rule = state.rules.rule(proposal.rule.as_str())?;
-        sprisk_methodology::preparation_comparison(
-            &base,
-            proposal,
-            rule,
-            scoring,
-            keeps_train,
-            &state.registry,
-        )
-    } else if let Some(study) = study {
+    let built = if let Some(study) = study {
         sprisk_methodology::Candidates::of_proposal(proposal).and_then(|candidates| {
             sprisk_methodology::study_comparison(
                 &base,
@@ -2603,19 +2099,11 @@ async fn create_study(
         .nodes
         .iter()
         .find(|n| n.id == step)
-        .is_some_and(|n| {
-            state
-                .rules
-                .rules_for_operator(n.operator.as_str())
-                .any(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist))
-                || compared_method_of(&state, n).is_some()
-        });
+        .is_some_and(|n| compared_method_of(&state, n).is_some());
     if !shortlisted {
         return Err(ApiError::BadRequest {
             code: "not_studied",
-            message: format!(
-                "step {node_id} is not a model step that a shortlist rule or a compared method decides"
-            ),
+            message: format!("step {node_id} is not a model step that a compared method decides"),
         });
     }
     let question_id =

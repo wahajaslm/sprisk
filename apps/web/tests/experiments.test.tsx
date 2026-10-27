@@ -520,19 +520,6 @@ describe("model comparison", () => {
 
     const missingness = { ...shortlistRule, id: "methodology.supervised.missingness@1.1.0", selection: undefined, applies_to: ["sprisk.clean.impute"] };
 
-    it("starts the comparison itself once the flow has run", async () => {
-      const posted: string[] = [];
-      prepared();
-      server.use(
-        http.get("/api/methodology_rules", () => HttpResponse.json([missingness])),
-        http.post("/api/pipeline_versions/:id/model_selection/:node", ({ params }) => {
-          posted.push(`${String(params.id)}/${String(params.node)}`);
-          return HttpResponse.json({ proposal: prepProposal, comparison: prepComparison, run: comparisonRun }, { status: 201 });
-        }),
-      );
-      await waitFor(() => expect(posted).toEqual([`${PV}/impute`]));
-    });
-
     it("shows what each choice ran in every fold, how it differs from the flow, and each step's code", async () => {
       prepared();
       server.use(
@@ -583,27 +570,5 @@ describe("model comparison", () => {
       expect(median).toHaveTextContent("Differs from the pipeline: impute · its own code → sprisk.clean.impute@1.0.0's code");
     });
 
-    it("asks for a run before Sprisk can compare the step's choices", async () => {
-      prepared();
-      server.use(
-        http.get("/api/methodology_rules", () => HttpResponse.json([missingness])),
-        http.get("/api/runs", ({ request }) =>
-          HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [comparisonRun] : []),
-        ),
-      );
-      expect(await screen.findByText("Run the pipeline, and Sprisk will compare its choices for impute.")).toBeInTheDocument();
-    });
-
-    it("says so, without alarm, when a step has nothing to compare", async () => {
-      prepared();
-      server.use(
-        http.get("/api/methodology_rules", () => HttpResponse.json([missingness])),
-        http.post("/api/pipeline_versions/:id/model_selection/:node", () =>
-          HttpResponse.json({ errors: [{ code: "nothing_to_compare", message: "nothing to compare: only the recommendation drop_rows can be measured here" }] }, { status: 422 }),
-        ),
-      );
-      expect(await screen.findByText("impute: nothing to compare: only the recommendation drop_rows can be measured here")).toBeInTheDocument();
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    });
   });
 });
