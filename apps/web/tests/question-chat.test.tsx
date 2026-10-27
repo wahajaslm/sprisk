@@ -91,10 +91,19 @@ describe("the question conversation on the Objective page", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "Your answer" }), "which one is the label?{enter}");
 
     expect(await within(log).findByText("The code column with 27 values looks like the label.")).toBeInTheDocument();
-    expect(sent?.messages.at(-1)).toEqual({ role: "user", content: "which one is the label?" });
+    // The page's own messages, which name columns, are never sent as turns the model said.
+    expect(sent?.messages).toEqual([{ role: "user", content: "which one is the label?" }]);
     expect(sent?.context).toContain("Which column should be predicted?");
     expect(screen.getByRole("button", { name: "Predict prdtypecode" })).toBeInTheDocument();
     expect(within(ledger()).queryByText("prdtypecode")).toBeNull();
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Your answer" }), "and then?{enter}");
+    await waitFor(() => expect(sent?.messages).toHaveLength(3));
+    expect(sent?.messages).toEqual([
+      { role: "user", content: "which one is the label?" },
+      { role: "assistant", content: "The code column with 27 values looks like the label." },
+      { role: "user", content: "and then?" },
+    ]);
   });
 
   it("completes with AI off, and Start auto run saves the question the person confirmed, then starts on the source file", async () => {
@@ -141,5 +150,73 @@ describe("the question conversation on the Objective page", () => {
     });
     expect(walk).toMatchObject({ question_version_id: saved?.id, sources: ["/data/diabetes.csv"] });
     expect(await screen.findByText("Auto run in progress")).toBeInTheDocument();
+  });
+
+  async function completeByChips() {
+    await click("Predict prdtypecode");
+    await click("Classification");
+    await click("Skip");
+    await click("Weighted F1");
+    await click("0.8");
+    await click("No limit on the model");
+  }
+
+  it("shows a failed save, starts no walk, and saves again on retry", async () => {
+    const saves: Record<string, unknown>[] = [];
+    let walks = 0;
+    withSource();
+    server.use(
+      http.post("/api/question_versions", async ({ request }) => {
+        saves.push((await request.json()) as Record<string, unknown>);
+        return saves.length === 1
+          ? HttpResponse.json({ errors: [{ code: "internal", message: "disk full" }] }, { status: 500 })
+          : HttpResponse.json(saves.at(-1), { status: 201 });
+      }),
+      http.post("/api/walks", () => {
+        walks += 1;
+        return HttpResponse.json(walking, { status: 201 });
+      }),
+      http.get(`/api/walks/${walking.id}`, () => HttpResponse.json({ walk: walking, steps: [] })),
+    );
+    await openChat();
+    await completeByChips();
+
+    await click("Start auto run");
+    expect(await screen.findByText(/The question was not saved: .*disk full/)).toBeInTheDocument();
+    expect(walks).toBe(0);
+
+    await click("Start auto run");
+    await waitFor(() => expect(walks).toBe(1));
+    expect(saves).toHaveLength(2);
+  });
+
+  it("does not save the question twice when the walk fails to start and is retried", async () => {
+    let saves = 0;
+    const walks: Record<string, unknown>[] = [];
+    withSource();
+    server.use(
+      http.post("/api/question_versions", async ({ request }) => {
+        saves += 1;
+        return HttpResponse.json(await request.json(), { status: 201 });
+      }),
+      http.post("/api/walks", async ({ request }) => {
+        walks.push((await request.json()) as Record<string, unknown>);
+        return walks.length === 1
+          ? HttpResponse.json({ errors: [{ code: "invalid_walk", message: "source cannot be read" }] }, { status: 400 })
+          : HttpResponse.json(walking, { status: 201 });
+      }),
+      http.get(`/api/walks/${walking.id}`, () => HttpResponse.json({ walk: walking, steps: [] })),
+    );
+    await openChat();
+    await completeByChips();
+
+    await click("Start auto run");
+    expect(await screen.findByText(/source cannot be read/)).toBeInTheDocument();
+    await click("Start auto run");
+
+    expect(await screen.findByText("Auto run in progress")).toBeInTheDocument();
+    expect(saves).toBe(1);
+    expect(walks).toHaveLength(2);
+    expect(walks[1]?.question_version_id).toBe(walks[0]?.question_version_id);
   });
 });

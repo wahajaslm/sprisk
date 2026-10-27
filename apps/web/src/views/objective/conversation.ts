@@ -1,4 +1,4 @@
-import type { ColumnProfile, DatasetProfile, Fact, QuestionVersion, SelectionMetric } from "@sprisk/contracts";
+import type { ColumnProfile, ColumnRole, DatasetProfile, DatasetVersion, Fact, QuestionVersion, SelectionMetric } from "@sprisk/contracts";
 
 /** The question conversation (ADR-0068): one ledger slot at a time, in a fixed order, with
  * choices built from the dataset profile. Plain code reads every answer; a model never fills a
@@ -48,29 +48,17 @@ const LEVELS: { value: Interpretability; label: string }[] = [
   { value: "low", label: "No limit on the model" },
 ];
 
-// The profiler reads integer columns with more distinct values than this as measured numbers.
-const MAX_CLASSES = 30;
-
-const isNumeric = (c: ColumnProfile) => /int|float|decimal/i.test(c.data_type);
-
-/** A column's role, or a guess from its counts for a profile made before roles were kept. */
-function roleOf(c: ColumnProfile): string {
-  if (c.role) return c.role;
-  if (c.distinct <= 1) return "constant";
-  if (c.distinct <= MAX_CLASSES) return "category";
-  return isNumeric(c) ? "number" : "text";
-}
-
-/** Columns that could be the target, most likely first: categories, then measured numbers. */
+/** Columns that could be the target, most likely first: categories, then measured numbers. The
+ * profiler gives each column its role (rule 2); a column without one is never guessed at. */
 function candidates(profile: DatasetProfile): ColumnProfile[] {
-  const of = (roles: string[]) => profile.columns.filter((c) => roles.includes(roleOf(c)) && c.distinct > 1);
+  const of = (roles: ColumnRole[]) => profile.columns.filter((c) => c.role !== undefined && roles.includes(c.role) && c.distinct > 1);
   return [...of(["category", "boolean"]), ...of(["number"])].slice(0, 3);
 }
 
-const predictsNumber = (c: ColumnProfile) => roleOf(c) === "number";
+const predictsNumber = (c: ColumnProfile) => c.role === "number";
 
 function features(profile: DatasetProfile, target?: string): string {
-  const text = profile.columns.filter((c) => roleOf(c) === "text" && c.name !== target).map((c) => c.name);
+  const text = profile.columns.filter((c) => c.role === "text" && c.name !== target).map((c) => c.name);
   if (text.length === 0) return "the other columns";
   if (text.length <= 2) return text.join(" and ");
   return `${text[0]}, ${text[1]} and ${text.length - 2} more`;
@@ -92,6 +80,12 @@ export function opening(name: string, profile: DatasetProfile): string {
   return `${name} · ${size(profile)}. ${what} Predict it from ${features(profile, target.name)}?`;
 }
 
+/** The metric the score slot is for. It is always picked first: anything else is a bug. */
+function metricOf(chat: Chat): SelectionMetric {
+  if (!chat.metric) throw new Error("the score was asked before its metric was picked");
+  return chat.metric;
+}
+
 export function nextSlot(chat: Chat): Slot | undefined {
   return ORDER.find((slot) => !chat.done.includes(slot));
 }
@@ -108,7 +102,7 @@ export function prompt(chat: Chat): string {
     case "metric":
       return "How should models be compared?";
     case "score":
-      return `What ${METRIC_NAME[chat.metric ?? "weighted_f1"]} counts as good enough?`;
+      return `What ${METRIC_NAME[metricOf(chat)]} counts as good enough?`;
     case "interpretability":
       return "Must a person be able to follow each prediction?";
     case undefined:
@@ -218,7 +212,7 @@ export function answer(chat: Chat, profile: DatasetProfile, text: string, said: 
       return metric && next({ metric });
     }
     case "score": {
-      const metric = chat.metric!;
+      const metric = metricOf(chat);
       const score = readScore(metric, text);
       // A success bar is only ever stated by a person: its origin is explicit.
       return score === undefined
@@ -248,4 +242,18 @@ export function toQuestion(chat: Chat, id: string, investigationId: string, crea
     acceptance_criteria: [],
     created_at: createdAt,
   };
+}
+
+/** The walk reads file paths: a single local CSV or Parquet file on this machine can be filled
+ * in for the person. Anything else, including a location that cannot be read as a path, is not. */
+export function localFile(source: Pick<DatasetVersion, "location" | "file_count">): string[] {
+  if (source.file_count !== 1 || !/\.(csv|parquet)$/i.test(source.location)) return [];
+  const url = new URL(source.location);
+  if (url.protocol !== "file:" || url.host !== "") return [];
+  try {
+    return [decodeURIComponent(url.pathname)];
+  } catch (error) {
+    if (error instanceof URIError) return [];
+    throw error;
+  }
 }

@@ -68,3 +68,19 @@ describe("Linking a question to the open flow", () => {
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(sent?.id));
   });
 });
+
+describe("starting a new question", () => {
+  beforeEach(() => useSelection.setState({ nav: "Objective", pipelineVersionId: undefined }));
+
+  it("opens the data source picker, and goes back to the ledger unchanged", async () => {
+    server.use(http.get("/api/question_versions", () => HttpResponse.json([question])));
+    renderWithApi(<ObjectivePage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "New question" }));
+    expect(await screen.findByRole("heading", { name: "Which data is the question about?" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Back to ledger" }));
+    expect(await screen.findByRole("heading", { name: question.objective.value })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Which data is the question about?" })).toBeNull();
+  });
+});
