@@ -1,0 +1,28 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.featurize_audio@1.0.0
+title: Librosa audio features
+capability_class: transform
+description: "Uses librosa to append MFCC, chroma, spectral, energy, zero-crossing and tempo features to optional text features. Missing or unreadable assets become zero rows and are reported."
+entrypoint: sprisk_clean.audio_assets:featurize_audio
+fits_on_train: true
+inputs:
+  - { name: train, kind: table }
+  - { name: test, kind: table }
+  - { name: train_words, kind: matrix, optional: true }
+  - { name: test_words, kind: matrix, optional: true }
+outputs:
+  - { name: train, kind: table }
+  - { name: test, kind: table }
+  - { name: train_words, kind: matrix, description: "Text and deterministic audio features for training rows." }
+  - { name: test_words, kind: matrix, description: "Text and deterministic audio features for test rows." }
+  - { name: evidence, kind: report }
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [audio_dir, audio_path_column]
+  properties:
+    audio_dir: { type: string, minLength: 1, description: "Root directory of audio files." }
+    audio_path_column: { type: string, minLength: 1, x-sprisk-column: true, description: "Relative audio-file path for each row." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 7200 }

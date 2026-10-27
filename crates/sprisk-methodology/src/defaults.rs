@@ -9,6 +9,8 @@ use sprisk_registry::{Registry, RegistryError};
 pub struct Defaults {
     pub source: String,
     pub split: String,
+    /// Split whose folds keep each entity wholly in one partition.
+    pub group_split: String,
     pub model: String,
     pub score: String,
     pub score_shares: String,
@@ -19,9 +21,19 @@ pub struct Defaults {
 impl Defaults {
     pub fn of(registry: &Registry) -> Result<Self, RegistryError> {
         let of = |role| registry.default_for(role).map(|o| o.id.to_string());
+        let group_split = registry
+            .operators()
+            .find(|o| {
+                o.role == Some(OperatorRole::Split)
+                    && serde_json::to_value(o.folds).ok() == Some(serde_json::json!("group"))
+            })
+            .ok_or(RegistryError::NoDefault(OperatorRole::Split))?
+            .id
+            .to_string();
         Ok(Self {
             source: of(OperatorRole::Source)?,
             split: of(OperatorRole::Split)?,
+            group_split,
             model: of(OperatorRole::Model)?,
             score: of(OperatorRole::Score)?,
             score_shares: of(OperatorRole::ScoreShares)?,

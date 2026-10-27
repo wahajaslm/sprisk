@@ -150,10 +150,6 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
     }
     if (rarest := _rarest_share(s)) is not None:
         column["rarest_share"] = rarest
-    if numeric:
-        column.update(shape(s))
-        if (quartiles := _quartiles(s)) is not None:
-            column["quartiles"] = quartiles
     if s.dtype == pl.String:
         column.update(conversion(s))
         column.update(spelling(s))
@@ -161,9 +157,22 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
         column.update(html(s))
         column["blank"] = int((s.drop_nulls().str.strip_chars() == "").sum())
     column["role"] = role(s, column.get("word_share"))
+    # Storage type is not analytical meaning: integer identifiers and integer class codes must
+    # not acquire a mean, quartiles, or range bins merely because they are physically numeric.
+    # Infer the observed role first, then compute numeric statistics only for measured numbers.
+    if column["role"] == "number":
+        column.update(shape(s))
+        if (quartiles := _quartiles(s)) is not None:
+            column["quartiles"] = quartiles
     if column["role"] == "text" and (counted := _word_counts(s)) is not None:
         column["word_counts"] = counted
-    histogram = _bins(bins, s.name) if numeric else _top_values(s)
+    histogram = (
+        _bins(bins, s.name)
+        if column["role"] == "number"
+        else _top_values(s)
+        if column["role"] in ("category", "boolean", "text")
+        else None
+    )
     if histogram is not None:
         column["histogram"] = histogram
     return column

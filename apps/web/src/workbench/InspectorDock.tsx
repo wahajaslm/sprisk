@@ -23,15 +23,17 @@ function TabPanel({ params }: IDockviewPanelProps) {
   const tab = readTab(params) ?? "checks";
   const step = useStep();
   return (
-    <ViewInstance pin={undefined} setPin={undefined} tab={tab}>
-      {step.nodeId ? (
-        <TabBody tab={tab} step={step} />
-      ) : (
-        <div className="flow-inspector-empty">
-          <p className="muted">Select a step in the pipeline to inspect its {TAB_LABEL[tab].toLowerCase()}.</p>
-        </div>
-      )}
-    </ViewInstance>
+    <div className={`inspector-tab-shell tab-${tab}`}>
+      <ViewInstance pin={undefined} setPin={undefined} tab={tab}>
+        {step.nodeId ? (
+          <TabBody tab={tab} step={step} />
+        ) : (
+          <div className="flow-inspector-empty">
+            <p className="muted">Select a step in the pipeline to inspect its {TAB_LABEL[tab].toLowerCase()}.</p>
+          </div>
+        )}
+      </ViewInstance>
+    </div>
   );
 }
 

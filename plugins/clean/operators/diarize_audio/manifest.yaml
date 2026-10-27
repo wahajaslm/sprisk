@@ -1,0 +1,21 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.diarize_audio@1.0.0
+title: Local speaker diarization
+capability_class: transform
+description: "Measures non-identifying speaker and turn counts with an explicitly supplied local pyannote model. It never downloads a model or sends audio."
+entrypoint: sprisk_clean.audio_models:diarize_audio
+inputs: [{ name: data, kind: table }]
+outputs:
+  - { name: data, kind: table }
+  - { name: evidence, kind: report }
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [audio_dir, audio_path_column, model_dir]
+  properties:
+    audio_dir: { type: string, minLength: 1 }
+    audio_path_column: { type: string, minLength: 1, x-sprisk-column: true }
+    model_dir: { type: string, minLength: 1, description: "Local pyannote pipeline directory; no token or remote model is accepted." }
+effects: pure
+network: none
+resources: { cpu_cores: 2, memory_mb: 8192, gpu: none, timeout_seconds: 7200 }

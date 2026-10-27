@@ -73,10 +73,26 @@ pub fn start(
             "State or confirm the target column: the engine never guesses or measures one.",
         ));
     };
-    nodes.push(json!({
-        "id": "split", "operator": defaults.split,
-        "params": { "test_fraction": TEST_FRACTION, "seed": SEED },
-    }));
+    // The first flow must already respect a person-stated entity boundary: the plan gate runs
+    // before profiling operators, so starting with a random split would correctly be rejected
+    // before the walk could measure anything. A unique entity column is harmless here—group
+    // splitting it is equivalent to splitting rows while preserving the declared contract.
+    let split = if let Some(entity) = &question.entity_column {
+        json!({
+            "id": "split", "operator": defaults.group_split,
+            "params": {
+                "group_column": entity.value.as_str(),
+                "test_fraction": TEST_FRACTION,
+                "seed": SEED,
+            },
+        })
+    } else {
+        json!({
+            "id": "split", "operator": defaults.split,
+            "params": { "test_fraction": TEST_FRACTION, "seed": SEED },
+        })
+    };
+    nodes.push(split);
     nodes.push(json!({
         "id": MODEL_NODE, "operator": defaults.model,
         "params": { "target": target.value.as_str(), "task": task },

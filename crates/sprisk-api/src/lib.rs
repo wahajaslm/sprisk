@@ -40,7 +40,8 @@ use sprisk_contracts::{
     DecisionProposal, FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse,
     MethodFiles, MethodologyAlternativeApplicability, MethodologyDecision,
     MethodologyDecisionByRule, MethodologyDecisionId, MethodologyProposalId, MethodologyReview,
-    MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource, ModelSelection, NotebookCode,
+    MethodologyReviewItem, MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource,
+    ModelSelection, NotebookCode,
     NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
     NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion,
     NotebookVersionId, Operator, OperatorRole, OperatorSource, PipelineVersion, PipelineVersionId,
@@ -565,7 +566,7 @@ async fn list_concepts(State(state): State<AppState>) -> Result<Json<ConceptSet>
 }
 
 async fn list_methodology_rules(State(state): State<AppState>) -> Json<Vec<MethodologyRule>> {
-    Json(state.rules.rules().cloned().collect())
+    Json(state.rules.all_rules())
 }
 
 async fn get_methodology_rule_source(
@@ -1308,6 +1309,61 @@ async fn review_methodology(
             review::item(planned_rule, outcome).map_err(|e| ApiError::Internal(e.to_string()))?;
         open.push(review::is_open(&item));
         items.push(item);
+    }
+    for node in &pipeline.nodes {
+        if let Some(dec_id) = &node.methodology_decision_id
+            && let Some(MethodologyDecision::Method(m)) = applied.iter().find(|d| d.id() == dec_id)
+        {
+            let stage = match m.decides.split('.').next() {
+                Some("question") => "question",
+                Some("data") => "data",
+                Some("split") => "split",
+                Some("cleaning") => "cleaning",
+                Some("features") => "features",
+                Some("models") | Some("modeling") => "models",
+                Some("evaluation") => "evaluation",
+                _ => "reporting",
+            };
+            let item_json = json!({
+                "rule": m.method,
+                "decides": m.decides,
+                "stage": stage,
+                "status": "settled",
+                "reason": m.reason,
+                "subject_node_id": node.id,
+                "recommended_alternative_id": m.option,
+            });
+            if let Ok(item) = parse::<MethodologyReviewItem>(&item_json.to_string()) {
+                items.push(item);
+            }
+        }
+    }
+    for d in &applied {
+        if let MethodologyDecision::Method(m) = d
+            && !items.iter().any(|i| i.rule.as_str() == m.method.as_str())
+        {
+            let stage = match m.decides.split('.').next() {
+                Some("question") => "question",
+                Some("data") => "data",
+                Some("split") => "split",
+                Some("cleaning") => "cleaning",
+                Some("features") => "features",
+                Some("models") | Some("modeling") => "models",
+                Some("evaluation") => "evaluation",
+                _ => "reporting",
+            };
+            let item_json = json!({
+                "rule": m.method,
+                "decides": m.decides,
+                "stage": stage,
+                "status": "settled",
+                "reason": m.reason,
+                "recommended_alternative_id": m.option,
+            });
+            if let Ok(item) = parse::<MethodologyReviewItem>(&item_json.to_string()) {
+                items.push(item);
+            }
+        }
     }
     let next = review::next(&items);
     let review = json!({
@@ -3076,7 +3132,18 @@ async fn get_artifact_profile(
 ) -> Result<Json<DatasetProfile>, ApiError> {
     let artifact_id: ArtifactId = id(&raw)?;
     let artifact = state.store.get_artifact(&artifact_id).await?;
-    let target = query.get("target").map(String::as_str);
+    // The formal question owns the target binding. `target` remains a backwards-compatible
+    // exploratory override only when no question revision was supplied.
+    let question_id: Option<QuestionVersionId> = optional_id(&query, "question_version_id")?;
+    let question = match question_id {
+        Some(id) => Some(state.store.get_question_version(&id).await?),
+        None => None,
+    };
+    let target = question
+        .as_ref()
+        .and_then(|item| item.target.as_ref())
+        .map(|target| target.value.as_str())
+        .or_else(|| query.get("target").map(String::as_str));
     Ok(Json(profile_for(&state, &raw, &artifact, target).await?))
 }
 
@@ -3128,7 +3195,7 @@ async fn profile_for(
     }
     let made = state
         .profiler
-        .profile(&local_table(&artifact)?, target)
+        .profile(&local_table(artifact)?, target)
         .await?;
     state
         .store

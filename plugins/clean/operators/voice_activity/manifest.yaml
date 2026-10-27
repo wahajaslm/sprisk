@@ -1,0 +1,23 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.voice_activity@1.0.0
+title: WebRTC voice activity
+capability_class: analyzer
+description: "Measures speech activity, speech segments and speech coverage locally. It does not identify speakers or transcribe audio."
+entrypoint: sprisk_clean.audio_speech:voice_activity
+scope: all
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: evidence, kind: report }]
+produces:
+  audio.speech_activity:
+    fields: { rows: integer, found: integer, missing: integer, unreadable: integer, speech_share: number, segments: integer }
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [audio_dir, audio_path_column]
+  properties:
+    audio_dir: { type: string, minLength: 1 }
+    audio_path_column: { type: string, minLength: 1, x-sprisk-column: true }
+    aggressiveness: { type: integer, minimum: 0, maximum: 3, default: 2 }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 7200 }

@@ -440,6 +440,29 @@ fn the_first_flow_is_a_load_per_source_a_split_and_a_baseline_on_the_target() {
 }
 
 #[test]
+fn the_first_flow_respects_a_declared_entity_boundary() {
+    let Start::Flow { nodes, .. } = start(
+        &question(json!({
+            "entity_column": { "value": "productid", "origin": "explicit" }
+        })),
+        &["/data/products.csv".to_owned()],
+        &defaults(),
+    )
+    .unwrap()
+    else {
+        panic!("expected a flow");
+    };
+    assert_eq!(
+        nodes[1],
+        json!({
+            "id": "split",
+            "operator": "sprisk.validation.group_split@1.0.0",
+            "params": { "group_column": "productid", "test_fraction": 0.2, "seed": 0 }
+        })
+    );
+}
+
+#[test]
 fn no_stated_target_stops_before_anything_is_built() {
     for target in [
         Value::Null,

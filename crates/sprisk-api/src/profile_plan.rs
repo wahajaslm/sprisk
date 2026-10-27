@@ -99,6 +99,34 @@ pub fn input_plan(
                 "The question ledger declares a time column, so temporal evidence is required before splitting.",
             ));
         }
+        // Asset roots are human-declared ledger facts. A matching table column alone is not
+        // enough to imply that files exist or have been inspected.
+        if let Some(assets) = serde_json::to_value(question)
+            .ok()
+            .and_then(|value| value.get("asset_bindings").cloned())
+            .and_then(|value| value.as_array().cloned())
+        {
+            for asset in assets {
+                let Some(modality) = asset.get("modality").and_then(|value| value.as_str()) else {
+                    continue;
+                };
+                let Some(column) = asset.get("link_column").and_then(|value| value.as_str()) else {
+                    continue;
+                };
+                let (id, title, purpose) = match modality {
+                    "image" => ("images", "Image exploration", "Inspect the explicitly bound image assets and their coverage."),
+                    "audio" => ("audio", "Audio exploration", "Inspect the explicitly bound audio assets and their coverage."),
+                    "video" => ("video", "Video exploration", "Inspect the explicitly bound video assets and their coverage."),
+                    _ => continue,
+                };
+                sections.push(section(
+                    id,
+                    title,
+                    purpose,
+                    &format!("The question ledger explicitly binds {modality} assets to '{column}'."),
+                ));
+            }
+        }
     }
 
     if profile

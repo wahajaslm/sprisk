@@ -2501,7 +2501,17 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 40);
+    assert_eq!(rules.len(), 61);
+
+    // Methods are bridged into rules with their options as alternatives.
+    let split = rules
+        .iter()
+        .find(|r| r["id"] == "methodology.supervised.split_method@1.0.0")
+        .unwrap();
+    assert_eq!(split["stage"], "split");
+    assert_eq!(split["decides"], "split.method");
+    assert_eq!(split["status"], "active");
+    assert!(split["alternatives"].as_array().unwrap().len() >= 2);
     // The words people read go with each rule (ADR-0045 amendment).
     let clustering = rules
         .iter()
@@ -2530,6 +2540,18 @@ async fn a_methodology_rule_source_is_its_files() {
     .await;
     assert_eq!(status, StatusCode::OK, "{source}");
     assert_eq!(source["files"][0]["path"], "rule.yaml");
+    assert_eq!(source["files"][0]["language"], "yaml");
+
+    // Bridged method files are served through the same source endpoint.
+    let (status, source) = call(
+        &api.app,
+        "GET",
+        "/methodology_rules/methodology.supervised.split_method@1.0.0/source",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{source}");
+    assert_eq!(source["files"][0]["path"], "method.yaml");
     assert_eq!(source["files"][0]["language"], "yaml");
 
     let (status, _) = call(

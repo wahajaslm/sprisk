@@ -1,0 +1,23 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.transcribe_audio@1.0.0
+title: Local Whisper transcription
+capability_class: transform
+description: "Transcribes audio with an explicitly supplied local faster-whisper model. It never downloads a model or transmits audio."
+entrypoint: sprisk_clean.audio_models:transcribe_audio
+inputs: [{ name: data, kind: table }]
+outputs:
+  - { name: data, kind: table }
+  - { name: evidence, kind: report }
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [audio_dir, audio_path_column, model_dir]
+  properties:
+    audio_dir: { type: string, minLength: 1 }
+    audio_path_column: { type: string, minLength: 1, x-sprisk-column: true }
+    model_dir: { type: string, minLength: 1, description: "Local CTranslate2 faster-whisper model directory; no model name or remote URL is accepted." }
+    transcript_column: { type: string, minLength: 1, default: transcript }
+    language: { type: string, minLength: 1, description: "Optional BCP-47/ISO language hint. Omit to let the local model detect language." }
+effects: pure
+network: none
+resources: { cpu_cores: 2, memory_mb: 8192, gpu: none, timeout_seconds: 7200 }

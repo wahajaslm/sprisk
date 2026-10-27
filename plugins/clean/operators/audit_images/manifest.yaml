@@ -1,0 +1,26 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.audit_images@1.0.0
+title: Image asset audit
+capability_class: analyzer
+description: "Audits actual row-linked image assets before modelling: file coverage, decode failures, dimensions, aspect ratio, brightness and perceptual duplicate candidates."
+entrypoint: sprisk_clean.audit_images:audit_images
+scope: all
+attach: { role: split, side: input }
+inputs:
+  - { name: data, kind: table }
+outputs:
+  - { name: evidence, kind: report }
+produces:
+  images.asset_quality:
+    fields: { rows: integer, found: integer, missing: integer, unreadable: integer, coverage: number }
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [image_dir, image_id_column, product_id_column]
+  properties:
+    image_dir: { type: string, minLength: 1, description: "Directory containing image_{imageid}_product_{productid}.jpg files." }
+    image_id_column: { type: string, minLength: 1, x-sprisk-column: true }
+    product_id_column: { type: string, minLength: 1, x-sprisk-column: true }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 7200 }

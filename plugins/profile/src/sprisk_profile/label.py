@@ -12,7 +12,9 @@ import polars as pl
 from sklearn.feature_selection import f_classif
 
 # More labels than this and the label is not a class: no relation is drawn.
-MAX_CLASSES = 20
+# A product taxonomy such as Rakuten's 27 classes remains readable as a labelled ranked list.
+# Above this bound a class chart ceases to be useful, so the remaining rows stay explicit.
+MAX_CLASSES = 30
 # Classes whose histograms are split apart; more would be unreadable.
 SPLIT_CLASSES = 6
 # Values a category may have to show the label's share in each, and categories shown.

@@ -1,0 +1,22 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.synthesize_speech@1.0.0
+title: Explicit local speech synthesis
+capability_class: transform
+description: "Generates explicitly labelled synthetic speech with macOS say. It writes only to the declared output directory and is never selected by profiling or exploration."
+entrypoint: sprisk_clean.synthesize_speech:synthesize_speech
+inputs: [{ name: data, kind: table }]
+outputs:
+  - { name: data, kind: table }
+  - { name: evidence, kind: report }
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [text_column, output_dir]
+  properties:
+    text_column: { type: string, minLength: 1, x-sprisk-column: true }
+    output_dir: { type: string, minLength: 1, description: "Dedicated generated-asset directory." }
+    output_path_column: { type: string, minLength: 1, default: synthetic_audio_path }
+    voice: { type: string, minLength: 1, description: "Optional installed macOS voice." }
+effects: side_effecting
+network: none
+resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 7200 }

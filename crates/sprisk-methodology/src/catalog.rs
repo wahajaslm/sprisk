@@ -84,6 +84,7 @@ pub struct RuleCatalog {
     rules: BTreeMap<String, Entry>,
     /// In decision order: a method comes after the methods whose decisions it reads.
     methods: Vec<MethodEntry>,
+    method_rules: BTreeMap<String, Entry>,
     concepts: BTreeMap<String, ConceptEntry>,
 }
 
@@ -153,6 +154,26 @@ impl RuleCatalog {
                 .collect(),
         };
         catalog.methods = methods::check(methods, &provided)?;
+        for entry in &catalog.methods {
+            if let Ok(rule) = method_as_rule(&entry.method) {
+                let files_val = serde_json::to_value(&entry.files.files).unwrap_or_default();
+                let source_json = serde_json::json!({
+                    "rule": entry.method.id.to_string(),
+                    "files": files_val,
+                });
+                if let Ok(source) = sprisk_contracts::parse(&source_json.to_string()) {
+                    catalog.method_rules.insert(
+                        entry.method.id.to_string(),
+                        Entry {
+                            rule,
+                            path: entry.path.clone(),
+                            source,
+                            module: None,
+                        },
+                    );
+                }
+            }
+        }
         Ok(catalog)
     }
 
@@ -210,6 +231,7 @@ impl RuleCatalog {
     fn entry(&self, rule_ref: &str) -> Result<&Entry, CatalogError> {
         self.rules
             .get(rule_ref)
+            .or_else(|| self.method_rules.get(rule_ref))
             .ok_or_else(|| CatalogError::UnknownRule(rule_ref.to_owned()))
     }
 
@@ -258,6 +280,14 @@ impl RuleCatalog {
             }
         }
         Ok(())
+    }
+
+    /// Every rule plus projected active methods, ordered for presentation.
+    pub fn all_rules(&self) -> Vec<MethodologyRule> {
+        let mut rules: Vec<MethodologyRule> = self.rules().cloned().collect();
+        rules.extend(self.method_rules.values().map(|e| e.rule.clone()));
+        rules.sort_by_key(|r| (r.stage, r.id.to_string()));
+        rules
     }
 }
 
@@ -439,4 +469,69 @@ pub fn reopened_stage(
     params: &serde_json::Map<String, serde_json::Value>,
 ) -> Option<MethodologyStage> {
     sprisk_contracts::parse(&params.get("stage")?.to_string()).ok()
+}
+
+/// Projects a Method (sprisk.method/v2) into a MethodologyRule (sprisk.methodology_rule/v1)
+/// so that rule-based tree maps and catalog endpoints can present methods seamlessly.
+pub fn method_as_rule(m: &Method) -> Result<MethodologyRule, CatalogError> {
+    let stage = match m.decides.split('.').next() {
+        Some("question") => "question",
+        Some("data") => "data",
+        Some("split") => "split",
+        Some("cleaning") => "cleaning",
+        Some("features") => "features",
+        Some("models") | Some("modeling") => "models",
+        Some("evaluation") => "evaluation",
+        _ => "reporting",
+    };
+    let alternatives: Vec<serde_json::Value> = m
+        .options
+        .iter()
+        .map(|opt| {
+            serde_json::json!({
+                "id": opt.id,
+                "label": opt.label,
+                "description": opt.label,
+                "rationale": opt.label,
+                "when": opt.label,
+                "action": {
+                    "type": "replace_node"
+                }
+            })
+        })
+        .collect();
+
+    let mut reads: Vec<String> = Vec::new();
+    reads.extend(m.needs.evidence.iter().map(|e| e.to_string()));
+    reads.extend(m.needs.concepts.iter().map(|c| c.to_string()));
+    reads.extend(m.needs.decisions.iter().map(|d| d.to_string()));
+
+    let rule_json = serde_json::json!({
+        "schema_version": "sprisk.methodology_rule/v1",
+        "id": m.id.to_string(),
+        "name": m.name,
+        "stage": stage,
+        "decides": m.decides.to_string(),
+        "status": "active",
+        "question": m.question,
+        "provenance": {
+            "standard": m.activity,
+            "citation": m.source,
+            "pitfall": m.question,
+            "corner_cases": []
+        },
+        "policy_thresholds": {},
+        "alternatives": alternatives,
+        "verification": {
+            "check_id": m.name,
+            "invariant": "Promises hold"
+        },
+        "applies_to": [],
+        "reads": reads
+    });
+
+    sprisk_contracts::parse(&rule_json.to_string()).map_err(|source| CatalogError::Invalid {
+        path: PathBuf::from(m.id.as_str()),
+        source,
+    })
 }

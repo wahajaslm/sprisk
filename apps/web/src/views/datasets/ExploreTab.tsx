@@ -2,6 +2,7 @@ import type { ColumnProfile, DatasetProfile, LabelProfile, LoadedTable, ProfileF
 import { type CSSProperties, useState } from "react";
 
 import { useDatasetProfile, useProfilePlan, useTableShift } from "../../api/datasets.ts";
+import { useQuestionVersions } from "../../api/questions.ts";
 import { useOutputs, usePipelineVersions, useRunAttempts, useTablePage } from "../../api/hooks.ts";
 import { latestByNode } from "../../flow/latest.ts";
 import { Button } from "../../components/ui/Button.tsx";
@@ -53,6 +54,7 @@ export type DatasetExploreView = "Overview" | "Quality" | "Relationships" | "Mod
 export function ExploreTab({ dataset, target, questionVersionId, view }: { dataset: LoadedTable; target?: string | undefined; questionVersionId?: string | undefined; view: DatasetExploreView }) {
   const profile = useDatasetProfile(dataset.artifact.id, target);
   const plan = useProfilePlan(dataset.artifact.id, questionVersionId);
+  const questions = useQuestionVersions();
   const [picked, setPicked] = useState<number>();
   if (profile.isError) return <p role="alert" className="error">{profile.error.message}</p>;
   if (profile.isPending) return <Loading text="Profiling the table…" />;
@@ -90,11 +92,27 @@ export function ExploreTab({ dataset, target, questionVersionId, view }: { datas
       {view === "Relationships" && applies("target") && p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
 
       {view === "Modalities" && <ModalitySummary profile={p} plan={plan.data} />}
+      {view === "Modalities" && questionVersionId && <AssetBindings questionId={questionVersionId} questions={questions.data} />}
       {view === "Modalities" && applies("text") && <TextQuality profile={p} />}
       {view === "Modalities" && applies("categories") && <ValuesPerColumn profile={p} roles={["category", "boolean"]} title="Category distributions" />}
       {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
       <p className="ds-note">Includes every row, including held-out test rows. Use it to understand the data, not to choose features, transforms or models.</p>
     </div>
+  );
+}
+
+function AssetBindings({ questionId, questions }: { questionId: string; questions: import("@sprisk/contracts").QuestionVersion[] | undefined }) {
+  const question = questions?.find((item) => item.id === questionId);
+  const assets = question?.asset_bindings ?? [];
+  if (assets.length === 0) return null;
+  return (
+    <BodySection title="Bound assets" note="Declared in the Question Ledger. Asset files are audited only when the matching operator runs.">
+      <ul className="ex-stats" aria-label="Bound assets">
+        {assets.map((asset) => <li key={`${asset.modality}:${asset.link_column}`}>
+          <span>{asset.modality}</span><span>{asset.link_column} · declared root</span>
+        </li>)}
+      </ul>
+    </BodySection>
   );
 }
 
