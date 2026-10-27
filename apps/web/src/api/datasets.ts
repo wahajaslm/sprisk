@@ -1,4 +1,4 @@
-import type { DatasetVersion } from "@sprisk/contracts";
+import type { CreateDatasetVersion, DatasetVersion } from "@sprisk/contracts";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getList, getOne, postOne } from "./client.ts";
@@ -43,7 +43,7 @@ export const useDatasetVersions = () =>
 export function useAddDataSource() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (location: string) => postOne("DatasetVersion", "/dataset_versions", { location }),
+    mutationFn: (location: string) => postOne("DatasetVersion", "/dataset_versions", { location } satisfies CreateDatasetVersion),
     onSuccess: (added: DatasetVersion) => {
       client.setQueryData<DatasetVersion[]>(["dataset_versions"], (all) => [added, ...(all ?? []).filter((v) => v.id !== added.id)]);
       void client.invalidateQueries({ queryKey: ["dataset_versions"] });
