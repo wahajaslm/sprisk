@@ -113,9 +113,16 @@ export function StepErrors({ step }: { step: Step }) {
   );
 }
 
-/** What one tab shows for the step; the same body in the Inspector and in its own panel. */
+/** What one tab shows for the step; the same body in the Inspector and in its own panel. The
+ * design pads the body 18px by 24px; the code editor fills it edge to edge. */
 export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): ReactNode {
-  const { pipeline, node, nodeId, operator, done, isCode, display, found } = step;
+  if (!step.nodeId) return null;
+  return <div style={{ padding: tab === "code" ? "0" : "18px 24px", minHeight: "100%", boxSizing: "border-box" }}>{tabContent(tab, step)}</div>;
+}
+
+function tabContent(tab: InspectorTab, step: Step): ReactNode {
+  const { pipeline, node, operator, done, isCode, display, found } = step;
+  const nodeId = step.nodeId;
   if (!nodeId) return null;
   switch (tab) {
     case "data":
@@ -170,7 +177,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       return pipeline && <FilesTab pipeline={pipeline} nodeId={nodeId} />;
     case "performance":
       return (
-        <p className="muted">
+        <p style={{ margin: "0", fontSize: "12.5px", lineHeight: "1.5", color: "var(--t-faint,#8c8c8c)" }}>
           Duration, peak memory and CPU time per run come next: the worker will measure them. Until then, History shows when each run
           started.
         </p>

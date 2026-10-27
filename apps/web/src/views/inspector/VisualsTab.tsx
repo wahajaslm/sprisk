@@ -4,9 +4,10 @@ import { useState } from "react";
 import type { Read } from "../../api/code.ts";
 import { type ResultLayout, useResultLayout } from "../../workbench/detail.ts";
 import { useEscape } from "../../hooks/useEscape.ts";
+import { ink, P } from "../../styles/palette.ts";
+import { ChartCard } from "../PlotTile.tsx";
 import { RowsTable } from "../RowsTable.tsx";
-import { FigureView } from "./FiguresTab.tsx";
-import { Loading } from "../../components/ui/Loading.tsx";
+import { BAR, FigureView, figuresLayout, QUIET, TAB } from "./FiguresTab.tsx";
 
 /** A code step's figures, in the order its code drew them (Node Framework §7). Only code
  * decides what is shown here (ADR-0032); tables it showed are in Data. Inline or as a grid;
@@ -17,26 +18,25 @@ export function VisualsTab({ display, source }: { display: Read<CodeDisplay>; so
   const items = display.status === "ready" ? display.value.items.filter((i) => i.kind !== "text" && i.kind !== "table") : [];
   let figure = 0;
   return (
-    <>
-      <div className="result-bar">
-        <span className="spacer" />
+    <div style={TAB}>
+      <div style={BAR}>
+        <span style={{ flex: "1" }} />
         <LayoutSwitch layout={layout} setLayout={setLayout} />
       </div>
-      {display.status === "none" && <p className="muted">{display.reason}</p>}
-      {display.status === "loading" && <p className="muted">Loading…</p>}
+      {display.status === "none" && <p style={QUIET}>{display.reason}</p>}
+      {display.status === "loading" && <p style={QUIET}>Loading…</p>}
       {display.status === "error" && <p role="alert" className="error">{display.message}</p>}
       {display.status === "ready" && items.length === 0 && (
-        <p className="muted">No figures. Draw a plot in the code to see it here; tables it shows are in Data.</p>
+        <p style={QUIET}>No figures. Draw a plot in the code to see it here; tables it shows are in Data.</p>
       )}
-      <section className={`code-output ${layout}`} aria-label="Visualizations">
+      <section className={`code-output ${layout}`} aria-label="Visualizations" style={figuresLayout(layout)}>
         {items.map((item, i) => {
           if (item.kind === "figure" && item.figure) {
             figure += 1;
             return (
-              <figure key={i} className="result-tile plot">
+              <ChartCard key={i} title={item.figure.title ?? `Figure ${figure}`} note={plotCaption(figure, item.line, source)}>
                 <FigureView figure={item.figure} index={figure - 1} />
-                <figcaption className="figure-caption">{plotCaption(figure, item.line, source)}</figcaption>
-              </figure>
+              </ChartCard>
             );
           }
           if (item.kind === "image" && item.png_base64) {
@@ -44,20 +44,24 @@ export function VisualsTab({ display, source }: { display: Read<CodeDisplay>; so
             const label = `Figure ${figure}`;
             const src = `data:image/png;base64,${item.png_base64}`;
             return (
-              <button key={i} type="button" className="figure-button result-tile" aria-label={`Enlarge ${label}`} onClick={() => setEnlarged({ label, src })}>
-                <img className="figure" alt={label} src={src} />
-              </button>
+              <ChartCard key={i} title={label} note={plotCaption(figure, item.line, source)}>
+                <button type="button" className="dx-btn" aria-label={`Enlarge ${label}`} onClick={() => setEnlarged({ label, src })} style={{ display: "block", width: "100%", cursor: "zoom-in", overflow: "hidden" }}>
+                  <img className="figure" alt={label} src={src} style={{ display: "block", width: "100%" }} />
+                </button>
+              </ChartCard>
             );
           }
           return <p key={i} role="alert" className="error">Output item {i + 1} ({item.kind}) has no content.</p>;
         })}
       </section>
       {enlarged && <Enlarged {...enlarged} onClose={() => setEnlarged(undefined)} />}
-    </>
+    </div>
   );
 }
 
 const MAX_CAPTION_CODE = 60;
+/** The design's outlined button (MethodologyTab's BUTTON). */
+const BUTTON = { height: "28px", padding: "0 10px", borderRadius: "var(--r-sm,6px)", border: "1px solid rgba(var(--ink-rgb,255,255,255),0.14)", display: "flex", alignItems: "center", fontSize: "12.5px", fontWeight: "500", color: "var(--t-secondary,#d4d4d4)", cursor: "pointer" } as const;
 
 /** Which line of the step's code showed a plot, e.g. "Plot 2 · line 5 · plt.show()". */
 export function plotCaption(n: number, line: number | undefined, source: string | undefined): string {
@@ -88,12 +92,15 @@ export function ShownTable({ item, index }: { item: DisplayItem; index: number }
 
 export function LayoutSwitch({ layout, setLayout }: { layout: ResultLayout; setLayout: (l: ResultLayout) => void }) {
   return (
-    <div className="detail-switch small" role="radiogroup" aria-label="Result layout">
-      {(["inline", "grid"] as const).map((l) => (
-        <button key={l} type="button" role="radio" aria-checked={layout === l} onClick={() => setLayout(l)}>
-          {l === "inline" ? "Inline" : "Grid"}
-        </button>
-      ))}
+    <div role="radiogroup" aria-label="Result layout" style={{ display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(0,1fr)", gap: "2px", padding: "3px", borderRadius: "var(--r-md,8px)", background: ink(0.045) }}>
+      {(["inline", "grid"] as const).map((l) => {
+        const on = layout === l;
+        return (
+          <button key={l} type="button" role="radio" aria-checked={on} className="dx-btn dx-h-text" onClick={() => setLayout(l)} style={{ height: "26px", padding: "0 10px", borderRadius: "var(--r-sm,6px)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12.5px", fontWeight: "500", cursor: "pointer", whiteSpace: "nowrap", background: on ? ink(0.1) : "transparent", color: on ? P.t0 : P.t3 }}>
+            {l === "inline" ? "Inline" : "Grid"}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -107,7 +114,7 @@ function Enlarged({ label, src, onClose }: { label: string; src: string; onClose
         <img src={src} alt={label} />
         <figcaption>
           {label}
-          <button type="button" className="page-btn" onClick={onClose} autoFocus>
+          <button type="button" className="dx-btn dx-h-06" onClick={onClose} autoFocus style={BUTTON}>
             Close
           </button>
         </figcaption>

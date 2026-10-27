@@ -9,18 +9,25 @@ import { MAX_INLINE_BYTES, PARQUET } from "../../api/media.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
 import { isProfileOperator } from "../../flow/stages.ts";
 import { ColumnProfile } from "../ColumnProfile.tsx";
-import { formatMetric } from "../NodeFact.tsx";
 import { TablePeek } from "../TablePeek.tsx";
 import { Variables } from "./Variables.tsx";
 import { ShownTable } from "./VisualsTab.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { MetricTile } from "./MetricTile.tsx";
+import { ink, P } from "../../styles/palette.ts";
+import { METRIC_CAPTION, METRIC_ROW, MetricTile } from "./MetricTile.tsx";
 import { ModelResults } from "./ModelResults.tsx";
 
 export type Explore = ((port: string) => void) | undefined;
 
 /** A code step's reports are shown in their own tabs, not as data. */
 const REPORT_PORTS = ["display", "interface"];
+
+const LABEL = { margin: "0", fontSize: "12.5px", color: "var(--t-label,#959595)" } as const;
+const NOTE = { margin: "0", fontSize: "12.5px", color: "var(--t-faint,#8c8c8c)" } as const;
+const BUTTON = { alignSelf: "flex-start", height: "28px", padding: "0 10px", borderRadius: "var(--r-sm,6px)", border: "1px solid rgba(var(--ink-rgb,255,255,255),0.14)", display: "flex", alignItems: "center", fontSize: "12.5px", fontWeight: "500", color: "var(--t-secondary,#d4d4d4)", cursor: "pointer" } as const;
+/** The design's segmented pill, as in the sidebar's Pipeline · Operators · Plugins switch. */
+const PILL = { alignSelf: "flex-start", display: "grid", gridAutoFlow: "column", gridAutoColumns: "max-content", gap: "2px", padding: "3px", borderRadius: "var(--r-md,8px)", background: "rgba(var(--ink-rgb,255,255,255),0.045)", maxWidth: "100%", overflowX: "auto" } as const;
+const pillButton = (on: boolean) => ({ height: "26px", padding: "0 10px", borderRadius: "var(--r-sm,6px)", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", fontSize: "12.5px", fontWeight: "500", cursor: "pointer", whiteSpace: "nowrap", background: on ? ink(0.1) : "transparent", color: on ? P.t0 : P.t3 }) as const;
 
 type Props = {
   attempt: Attempt | undefined;
@@ -44,7 +51,7 @@ type Props = {
  * made in Visualizations. */
 export function DataTab({ attempt, operator, capability, previous, explore, figurePorts, shown, portOrder, code }: Props) {
   const outputs = useOutputs(attempt?.id);
-  if (!attempt) return <p className="muted">No data yet. Run the pipeline to see what this step produces.</p>;
+  if (!attempt) return <p className="muted" style={NOTE}>No data yet. Run the pipeline to see what this step produces.</p>;
   if (outputs.isPending) return <Loading />;
   if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
   // Console output is shown in Console, for every step (ADR-0025).
@@ -63,13 +70,13 @@ export function DataTab({ attempt, operator, capability, previous, explore, figu
       key: `shown-${i}`,
       label: item.label ? (
         <>
-          {item.label} <span className="tab-meta">shown</span>
+          {item.label} <span style={{ color: P.t3, fontWeight: "400" }}>shown</span>
         </>
       ) : (
         `shown ${i + 1}`
       ),
       body: (
-        <section className="output" aria-label={item.label ? `Shown table ${item.label}` : `Shown table ${i + 1}`}>
+        <section className="output" aria-label={item.label ? `Shown table ${item.label}` : `Shown table ${i + 1}`} style={{ display: "flex", flexDirection: "column", gap: "10px", minWidth: "0" }}>
           <ShownTable item={item} index={i} />
         </section>
       ),
@@ -77,8 +84,8 @@ export function DataTab({ attempt, operator, capability, previous, explore, figu
     ...(code ? [variablesPart(code, [...data.map((o) => o.port), ...shown.flatMap((i) => (i.label ? [i.label] : []))])] : []),
   ];
   return (
-    <div className="outputs">
-      {parts.length === 0 && <p className="muted">This step produces no data.</p>}
+    <div className="outputs" style={{ display: "flex", flexDirection: "column", gap: "16px", minWidth: "0" }}>
+      {parts.length === 0 && <p className="muted" style={NOTE}>This step produces no data.</p>}
       {parts.length === 1 && parts[0]!.body}
       {parts.length > 1 && <SubTabs parts={parts} />}
     </div>
@@ -99,11 +106,11 @@ function variablesPart({ found, passOn }: NonNullable<Props["code"]>, tabbed: st
     key: "variables",
     label: (
       <>
-        variables <span className="tab-meta">{listed.length}</span>
+        variables <span style={{ color: P.t3, fontWeight: "400", fontVariantNumeric: "tabular-nums" }}>{listed.length}</span>
       </>
     ),
     body: (
-      <div className="code-data">
+      <div className="code-data" style={{ display: "flex", flexDirection: "column", gap: "16px", minWidth: "0" }}>
         {passOn}
         <Variables found={listed} omitted={omitted} />
       </div>
@@ -111,13 +118,16 @@ function variablesPart({ found, passOn }: NonNullable<Props["code"]>, tabbed: st
   };
 }
 
-/** Several tables or results: one at a time, picked by name. */
+/** Several tables or results: one at a time, picked by name in the design's segmented pill. */
 function SubTabs({ parts }: { parts: Part[] }) {
+  const [picked, setPicked] = useState(parts[0]!.key);
+  // A part that is gone (a rerun produced other ports) falls back to the first.
+  const value = parts.some((p) => p.key === picked) ? picked : parts[0]!.key;
   return (
-    <Tabs.Root defaultValue={parts[0]!.key} className="sub-tabs">
-      <Tabs.List className="strip-tabs" aria-label="Outputs">
+    <Tabs.Root value={value} onValueChange={setPicked} className="sub-tabs" style={{ display: "flex", flexDirection: "column", gap: "16px", minWidth: "0" }}>
+      <Tabs.List aria-label="Outputs" style={PILL}>
         {parts.map((p) => (
-          <Tabs.Trigger key={p.key} value={p.key}>
+          <Tabs.Trigger key={p.key} value={p.key} className="dx-btn dx-h-text" style={pillButton(p.key === value)}>
             {p.label}
           </Tabs.Trigger>
         ))}
@@ -169,82 +179,48 @@ function Output({
   const small = output.artifact.size_bytes <= MAX_INLINE_BYTES;
   const text = useArtifactText(isJson && small ? output.artifact.id : undefined);
   const a = output.artifact;
+  const exploreButton = explore && (
+    <button type="button" className="dx-btn dx-h-06" aria-label={`Explore ${output.port} in code`} onClick={() => explore(output.port)} style={BUTTON}>
+      Explore in code
+    </button>
+  );
+  const peek = <TablePeek artifactId={a.id} port={output.port} actions={() => exploreButton} />;
   return (
-    <section className="output" aria-label={TITLE[view](output.port)}>
+    <section className="output" aria-label={TITLE[view](output.port)} style={{ display: "flex", flexDirection: "column", gap: "12px", minWidth: "0" }}>
       {view === "table" ? (
-        <TablePeek
-          artifactId={a.id}
-          port={output.port}
-          actions={(columns) => (
-            <>
-              {explore && (
-                <button type="button" className="page-btn" aria-label={`Explore ${output.port} in code`} onClick={() => explore(output.port)}>
-                  Explore in code
-                </button>
-              )}
-            </>
-          )}
-        />
+        peek
       ) : view === "profile" ? (
-        <div className="profile-container">
-          <div className="output-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <p className="output-title">Table · {output.port}</p>
-            <div style={{ display: "flex", gap: "6px" }} role="group" aria-label="Profile view options">
-              <button
-                type="button"
-                className={`page-btn${profileMode === "table" ? " active" : ""}`}
-                onClick={() => setProfileMode("table")}
-                title="View actual raw tabular data from DuckDB SUMMARIZE"
-              >
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <p style={LABEL}>Table · {output.port}</p>
+            <div role="group" aria-label="Profile view options" style={PILL}>
+              <button type="button" className="dx-btn dx-h-text" aria-pressed={profileMode === "table"} onClick={() => setProfileMode("table")} title="View actual raw tabular data from DuckDB SUMMARIZE" style={pillButton(profileMode === "table")}>
                 Data Table
               </button>
-              <button
-                type="button"
-                className={`page-btn${profileMode === "cards" ? " active" : ""}`}
-                onClick={() => setProfileMode("cards")}
-                title="View per-column summary cards"
-              >
+              <button type="button" className="dx-btn dx-h-text" aria-pressed={profileMode === "cards"} onClick={() => setProfileMode("cards")} title="View per-column summary cards" style={pillButton(profileMode === "cards")}>
                 Column Cards
               </button>
             </div>
           </div>
-          {profileMode === "table" ? (
-            <TablePeek
-              artifactId={a.id}
-              port={output.port}
-              actions={(columns) => (
-                <>
-                  {explore && (
-                    <button type="button" className="page-btn" aria-label={`Explore ${output.port} in code`} onClick={() => explore(output.port)}>
-                      Explore in code
-                    </button>
-                  )}
-                </>
-              )}
-            />
+          {profileMode === "table" ? peek : <ColumnProfile artifactId={a.id} />}
+        </>
+      ) : (
+        <>
+          <p style={LABEL}>{TITLE[view](output.port)}</p>
+          {isJson && !small ? (
+            <p className="muted" style={NOTE}>Output too large to show here ({a.size_bytes} bytes).</p>
+          ) : isJson && text.isError ? (
+            <p role="alert" className="error">{text.error.message}</p>
+          ) : view === "metrics" ? (
+            <MetricTiles text={text.data} previous={previous} />
+          ) : isJson ? (
+            <pre className="code">{prettyJson(text.data)}</pre>
+          ) : view === "model" ? (
+            <p className="muted" style={NOTE}>A fitted scikit-learn model, saved for the steps that use it.</p>
           ) : (
-            <ColumnProfile artifactId={a.id} />
+            <p className="muted" style={NOTE}>Saved output, used by the steps that read it.</p>
           )}
-        </div>
-      ) : (
-      <>
-      <div className="output-head">
-        <p className="output-title">{TITLE[view](output.port)}</p>
-      </div>
-      {isJson && !small ? (
-        <p className="muted">Output too large to show here ({a.size_bytes} bytes).</p>
-      ) : isJson && text.isError ? (
-        <p role="alert" className="error">{text.error.message}</p>
-      ) : view === "metrics" ? (
-        <MetricTiles text={text.data} previous={previous} />
-      ) : isJson ? (
-        <pre className="code">{prettyJson(text.data)}</pre>
-      ) : view === "model" ? (
-        <p className="muted">A fitted scikit-learn model, saved for the steps that use it.</p>
-      ) : (
-        <p className="muted">Saved output, used by the steps that read it.</p>
-      )}
-      </>
+        </>
       )}
     </section>
   );
@@ -268,14 +244,14 @@ function MetricTiles({ text, previous }: { text: string | undefined; previous: R
   const rows = (raw as Record<string, unknown>).n_rows;
   const estimator = (raw as Record<string, unknown>).estimator;
   return (
-    <div className="metrics">
-      <div className="metric-tiles">
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      <div style={METRIC_ROW}>
         {tiles.map(([name, value]) => (
           <MetricTile key={name} name={name.replaceAll("_", " ")} value={value} before={previous?.[name]} />
         ))}
       </div>
       {(typeof rows === "number" || typeof estimator === "string") && (
-        <p className="metric-caption">
+        <p style={METRIC_CAPTION}>
           {typeof estimator === "string" ? estimator : "Model"}
           {typeof rows === "number" ? ` · scored on ${rows} held-out rows` : ""}
         </p>

@@ -41,6 +41,32 @@
 /* A measured fact inside one of the design's fact rows reads in the UI font, not as code. */
 .dx-fact .node-fact { font-family: inherit; font-size: inherit; color: inherit; }
 
+/* The design's table (main screen Data, Performance, History): a 32px header of 12px labels
+   over 34px rows of 13px even-width figures, split by faint hairlines, in the UI font. The first
+   column reads a step brighter than the rest. A table is semantic HTML, so this is a class. */
+.dx-table { width: 100%; border-collapse: collapse; font-family: var(--font-sans); font-size: 13px; font-variant-numeric: tabular-nums; }
+.dx-table th { height: 32px; padding: 0 10px; font-size: 12px; font-weight: 400; color: var(--t-label); text-align: left; white-space: nowrap; border-bottom: 1px solid rgba(var(--ink-rgb), 0.1); }
+.dx-table td { height: 34px; padding: 0 10px; color: var(--t-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid rgba(var(--ink-rgb), 0.04); }
+.dx-table td:first-child { color: var(--t-secondary); }
+.dx-table tbody tr:hover { background: rgba(var(--ink-rgb), 0.03); }
+.dx-table .num { text-align: right; }
+
+/* A number field draws the design's stepper, not the browser's spinner. */
+.dx-input::-webkit-inner-spin-button,
+.dx-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.dx-input[type="number"] { -moz-appearance: textfield; }
+
+/* The rows table (Data tab, Datasets preview) is the design's table; its column type sits
+   faint under the name. RowsTable and TablePeek are shared with the Datasets page. */
+/* The design's tables sit on the panel surface: no box, no darker band. */
+.peek, .peek-head, .peek-foot { border: 0; background: transparent; }
+.peek-table { border-collapse: collapse; font-family: var(--font-sans); font-size: 13px; font-variant-numeric: tabular-nums; }
+.peek-table th { height: 32px; padding: 0 10px; font-size: 12px; font-weight: 400; color: var(--t-label); text-align: left; white-space: nowrap; border-bottom: 1px solid rgba(var(--ink-rgb), 0.1); background: var(--bg-surface); }
+.peek-table td { height: 34px; padding: 0 10px; color: var(--t-muted); background: transparent; border-bottom: 1px solid rgba(var(--ink-rgb), 0.04); font-family: var(--font-sans); }
+.peek-table td:first-child { color: var(--t-secondary); }
+.peek-table tbody tr:hover td { background: rgba(var(--ink-rgb), 0.03); }
+.peek-table .col-type { display: block; font-size: 11.5px; color: var(--t-faint); font-family: var(--font-sans); }
+
 /* The design's hover states. Inline styles set the resting value, so these win with !important. */
 .dx-h-text:hover { color: var(--t-primary) !important; }
 .dx-h-03:hover { background: rgba(var(--ink-rgb), 0.03) !important; }

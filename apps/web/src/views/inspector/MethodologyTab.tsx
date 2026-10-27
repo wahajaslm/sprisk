@@ -4,6 +4,7 @@ import { type ReactNode, useState } from "react";
 import type { RunChecks } from "../../api/checks.ts";
 import { useApplyMethodology, useMethodologyRules, useResolveStep } from "../../api/methodology.ts";
 import { useFlowDecisions } from "../../api/walks.ts";
+import { Fact } from "../../components/ui/Fact.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { hasOutputs, statusOf } from "../../flow/latest.ts";
 import { readersOf } from "../../flow/edit.ts";
@@ -22,15 +23,6 @@ const COLUMN = { display: "flex", flexDirection: "column", gap: "8px", minWidth:
 const LABEL = { fontSize: "12.5px", color: "var(--t-label,#959595)" } as const;
 const BUTTON = { alignSelf: "flex-start", height: "28px", padding: "0 10px", borderRadius: "var(--r-sm,6px)", border: "1px solid rgba(var(--ink-rgb,255,255,255),0.14)", display: "flex", alignItems: "center", fontSize: "12.5px", fontWeight: "500", color: "var(--t-secondary,#d4d4d4)", cursor: "pointer" } as const;
 
-/** One fact row, as the design lists a step's measurements. */
-function Fact({ k, v, warn = false }: { k: string; v: ReactNode; warn?: boolean }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", padding: "6px 0", borderBottom: "1px solid rgba(var(--ink-rgb,255,255,255),0.05)", fontSize: "13px" }}>
-      <span style={{ color: "var(--t-label,#959595)" }}>{k}</span>
-      <span className="dx-fact" style={{ fontVariantNumeric: "tabular-nums", textAlign: "right", color: warn ? P.red : P.t0, minWidth: "0" }}>{v}</span>
-    </div>
-  );
-}
 
 /** What the step is and what it measured: its type, what it does, and its facts. */
 function StepFacts({ pipeline, nodeId, operator, latest }: { pipeline: PipelineVersion; nodeId: string; operator?: Operator | undefined; latest?: Attempt | undefined }) {
@@ -68,7 +60,7 @@ export function MethodologyTab({ pipeline, nodeId, checks, operator, latest }: {
     .sort(inWorkflowOrder);
   const facts = <StepFacts pipeline={pipeline} nodeId={nodeId} operator={operator} latest={latest} />;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "28px", padding: "18px 24px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
       {rules.isError && <p role="alert" className="error">Methodology rules could not be read: {rules.error.message}</p>}
       {decided.isError && <p role="alert" className="error">The pipeline's decisions could not be read: {decided.error.message}</p>}
       {(rules.isPending || decided.isPending) && <Loading />}

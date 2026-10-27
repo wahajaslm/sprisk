@@ -7,7 +7,7 @@ import { PARQUET } from "../../api/media.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { stepOf } from "../../flow/ports.ts";
-import { PlotTile } from "../PlotTile.tsx";
+import { CHART_GRID, PlotTile } from "../PlotTile.tsx";
 import { tokenColor } from "../tokenColor.ts";
 import { columnsChange, missingBeforeAfter, type PortTable, rowsInOut } from "./stepChange.ts";
 
@@ -56,28 +56,28 @@ export function StepChange({ pipeline, nodeId, attempts }: { pipeline: PipelineV
   const change = first && firstOut ? columnsChange(first, firstOut) : { added: [], removed: [] };
   const missing = first && firstOut ? missingBeforeAfter(first, firstOut, tokenColor) : null;
   return (
-    <section className="step-change" aria-label="What this step did">
-      <h3 className="rd-label">What this step did</h3>
-      <div className="step-change-charts">
+    <section aria-label="What this step did" style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "28px" }}>
+      <h3 style={{ margin: "0", fontSize: "12.5px", fontWeight: "400", color: "var(--t-label,#959595)" }}>What this step did</h3>
+      <div style={CHART_GRID}>
         <PlotTile figure={rowsInOut(inputs, outputs, tokenColor)} label="Rows in and out" />
         {missing && <PlotTile figure={missing} label="Missing values before and after" />}
       </div>
       {(change.added.length > 0 || change.removed.length > 0) && (
-        <dl className="step-change-columns">
-          {change.added.length > 0 && (
-            <div>
-              <dt>Columns added</dt>
-              <dd className="mono">{change.added.join(", ")}</dd>
-            </div>
-          )}
-          {change.removed.length > 0 && (
-            <div>
-              <dt>Columns removed</dt>
-              <dd className="mono">{change.removed.join(", ")}</dd>
-            </div>
-          )}
+        <dl style={{ display: "flex", flexDirection: "column", margin: "0", maxWidth: "640px" }}>
+          {change.added.length > 0 && <ColumnsRow k="Columns added" names={change.added} />}
+          {change.removed.length > 0 && <ColumnsRow k="Columns removed" names={change.removed} />}
         </dl>
       )}
     </section>
+  );
+}
+
+/** One fact row, as the design lists a step's measurements. */
+function ColumnsRow({ k, names }: { k: string; names: string[] }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", padding: "6px 0", borderBottom: "1px solid rgba(var(--ink-rgb,255,255,255),0.05)", fontSize: "13px" }}>
+      <dt style={{ color: "var(--t-label,#959595)", flexShrink: "0" }}>{k}</dt>
+      <dd className="mono" style={{ margin: "0", textAlign: "right", color: "var(--t-primary,#f2f2f2)", overflowWrap: "anywhere", minWidth: "0" }}>{names.join(", ")}</dd>
+    </div>
   );
 }
