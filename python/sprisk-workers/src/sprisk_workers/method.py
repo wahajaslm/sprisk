@@ -48,6 +48,7 @@ class Context:
         self._bound = set(sent["bound"])
         self._ruled_out = {r["option"]: r["detail"] for r in sent.get("ruled_out") or []}
         self._statements = sent.get("statements") or {}
+        self._limits = sent.get("limits") or {}
         self.task: str = sent["task"]
 
     def evidence(self, kind: str) -> dict[str, Any] | None:
@@ -65,6 +66,13 @@ class Context:
         """What the question states; None when it does not say. Never guessed."""
         self._declared("statements", name)
         return self._statements.get(name)
+
+    def limit(self, name: str) -> int:
+        """A fixed count the method's method.yaml states, such as the most looks."""
+        if name not in self._limits:
+            raise MethodError(f"{self._method} has no limit {name}")
+        value: int = self._limits[name]
+        return value
 
     def bound(self, concept: str) -> bool:
         """Whether a binding names the concept. Never which column: decide() reads no names."""

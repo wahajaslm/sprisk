@@ -234,6 +234,15 @@ fn check_method(
         let Some(action) = &option.action else {
             continue;
         };
+        let changes = action.bind.is_some()
+            || action.replace.is_some()
+            || action.insert.is_some()
+            || action.set.is_some();
+        if action.stop.is_some() && changes {
+            return Err(in_option(
+                "stops the walk, so it changes nothing in the flow".into(),
+            ));
+        }
         if let Some(bind) = &action.bind {
             known_concept(bind.concept.as_str(), provided).map_err(in_option)?;
             if !method.needs.evidence.contains(&bind.evidence) {

@@ -751,3 +751,34 @@ fn an_option_setting_a_param_some_operator_of_the_role_lacks_is_refused() {
         refused(pack.path())
     );
 }
+
+#[test]
+fn an_option_that_stops_the_walk_and_changes_the_flow_is_refused() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        SPLIT,
+        "    action:\n      replace:\n",
+        "    action:\n      stop: limitation\n      replace:\n",
+    );
+    assert!(refused(pack.path()).contains("stops the walk, so it changes nothing in the flow"));
+}
+
+#[test]
+fn an_option_that_stops_the_walk_is_shown_as_a_limitation() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        REPEATED,
+        "    action:\n      bind: { concept: common.item_identity, evidence: data.near_duplicate_groups, column: item_group }\n",
+        "    action: { stop: limitation }\n",
+    );
+    let catalog = load(pack.path()).unwrap();
+    let shown = catalog
+        .all_rules()
+        .into_iter()
+        .find(|r| r.decides.as_str() == "data.repeated_items")
+        .unwrap();
+    let action = serde_json::to_value(&shown.alternatives[0].action).unwrap();
+    assert_eq!(action["type"], "emit_methodology_limitation", "{action}");
+}

@@ -731,6 +731,35 @@ class QuestionStatement(StrEnum):
     success_bar = "success_bar"
 
 
+class MethodStop(StrEnum):
+    limitation = "limitation"
+    uncovered = "uncovered"
+
+
+MethodLimitsAdditionalProperty = TypeAliasType(
+    "MethodLimitsAdditionalProperty", Annotated[int, Field(ge=0)]
+)
+
+
+class MethodLimits(
+    RootModel[
+        dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")],
+            MethodLimitsAdditionalProperty,
+        ]
+    ]
+):
+    root: Annotated[
+        dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")],
+            MethodLimitsAdditionalProperty,
+        ],
+        Field(
+            description="Fixed counts the method decides by, by name, such as the most looks at the folds (ADR-0063 slice 6); not a step's settings. decide() reads them; the engine reads one it enforces itself. Absent: none."
+        ),
+    ]
+
+
 FromEvidenceAdditionalProperty = TypeAliasType(
     "FromEvidenceAdditionalProperty",
     Annotated[str, Field(pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$")],
@@ -3634,6 +3663,7 @@ class MethodAction(StrictModel):
     replace: MethodReplace | None = None
     insert: MethodInsert | None = None
     set: MethodSet | None = None
+    stop: MethodStop | None = None
 
 
 class VerificationRequest(StrictModel):
@@ -4383,6 +4413,9 @@ class MethodRequest(StrictModel):
             description="The needed statements the question makes. Absent: the method needs none."
         ),
     ] = None
+    limits: Annotated[
+        MethodLimits | None, Field(description="The method's limits. Absent: it has none.")
+    ] = None
 
 
 class RuleAnswer(RootModel[RuleDecided | RuleRefused]):
@@ -4735,6 +4768,7 @@ class Method(StrictModel):
         ),
     ] = None
     needs: MethodNeeds
+    limits: MethodLimits | None = None
     options: list[MethodOption]
     verifications: Annotated[
         dict[

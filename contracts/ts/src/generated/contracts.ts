@@ -237,6 +237,13 @@ export type MethodOptionId = string;
 export type OperatorRole =
   "source" | "split" | "model" | "score" | "score_shares" | "cross_validate" | "select" | "row_filter";
 /**
+ * The walk stops once this option is taken (ADR-0063 slice 6), with the method's reason as its detail. limitation: a limit the walk cannot go past, such as no lift over the baseline. uncovered: a change the walk cannot make yet, such as reopening the features.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodStop".
+ */
+export type MethodStop = "limitation" | "uncovered";
+/**
  * A verification a method declares, the name of its verify_<name>() function.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -2130,6 +2137,7 @@ export interface Method {
     ...("numbers" | "categories" | "dates" | "text" | "image" | "audio")[]
   ];
   needs: MethodNeeds;
+  limits?: MethodLimits;
   options: MethodOption[];
   /**
    * Promises an option can make, by name. An option lists the ones it makes in verify.
@@ -2171,6 +2179,15 @@ export interface MethodNeeds {
   statements?: QuestionStatement[];
 }
 /**
+ * Fixed counts the method decides by, by name, such as the most looks at the folds (ADR-0063 slice 6); not a step's settings. decide() reads them; the engine reads one it enforces itself. Absent: none.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodLimits".
+ */
+export interface MethodLimits {
+  [k: string]: number;
+}
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodOption".
  */
@@ -2210,6 +2227,7 @@ export interface MethodAction {
   replace?: MethodReplace;
   insert?: MethodInsert;
   set?: MethodSet;
+  stop?: MethodStop;
 }
 /**
  * Binds a concept to a column that the producer of an evidence kind adds.
@@ -2378,6 +2396,7 @@ export interface MethodRequest {
    */
   ruled_out?: RuledOutOption[];
   statements?: MethodStatements1;
+  limits?: MethodLimits1;
 }
 /**
  * Each needed kind that was measured. A needed kind left out cannot be measured, because its producer reads a concept no binding names.
@@ -2410,6 +2429,12 @@ export interface MethodStatements1 {
   costs?: Costs;
   interpretability?: Interpretability;
   success_bar?: SuccessBar;
+}
+/**
+ * Fixed counts the method decides by, by name, such as the most looks at the folds (ADR-0063 slice 6); not a step's settings. decide() reads them; the engine reads one it enforces itself. Absent: none.
+ */
+export interface MethodLimits1 {
+  [k: string]: number;
 }
 /**
  * Rust to the method session, one JSON line per promise to check (ADR-0063): the method module Rust picked from the loaded catalog, the verification's name, the fields of the one evidence kind it needs, as the step's producer measured them, and its settings. verify_<name>() may read nothing else.

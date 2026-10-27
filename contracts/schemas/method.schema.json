@@ -73,6 +73,9 @@
         "needs": {
           "$ref": "#/$defs/MethodNeeds"
         },
+        "limits": {
+          "$ref": "#/$defs/MethodLimits"
+        },
         "options": {
           "type": "array",
           "items": {
@@ -260,8 +263,22 @@
         },
         "set": {
           "$ref": "#/$defs/MethodSet"
+        },
+        "stop": {
+          "$ref": "#/$defs/MethodStop"
         }
       }
+    },
+    "MethodStop": {
+      "type": "string",
+      "description": "The walk stops once this option is taken (ADR-0063 slice 6), with the method's reason as its detail. limitation: a limit the walk cannot go past, such as no lift over the baseline. uncovered: a change the walk cannot make yet, such as reopening the features.",
+      "enum": ["limitation", "uncovered"]
+    },
+    "MethodLimits": {
+      "type": "object",
+      "description": "Fixed counts the method decides by, by name, such as the most looks at the folds (ADR-0063 slice 6); not a step's settings. decide() reads them; the engine reads one it enforces itself. Absent: none.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+      "additionalProperties": { "type": "integer", "minimum": 0 }
     },
     "MethodSet": {
       "type": "object",
@@ -427,6 +444,10 @@
         "statements": {
           "$ref": "#/$defs/MethodStatements",
           "description": "The needed statements the question makes. Absent: the method needs none."
+        },
+        "limits": {
+          "$ref": "#/$defs/MethodLimits",
+          "description": "The method's limits. Absent: it has none."
         }
       }
     },

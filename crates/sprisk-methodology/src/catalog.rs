@@ -10,8 +10,9 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 use sprisk_contracts::{
-    Concept, ContractError, Method, MethodFiles, MethodologyRule, MethodologyRuleSelection,
-    MethodologyRuleSource, MethodologyRuleStatus, MethodologyStage, Operator, RuleActionType,
+    Concept, ContractError, Method, MethodFiles, MethodStop, MethodologyRule,
+    MethodologyRuleSelection, MethodologyRuleSource, MethodologyRuleStatus, MethodologyStage,
+    Operator, RuleActionType,
 };
 
 use crate::facts;
@@ -533,6 +534,12 @@ fn method_action(action: Option<&sprisk_contracts::MethodAction>) -> serde_json:
         }
         Some(a) if a.insert.is_some() => {
             json!({ "type": RuleActionType::InsertStep, "operator": a.insert.as_ref().map(|i| &i.operator) })
+        }
+        Some(a) if a.stop == Some(MethodStop::Limitation) => {
+            json!({ "type": RuleActionType::EmitMethodologyLimitation })
+        }
+        Some(a) if a.stop == Some(MethodStop::Uncovered) => {
+            json!({ "type": RuleActionType::Reopen })
         }
         _ => json!({ "type": RuleActionType::PassThrough }),
     }

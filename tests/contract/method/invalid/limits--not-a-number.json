@@ -1,0 +1,49 @@
+{
+  "schema_version": "sprisk.method/v2",
+  "id": "methodology.supervised.loop_back@1.0.0",
+  "decides": "evaluation.loop_back",
+  "name": "Loop back",
+  "activity": "Evaluation",
+  "question": "Is the chosen model good enough to score the test rows?",
+  "pitfall": "Looping on the same folds fits them.",
+  "needs": {
+    "concepts": [],
+    "evidence": [
+      "models.comparison"
+    ],
+    "decisions": [
+      "models.estimator_selection"
+    ],
+    "statements": [
+      "success_bar"
+    ]
+  },
+  "limits": {
+    "max_looks": "three"
+  },
+  "options": [
+    {
+      "id": "proceed",
+      "label": "Score the test rows",
+      "description": "Moves on to the test rows.",
+      "condition": "bar met",
+      "when": "the bar is met",
+      "rationale": "The flow is done.",
+      "verify": []
+    },
+    {
+      "id": "stop",
+      "label": "Stop and report",
+      "description": "Reports the result as it stands.",
+      "condition": "no lift",
+      "when": "no lift over the baseline",
+      "rationale": "More looks would fit the folds.",
+      "action": {
+        "stop": "limitation"
+      },
+      "verify": []
+    }
+  ],
+  "verifications": {},
+  "source": "Cawley & Talbot (2010)."
+}

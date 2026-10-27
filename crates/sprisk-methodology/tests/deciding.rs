@@ -1529,3 +1529,32 @@ fn what_a_comparison_found_is_never_placed_and_a_method_reading_it_waits_for_it(
     let found = ready_ids(&catalog, &q, &[], &compared, &ops);
     assert!(found.contains(&REPEATED.to_owned()), "{found:?}");
 }
+
+#[test]
+fn a_request_carries_the_method_s_limits() {
+    let ops = operators();
+    let pack = tempfile::tempdir().unwrap();
+    copy_dir(&fixture(), pack.path());
+    let manifest = pack
+        .path()
+        .join("methodology/core/methods/repeated_items/method.yaml");
+    let text = std::fs::read_to_string(&manifest)
+        .unwrap()
+        .replace("options:\n", "limits: { max_groups: 2 }\noptions:\n");
+    std::fs::write(&manifest, text).unwrap();
+    let catalog = RuleCatalog::load_dir(&pack.path().join("methodology"), &ops).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &[]).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &[],
+        &effective,
+        &groups(83),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
+    let request = serde_json::to_value(&found.ready[0].request).unwrap();
+    assert_eq!(request["limits"], json!({ "max_groups": 2 }));
+}

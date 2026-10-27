@@ -414,6 +414,9 @@ pub fn ready<'c>(
         if !method.needs.statements.is_empty() {
             request["statements"] = Value::Object(statements(question, &method.needs.statements)?);
         }
+        if let Some(limits) = &method.limits {
+            request["limits"] = json!(limits);
+        }
         let request = parse(&request.to_string())?;
         found.ready.push(Ready { method, request });
     }

@@ -112,6 +112,15 @@ def test_a_method_reads_the_statements_it_declares_and_none_for_an_unstated_one(
     assert answer["reason"] == "5.0 None"
 
 
+def test_a_method_reads_its_limits_and_a_limit_it_lacks_is_refused(tmp_path: Path) -> None:
+    body = "return ctx.choose('grouped', str(ctx.limit('max_looks')))"
+    answer = decide_with(tmp_path, body, limits={"max_looks": 3})
+    assert answer["reason"] == "3"
+    answer = decide_with(tmp_path, body)
+    assert answer["answer"] == "refused"
+    assert "has no limit max_looks" in answer["error"]
+
+
 @pytest.mark.parametrize(
     ("body", "names"),
     [
