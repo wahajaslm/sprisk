@@ -1,7 +1,7 @@
-import type { MethodologyReviewItem, MethodologyRule, MethodologyStage } from "@sprisk/contracts";
+import type { MethodologyRule, MethodologyStage } from "@sprisk/contracts";
 import type { Edge, Node } from "@xyflow/react";
 
-import { isOpen, LANE_NOTE, packOf, type RouteReason, routeReason, STAGES } from "./ruleTree.ts";
+import { LANE_NOTE, type OnFlow, packOf, type RouteReason, routeReason, STAGES } from "./ruleTree.ts";
 
 /** Sizes and distances, centre to centre where it says so. A stage reads top to bottom: each
  * decision on the middle line, its routes in one row under it, evenly either side, each route's
@@ -22,7 +22,7 @@ export type FlowEdgeData = { onPath: boolean; kind: "trunk" | "branch" | "skip" 
 
 export type FlowNode =
   | Node<{ label: string; dimmed: boolean }, "terminal">
-  | Node<{ rule: MethodologyRule; review: MethodologyReviewItem | undefined; code: string; dimmed: boolean }, "decision">
+  | Node<{ rule: MethodologyRule; decided: OnFlow | undefined; code: string; dimmed: boolean }, "decision">
   | Node<{ route: MethodologyRule["alternatives"][number]; reason: RouteReason; code: string; picked: boolean; dimmed: boolean }, "step">;
 
 type Tail = { id: string; lit: boolean; kind: FlowEdgeData["kind"] };
@@ -73,13 +73,13 @@ export function ends(all: Chapter[], at: number): { from: string; to: string } {
  * With `path`, the routes the flow takes are lit and the rest dimmed. */
 export function stageFlow(
   chapter: Chapter,
-  reviews: Map<string, MethodologyReviewItem>,
+  decided: Map<string, OnFlow>,
   { path, from, to }: { path: boolean; from: string; to: string },
 ): { nodes: FlowNode[]; edges: Edge<FlowEdgeData>[] } {
   const nodes: FlowNode[] = [];
   const edges: Edge<FlowEdgeData>[] = [];
   const centred = (cx: number, cy: number, w: number, h: number) => ({ x: cx - w / 2, y: cy - h / 2 });
-  const onPath = (rule: MethodologyRule) => reviews.get(rule.id)?.subject_node_id !== undefined;
+  const onPath = (rule: MethodologyRule) => decided.get(rule.id)?.step !== undefined;
   const reach = path && chapter.rules.some(onPath);
   const link = (tails: Tail[], target: string) => {
     for (const t of tails) edges.push({ id: `${t.id}>${target}`, source: t.id, target, data: { onPath: t.lit, kind: t.kind }, className: `mth-flow-edge ${t.kind}${t.lit ? " path" : ""}` });
@@ -90,11 +90,11 @@ export function stageFlow(
   let y = SIZE.terminal / 2 + TO_NEXT;
 
   chapter.rules.forEach((rule, k) => {
-    const review = reviews.get(rule.id);
+    const chosen = decided.get(rule.id);
     const ruleOnPath = onPath(rule);
     const ruleCode = `${chapter.code}.${k + 1}`;
     link(tails, rule.id);
-    nodes.push({ id: rule.id, type: "decision", position: centred(0, y, SIZE.decision, SIZE.decision), width: SIZE.decision, height: SIZE.decision, data: { rule, review, code: ruleCode, dimmed: path && !ruleOnPath } });
+    nodes.push({ id: rule.id, type: "decision", position: centred(0, y, SIZE.decision, SIZE.decision), width: SIZE.decision, height: SIZE.decision, data: { rule, decided: chosen, code: ruleCode, dimmed: path && !ruleOnPath } });
     const routes = rule.alternatives;
     if (routes.length === 0) {
       tails = [{ id: rule.id, lit: reach && ruleOnPath, kind: "trunk" }];
@@ -104,7 +104,7 @@ export function stageFlow(
     const row = y + TO_STEPS;
     tails = routes.map((route, i) => {
       const id = `${rule.id}#${route.id}`;
-      const picked = review?.recommended_alternative_id === route.id;
+      const picked = chosen?.option === route.id;
       const taken = reach && ruleOnPath && picked;
       const cx = (i - (routes.length - 1) / 2) * STEP_DX;
       nodes.push({
@@ -114,7 +114,7 @@ export function stageFlow(
         position: { x: cx - SIZE.step.width / 2, y: row - SIZE.step.circle / 2 },
         width: SIZE.step.width,
         height: SIZE.step.height,
-        data: { route, reason: routeReason(rule, route, review), code: `${ruleCode}${String.fromCharCode(97 + i)}`, picked, dimmed: path && !(ruleOnPath && picked) },
+        data: { route, reason: routeReason(rule, route, chosen), code: `${ruleCode}${String.fromCharCode(97 + i)}`, picked, dimmed: path && !(ruleOnPath && picked) },
       });
       edges.push({ id: `${rule.id}>${id}`, source: rule.id, target: id, data: { onPath: taken, kind: "branch" }, className: `mth-flow-edge branch${taken ? " path" : ""}` });
       return { id, lit: taken, kind: "trunk" as const };
@@ -129,9 +129,7 @@ export function stageFlow(
   return { nodes, edges };
 }
 
-/** How a stage stands for the selected flow: how many of its decisions are open, and whether
- * the flow has a step any of them decides. */
-export function chapterState(chapter: Chapter, reviews: Map<string, MethodologyReviewItem>) {
-  const items = chapter.rules.map((r) => reviews.get(r.id)).filter((i): i is MethodologyReviewItem => i !== undefined);
-  return { open: items.filter((i) => isOpen(i.status)).length, reached: items.some((i) => i.subject_node_id !== undefined) };
+/** Whether the selected flow has a step any of the stage's decisions shaped. */
+export function chapterReached(chapter: Chapter, decided: Map<string, OnFlow>): boolean {
+  return chapter.rules.some((r) => decided.get(r.id)?.step !== undefined);
 }

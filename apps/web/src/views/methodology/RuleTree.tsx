@@ -1,7 +1,7 @@
-import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
+import type { MethodologyRule } from "@sprisk/contracts";
 
 import type { Chapter } from "./flowGraph.ts";
-import { isOpen, stageName } from "./ruleTree.ts";
+import { stageName } from "./ruleTree.ts";
 
 const TOP = 40;
 const RULE_GAP = 50;
@@ -11,10 +11,9 @@ const GROUP_X = 200;
 const RULE_X = 430;
 
 /** The design's rule map: a Rules root, one numbered disc per stage, and a dot per rule, drawn
- * left to right. The picked rule's path is bright; a rule open on the selected flow is red. */
-export function RuleTree({ chapters, reviews, picked, onPick }: {
+ * left to right. The picked rule's path is bright. */
+export function RuleTree({ chapters, picked, onPick }: {
   chapters: Chapter[];
-  reviews: Map<string, MethodologyReviewItem>;
   picked: string | undefined;
   onPick: (ruleId: string) => void;
 }) {
@@ -63,13 +62,11 @@ export function RuleTree({ chapters, reviews, picked, onPick }: {
         ))}
         {groups.flatMap((g) =>
           g.rules.map(({ rule, y: at }) => {
-            const review = reviews.get(rule.id);
-            const open = review !== undefined && isOpen(review.status);
             return (
               <button
                 key={rule.id}
                 type="button"
-                className={`rule-tree-rule${onPath(rule) ? " picked" : ""}${open ? " open" : ""}`}
+                className={`rule-tree-rule${onPath(rule) ? " picked" : ""}`}
                 style={{ left: RULE_X - 5, top: at - 16 }}
                 aria-pressed={onPath(rule)}
                 onClick={() => onPick(rule.id)}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { chapters, chapterState, ends, SIZE, stageFlow } from "../src/views/methodology/flowGraph.ts";
+import { chapterReached, chapters, ends, SIZE, stageFlow } from "../src/views/methodology/flowGraph.ts";
+import type { OnFlow } from "../src/views/methodology/ruleTree.ts";
 
 const rule = (id: string, stage: string, routes: string[], status = "active") =>
   ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r, rationale: `why ${r}` })) }) as never;
@@ -28,7 +29,7 @@ const centre = (f: Flow, id: string) => {
   return { x: n.position.x + n.width! / 2, y: n.position.y + high / 2 };
 };
 const links = (f: Flow) => f.edges.map((e) => `${e.source}>${e.target}`);
-const settled = (rule: string, route: string) => ({ rule, status: "settled", subject_node_id: "step", reason: `the flow's reason for ${route}`, recommended_alternative_id: route }) as never;
+const settled = (_rule: string, route: string): OnFlow => ({ option: route, reason: `the flow's reason for ${route}`, step: "step" });
 
 describe("methodology flow, one stage at a time", () => {
   it("splits the rules into the shared stages, then each lane's stages, numbered in decision order", () => {
@@ -94,9 +95,8 @@ describe("methodology flow, one stage at a time", () => {
     expect(node(f, `${S("split")}#random`).data).toMatchObject({ dimmed: true });
   });
 
-  it("tells the stepper how many of a stage's decisions are open on the flow, and whether it reaches the stage", () => {
-    const open = { rule: S("fill"), status: "proposal", subject_node_id: "fill", reason: "r" } as never;
-    expect(chapterState(chapter("supervised:cleaning"), new Map([[S("fill"), open]]))).toEqual({ open: 1, reached: true });
-    expect(chapterState(chapter("supervised:split"), new Map())).toEqual({ open: 0, reached: false });
+  it("tells the stepper whether the flow has a step a stage's decisions shaped", () => {
+    expect(chapterReached(chapter("supervised:cleaning"), new Map([[S("fill"), settled(S("fill"), "median")]]))).toBe(true);
+    expect(chapterReached(chapter("supervised:split"), new Map())).toBe(false);
   });
 });

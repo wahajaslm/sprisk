@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activation, isOpen, lookedAt, reviewByRule, ROUTE_LINE, routeReason, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
+import { activation, decidedOnFlow, lookedAt, type OnFlow, ROUTE_LINE, routeReason, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
 
 const rule = (id: string, stage: string, routes: string[], status = "active") =>
   ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r, rationale: "r" })) }) as never;
@@ -14,7 +14,7 @@ const RULES = [
   rule(S("pca"), "features", ["pca"], "draft"),
   rule(U("algo"), "models", ["kmeans", "dbscan"]),
 ];
-const tree = (rules = RULES, reviews = new Map(), path = false) => ruleTree(rules, reviews, { path });
+const tree = (rules = RULES, decided = new Map<string, OnFlow>(), path = false) => ruleTree(rules, decided, { path });
 const at = (t: ReturnType<typeof ruleTree>, id: string) => t.nodes.find((n) => n.id === id)!.position;
 /** A node's middle, since a route grows to fit its condition. */
 const mid = (t: ReturnType<typeof ruleTree>, id: string) => {
@@ -24,7 +24,7 @@ const mid = (t: ReturnType<typeof ruleTree>, id: string) => {
 const data = (t: ReturnType<typeof ruleTree>, id: string) => t.nodes.find((n) => n.id === id)!.data;
 const links = (t: ReturnType<typeof ruleTree>) => t.edges.map((e) => `${e.source}>${e.target}`);
 const lit = (t: ReturnType<typeof ruleTree>) => t.edges.filter((e) => e.data?.onPath).map((e) => `${e.source}>${e.target}`);
-const settled = (rule: string, route: string) => ({ rule, status: "settled", subject_node_id: "step", reason: "r", recommended_alternative_id: route }) as never;
+const settled = (_rule: string, route: string): OnFlow => ({ option: route, reason: "r", step: "step" });
 const sup = (stage: string) => `stage:supervised:${stage}`;
 
 describe("methodology tree", () => {
@@ -106,18 +106,18 @@ describe("methodology tree", () => {
     expect(tree().nodes.some((n) => n.id === `${S("pca")}#pca`)).toBe(true);
   });
 
-  it("marks the route the flow's review recommends, and lights nothing while showing every possibility", () => {
+  it("marks the route the flow's walk took, and lights nothing while showing every possibility", () => {
     const t = tree(RULES, new Map([[S("split"), settled(S("split"), "time")]]));
     expect(data(t, `${S("split")}#time`)).toMatchObject({ picked: true, dimmed: false });
     expect(lit(t)).toEqual([]);
   });
 
   it("with the pipeline path on, lights the flow's lane and the routes it takes, and dims the other lane", () => {
-    const reviews = new Map([
+    const decided = new Map([
       [S("split"), settled(S("split"), "time")],
       [S("clip"), settled(S("clip"), "keep")],
     ]);
-    const t = tree(RULES, reviews, true);
+    const t = tree(RULES, decided, true);
     expect(lit(t)).toEqual([
       "root>stage:question",
       "stage:question>stage:data",
@@ -142,24 +142,10 @@ describe("methodology tree", () => {
   });
 });
 
-describe("one rule on several steps", () => {
-  const item = (rule: string, status: string, step: string) => ({ rule, status, subject_node_id: step }) as never;
-
-  it("shows the first open item, since that is where work is needed", () => {
-    const byRule = reviewByRule([item("a", "settled", "s1"), item("a", "needs_run", "s2"), item("a", "waiting", "s3")]);
-    expect(byRule.get("a")).toMatchObject({ subject_node_id: "s2" });
-  });
-
-  it("counts a reopened decision as open", () => {
-    const byRule = reviewByRule([item("a", "settled", "s1"), item("a", "reopen", "s2")]);
-    expect(byRule.get("a")).toMatchObject({ subject_node_id: "s2" });
-    expect(isOpen("reopen")).toBe(true);
-    expect(isOpen("settled")).toBe(false);
-  });
-
-  it("shows the first item when nothing is open", () => {
-    const byRule = reviewByRule([item("a", "settled", "s1"), item("a", "not_applicable", "s2")]);
-    expect(byRule.get("a")).toMatchObject({ subject_node_id: "s1" });
+describe("the flow's decisions", () => {
+  it("are keyed by method, each with its option, its reason and the first step it shaped", () => {
+    const decision = { method: "methodology.core.split_method@1.0.0", option: "temporal", reason: "A time column.", steps: ["split", "time_order"] } as never;
+    expect(decidedOnFlow([decision]).get("methodology.core.split_method@1.0.0")).toEqual({ option: "temporal", reason: "A time column.", step: "split" });
   });
 });
 

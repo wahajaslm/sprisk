@@ -27,6 +27,7 @@ export const handlers = [
   // No data source was added by reference unless a test says so (ADR-0067).
   http.get("/api/dataset_versions", () => HttpResponse.json([])),
   http.get("/api/methodology_rules", () => HttpResponse.json([])),
+  http.get("/api/methods", () => HttpResponse.json([])),
   http.get("/api/pipeline_versions", () => HttpResponse.json([pipeline])),
   http.get("/api/pipeline_versions/:id/studies", () => HttpResponse.json([])),
   // No walk made a flow unless a test says so (ADR-0063).

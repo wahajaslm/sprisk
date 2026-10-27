@@ -5,19 +5,10 @@ import type {
   MethodologyDecisionByRule,
   PipelineVersion,
 } from "@sprisk/contracts";
-import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ulid } from "ulid";
 
 import { getList, getOne, postOne } from "./client.ts";
-
-/** Resolves a step's proposal for one decision (ADR-0053). Resolving stores a proposal, so it
- * runs only when a person asks; it changes nothing in the flow. */
-export function useResolveStep() {
-  return useMutation({
-    mutationFn: ({ pipelineId, nodeId, decides }: { pipelineId: string; nodeId: string; decides: string }) =>
-      postOne("DecisionProposal", `/pipeline_versions/${pipelineId}/methodology/proposals/${nodeId}/${decides}`, {}),
-  });
-}
 
 export function useApplyMethodology() {
   const client = useQueryClient();
@@ -70,16 +61,6 @@ export const useMethodologyRuleSource = (ruleRef: string) =>
     queryKey: ["methodology_rule_source", ruleRef],
     queryFn: () => getOne("MethodologyRuleSource", `/methodology_rules/${encodeURIComponent(ruleRef)}/source`),
     staleTime: Infinity,
-  });
-
-/** Every rule's status on one flow version (ADR-0059). A version never changes, but its run
- * results do, so the review is fetched again when asked for. */
-export const useMethodologyReview = (pipelineVersionId: string | undefined) =>
-  useQuery({
-    queryKey: ["methodology_review", pipelineVersionId],
-    queryFn: () => getOne("MethodologyReview", `/pipeline_versions/${pipelineVersionId}/methodology/review`),
-    enabled: pipelineVersionId !== undefined,
-    placeholderData: keepPreviousData,
   });
 
 /** A rule's decision comes from a proposal; a method's does not (ADR-0064). */

@@ -60,7 +60,7 @@ describe("a method's decision on a step (ADR-0063)", () => {
 
   it("shows nothing of a method on a step no method shaped", async () => {
     render("model");
-    expect(await screen.findByText("No methodology rule decides this step.")).toBeInTheDocument();
+    expect(await screen.findByText("No method decided this step.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Fair evaluation" })).not.toBeInTheDocument();
   });
 });

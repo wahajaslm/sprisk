@@ -20,7 +20,7 @@ const RULES = [
 // The loop rule's "again" route reopens the cleaning stage.
 (RULES[5] as unknown as { alternatives: { action: object }[] }).alternatives[1]!.action = { type: "reopen", params: { stage: "cleaning" } };
 
-const layout = (reviews = new Map(), path = false) => mapLayout(RULES, reviews, { path });
+const layout = (decided = new Map(), path = false) => mapLayout(RULES, decided, { path });
 type L = ReturnType<typeof layout>;
 const node = (l: L, id: string) => l.nodes.find((n) => n.id === id)!;
 const route = (l: L, id: string) => l.routes.find((r) => r.id === id)!;
@@ -95,7 +95,7 @@ describe("methodology map canvas", () => {
   });
 
   it("with the pipeline path on, marks only the routes the flow's rules chose", () => {
-    const chose = { rule: S("split"), status: "settled", subject_node_id: "split", reason: "r", recommended_alternative_id: "time" } as never;
+    const chose = { option: "time", reason: "r", step: "split" };
     const l = layout(new Map([[S("split"), chose]]), true);
     expect(l.routes.filter((r) => r.chosen && r.from !== "fork").map((r) => r.id)).toEqual([`${S("split")}#time`]);
     expect(layout(new Map([[S("split"), chose]]), false).routes.some((r) => r.chosen)).toBe(false);

@@ -1,8 +1,8 @@
-import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
+import type { FlowDecisions, MethodologyRule } from "@sprisk/contracts";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
-import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource, useMethods } from "../../api/methodology.ts";
-import { ApiError } from "../../api/client.ts";
+import { useMethodologyRules, useMethodologyRuleSource, useMethods } from "../../api/methodology.ts";
+import { useFlowDecisions } from "../../api/walks.ts";
 import { useOperators } from "../../api/hooks.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
@@ -15,14 +15,14 @@ import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
-import { type Chapter, chapters, chapterState, ends } from "./flowGraph.ts";
+import { type Chapter, chapterReached, chapters, ends } from "./flowGraph.ts";
 import { DataFlowMap } from "./DataFlowMap.tsx";
 import { DecisionOrderMap } from "./DecisionOrderMap.tsx";
 import { FlowMap } from "./FlowMap.tsx";
 import { MethodologyCanvas } from "./MethodologyCanvas.tsx";
-import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
+import { MethodologyMap } from "./MethodologyMap.tsx";
 import { RuleTree } from "./RuleTree.tsx";
-import { activation, givenText, isOpen, lookedAt, reviewByRule, routeWhen, stageName, withSettings } from "./ruleTree.ts";
+import { activation, DECIDED, decidedOnFlow, givenText, lookedAt, type OnFlow, routeWhen, stageName, withSettings } from "./ruleTree.ts";
 
 const ignore = () => undefined;
 
@@ -37,8 +37,8 @@ type Tab = (typeof TABS)[number];
 export function MethodologyPage() {
   const rules = useMethodologyRules();
   const versionId = useSelection((s) => s.pipelineVersionId);
-  const review = useMethodologyReview(versionId);
-  const reviews = useMemo(() => reviewByRule(review.data?.items ?? []), [review.data]);
+  const flowDecisions = useFlowDecisions(versionId);
+  const decided = useMemo(() => decidedOnFlow(flowDecisions.data?.decisions ?? []), [flowDecisions.data]);
   const [filter, setFilter] = useState("");
   const [path, setPath] = useState(false);
   const [picked, setPicked] = useState<string>();
@@ -62,7 +62,7 @@ export function MethodologyPage() {
   const byRule = all.findIndex((c) => current !== undefined && c.rules.includes(current));
   const at = byKey >= 0 ? byKey : Math.max(0, byRule);
   const chapter = all[at];
-  const onFlow = current && reviews.get(current.id);
+  const onFlow = current && decided.get(current.id);
   const pickedId = current?.id === pickedRule ? picked : current?.id;
 
   return (
@@ -79,7 +79,7 @@ export function MethodologyPage() {
                 rows={[
                   { k: "Status", v: current.status },
                   { k: "Stage", v: stageName(current.stage) },
-                  { k: "On this pipeline", v: onFlow ? STATUS_LABEL[onFlow.status] : "—", warn: onFlow !== undefined && isOpen(onFlow.status) },
+                  { k: "On this pipeline", v: onFlow ? DECIDED : "—" },
                 ]}
               />
             )
@@ -88,14 +88,12 @@ export function MethodologyPage() {
           {all.map((c, i) => (
             <SideGroup key={c.key} num={i + 1} label={stageName(c.stage)} meta={c.rules.length}>
               {c.rules.map((r) => {
-                const item = reviews.get(r.id);
                 return (
                   <ListRow
                     key={r.id}
                     title={r.name}
                     meta={r.decides}
-                    {...(item ? { badge: STATUS_LABEL[item.status] } : r.status === "draft" ? { badge: "Draft" } : {})}
-                    warn={item !== undefined && isOpen(item.status)}
+                    {...(decided.has(r.id) ? { badge: DECIDED } : r.status === "draft" ? { badge: "Draft" } : {})}
                     selected={r.id === current?.id}
                     onClick={() => setPicked(r.id)}
                   />
@@ -116,22 +114,22 @@ export function MethodologyPage() {
       {tab === "Map" && (
         <div className="mth-canvas">
           {view === "map" ? (
-            <RuleTree chapters={all} reviews={reviews} picked={current?.id} onPick={setPicked} />
+            <RuleTree chapters={all} picked={current?.id} onPick={setPicked} />
           ) : view === "canvas" ? (
-            <MethodologyCanvas rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={pickedId} onPick={setPicked} />
+            <MethodologyCanvas rules={shown} decided={decided} path={path && versionId !== undefined} picked={pickedId} onPick={setPicked} />
           ) : view === "tree" ? (
-            <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={pickedId} onPick={setPicked} />
+            <MethodologyMap rules={shown} decided={decided} path={path && versionId !== undefined} picked={pickedId} onPick={setPicked} />
           ) : chapter ? (
             <>
-              <Stepper all={all} at={at} reviews={reviews} onChoose={setChapterKey} />
-              <FlowMap chapter={chapter} reviews={reviews} path={path && versionId !== undefined} {...ends(all, at)} picked={pickedId} onPick={setPicked} />
+              <Stepper all={all} at={at} decided={decided} onChoose={setChapterKey} />
+              <FlowMap chapter={chapter} decided={decided} path={path && versionId !== undefined} {...ends(all, at)} picked={pickedId} onPick={setPicked} />
             </>
           ) : (
             <p className="muted pad">No rule matches.</p>
           )}
           {current && (
             <aside className="mth-card">
-              <RuleCard key={current.id} rule={current} review={onFlow} route={pickedRoute} onOpen={setTab} />
+              <RuleCard key={current.id} rule={current} decided={onFlow} route={pickedRoute} onOpen={setTab} />
             </aside>
           )}
           <div className="mth-bar">
@@ -150,15 +148,15 @@ export function MethodologyPage() {
             <label className="mth-toggle" title={versionId ? "Light the selected pipeline's path through the tree" : "Select a pipeline first"}>
               <input type="checkbox" role="switch" checked={path && versionId !== undefined} disabled={!versionId} onChange={(e) => setPath(e.target.checked)} /> Pipeline path
             </label>
-            <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error ?? undefined} />
+            <FlowSummary versionId={versionId} flow={flowDecisions.data} error={flowDecisions.error ?? undefined} />
           </div>
         </div>
       )}
       {tab === "Decision order" && <MethodsTab view={DecisionOrderMap} picked={current?.id} onPick={setPicked} />}
       {tab === "Data flow" && <MethodsTab view={DataFlowMap} picked={current?.id} onPick={setPicked} />}
-      {tab === "Overview" && current && <RuleDetail rule={current} review={onFlow} route={pickedRoute} />}
+      {tab === "Overview" && current && <RuleDetail rule={current} decided={onFlow} route={pickedRoute} />}
       {tab === "Code" && current && <RuleCode ruleRef={current.id} />}
-      {tab === "Used in" && current && <UsedIn rule={current} versionId={versionId} items={review.data?.items} />}
+      {tab === "Used in" && current && <UsedIn rule={current} versionId={versionId} flow={flowDecisions.data} />}
     </PageFrame>
   );
 }
@@ -191,17 +189,18 @@ function MethodsTab({ view: View, picked, onPick }: { view: MethodsView; picked:
   );
 }
 
-/** The steps of the selected flow this rule decides, with its status and reason on each. */
-function UsedIn({ rule, versionId, items }: { rule: MethodologyRule; versionId: string | undefined; items: MethodologyReviewItem[] | undefined }) {
-  if (!versionId) return <p className="muted">Select a pipeline to see where this rule acts on it.</p>;
-  if (!items) return <Loading text="Reviewing the pipeline…" />;
-  const mine = items.filter((i) => i.rule === rule.id);
-  if (mine.length === 0) return <p className="muted">This rule decides nothing on the selected pipeline.</p>;
+/** What the selected flow's walk decided by this method: its option, why, and the steps it shaped. */
+function UsedIn({ rule, versionId, flow }: { rule: MethodologyRule; versionId: string | undefined; flow: FlowDecisions | undefined }) {
+  if (!versionId) return <p className="muted">Select a pipeline to see where this method acts on it.</p>;
+  if (!flow) return <Loading text="Reading the pipeline's decisions…" />;
+  const mine = flow.decisions.find((d) => d.method === rule.id);
+  if (!mine) return <p className="muted">This method decided nothing on the selected pipeline.</p>;
   return (
-    <BodySection title="On the selected pipeline" note="Each step this rule decides, with its status and why.">
+    <BodySection title="On the selected pipeline" note="What this method chose, and each step it shaped.">
       <RowList label="Used in">
-        {mine.map((i) => (
-          <RowItem key={`${i.subject_node_id ?? "flow"}-${i.decides}`} name={i.subject_node_id ? `Step ${i.subject_node_id}` : "The pipeline"} meta={`${STATUS_LABEL[i.status]} · ${i.reason}`} warn={isOpen(i.status)} />
+        <RowItem key="option" name={mine.label} meta={mine.reason} />
+        {mine.steps.map((step) => (
+          <RowItem key={step} name={`Step ${step}`} meta={mine.label} />
         ))}
       </RowList>
     </BodySection>
@@ -209,12 +208,12 @@ function UsedIn({ rule, versionId, items }: { rule: MethodologyRule; versionId: 
 }
 
 /** The stages in decision order, one chosen: each says how many decisions it holds, and for
- * the selected flow, whether the flow reaches it and how many of its decisions are open. */
-function Stepper({ all, at, reviews, onChoose }: { all: Chapter[]; at: number; reviews: Map<string, MethodologyReviewItem>; onChoose: (key: string) => void }) {
+ * the selected flow, whether the flow reaches it. */
+function Stepper({ all, at, decided, onChoose }: { all: Chapter[]; at: number; decided: Map<string, OnFlow>; onChoose: (key: string) => void }) {
   return (
     <nav className="mth-stepper" aria-label="Stages">
       {all.map((c, i) => {
-        const { open, reached } = chapterState(c, reviews);
+        const reached = chapterReached(c, decided);
         const laneStart = c.lane !== undefined && all[i - 1]?.lane !== c.lane;
         return (
           <span key={c.key} className="mth-step-wrap">
@@ -222,7 +221,6 @@ function Stepper({ all, at, reviews, onChoose }: { all: Chapter[]; at: number; r
             <button type="button" className={`mth-step${reached ? " reached" : ""}`} aria-current={i === at ? "step" : undefined} onClick={() => onChoose(c.key)}>
               <span className="mth-node-code">{c.code}</span> {stageName(c.stage)}
               <span className="mth-step-count">{c.rules.length}</span>
-              {open > 0 && <span className="mth-step-open" title={`${open} open on this pipeline`} />}
             </button>
           </span>
         );
@@ -231,32 +229,23 @@ function Stepper({ all, at, reviews, onChoose }: { all: Chapter[]; at: number; r
   );
 }
 
-/** What the selected flow's review says: how many decisions are open, and what to do next. */
-function ReviewSummary({ versionId, items, next, error }: { versionId: string | undefined; items: MethodologyReviewItem[] | undefined; next: number[] | undefined; error: Error | undefined }) {
-  if (!versionId) return <span className="muted">Select a pipeline to see its status on each decision.</span>;
-  // A flow with no question is a state to fix, not a failure.
-  if (error instanceof ApiError && error.errors.some((e) => e.code === "question_required")) return <span className="muted">Link a question to this pipeline to review it.</span>;
+/** What the selected flow's walk decided: how many decisions, or that no walk made it. */
+function FlowSummary({ versionId, flow, error }: { versionId: string | undefined; flow: FlowDecisions | undefined; error: Error | undefined }) {
+  if (!versionId) return <span className="muted">Select a pipeline to see what was decided on it.</span>;
   if (error) return <span role="alert" className="error">{error.message}</span>;
-  if (!items || !next) return <Loading text="Reviewing the pipeline…" />;
-  const open = items.filter((i) => isOpen(i.status)).length;
-  const first = next[0] === undefined ? undefined : items[next[0]];
+  if (!flow) return <Loading text="Reading the pipeline's decisions…" />;
+  const count = flow.decisions.length;
   return (
-    <span className="mth-summary" aria-label="Pipeline review">
-      {open === 0 ? "Nothing open on this pipeline." : `${open} open on this pipeline.`}
-      {first && (
-        <>
-          {" "}
-          Next: <strong>{first.decides}</strong> ({STATUS_LABEL[first.status].toLowerCase()})
-        </>
-      )}
+    <span className="mth-summary" aria-label="Pipeline decisions">
+      {flow.walk_id === undefined ? "No walk made this pipeline." : count === 1 ? "1 decision on this pipeline." : `${count} decisions on this pipeline.`}
     </span>
   );
 }
 
 /** The design's rule card over the map: what the rule chose on this flow, its alternatives with
  * the rule's pick marked, and the way into its overview and code. */
-function RuleCard({ rule, review, route, onOpen }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined; route: string | undefined; onOpen: (tab: Tab) => void }) {
-  const chosen = rule.alternatives.find((a) => a.id === review?.recommended_alternative_id);
+function RuleCard({ rule, decided, route, onOpen }: { rule: MethodologyRule; decided: OnFlow | undefined; route: string | undefined; onOpen: (tab: Tab) => void }) {
+  const chosen = rule.alternatives.find((a) => a.id === decided?.option);
   return (
     <section className="mth-detail compact" aria-label={rule.name}>
       <header className="mth-detail-head">
@@ -267,13 +256,13 @@ function RuleCard({ rule, review, route, onOpen }: { rule: MethodologyRule; revi
         {rule.question && <p>{rule.question}</p>}
       </header>
       <div className="mth-chosen">
-        <span>Chosen by rule</span>
-        <strong>{chosen ? chosen.label : review ? STATUS_LABEL[review.status] : "Not reviewed on this pipeline"}</strong>
+        <span>Chosen on this pipeline</span>
+        <strong>{chosen ? chosen.label : "Not decided on this pipeline"}</strong>
       </div>
-      {review && (
+      {decided && (
         <section className="mth-on-flow" aria-label="On this pipeline">
           <h3 className="dsx-h">On this pipeline</h3>
-          <p>{review.reason}</p>
+          <p>{decided.reason}</p>
         </section>
       )}
       {rule.alternatives.length > 0 && (
@@ -303,7 +292,7 @@ function RuleCard({ rule, review, route, onOpen }: { rule: MethodologyRule; revi
 }
 
 /** The picked rule in full: what it decides, its status on the selected flow, and its overview. */
-function RuleDetail({ rule, review, route }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined; route: string | undefined }) {
+function RuleDetail({ rule, decided, route }: { rule: MethodologyRule; decided: OnFlow | undefined; route: string | undefined }) {
   const source = useMethodologyRuleSource(rule.id);
   const python = source.data?.files.some((f) => f.language === "python");
   return (
@@ -316,19 +305,19 @@ function RuleDetail({ rule, review, route }: { rule: MethodologyRule; review: Me
         </p>
         {source.data && <p className="mth-tag">{python ? "Python decide() in rule.py" : "No rule.py yet: manifest only"}</p>}
       </header>
-      {review && (
+      {decided && (
         <section className="mth-on-flow" aria-label="On this pipeline">
           <h3 className="dsx-h">On this pipeline</h3>
           <p>
-            <span className={`mth-chip ${review.status}`}>{STATUS_LABEL[review.status]}</span>
-            {review.subject_node_id && (
+            <span className="mth-chip settled">{DECIDED}</span>
+            {decided.step && (
               <>
                 {" "}
-                step <code>{review.subject_node_id}</code>
+                step <code>{decided.step}</code>
               </>
             )}
           </p>
-          <p>{review.reason}</p>
+          <p>{decided.reason}</p>
         </section>
       )}
       <Overview rule={rule} route={route} />
