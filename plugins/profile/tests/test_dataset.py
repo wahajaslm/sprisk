@@ -21,10 +21,12 @@ from sprisk_profile.dataset import (
 from sprisk_profile.dataset import profile as raw_profile
 
 
-def profile_of(data: pl.DataFrame, **sizes: int) -> DatasetProfile:
+def profile_of(
+    data: pl.DataFrame, total_rows: int | None = None, total_columns: int | None = None
+) -> DatasetProfile:
     """As Rust reads it: the JSON checked against the contract."""
     return DatasetProfile.model_validate_json(
-        json.dumps(raw_profile(data, **sizes), allow_nan=False)
+        json.dumps(raw_profile(data, total_rows, total_columns), allow_nan=False)
     )
 
 

@@ -66,12 +66,19 @@ def profile(
     total_rows: int | None = None,
     total_columns: int | None = None,
     target: str | None = None,
+    counted: bool = True,
 ) -> dict[str, Any]:
+    """`counted=False`: the table has more rows than `data` and nobody counted them (ADR-0067),
+    so the total is left out and rows equal to an earlier one are not counted."""
     width = data.width
-    duplicates = _duplicates(
-        data,
-        data.height if total_rows is None else total_rows,
-        width if total_columns is None else total_columns,
+    duplicates = (
+        _duplicates(
+            data,
+            data.height if total_rows is None else total_rows,
+            width if total_columns is None else total_columns,
+        )
+        if counted
+        else None
     )
     data = _finite(data.select(data[n] for n in data.columns[:MAX_COLUMNS]))
     rows = data.height
@@ -84,7 +91,7 @@ def profile(
     varying = [c for c in measured if data[c].drop_nulls().n_unique() > 1][:MAX_CORRELATED]
     label = None if target is None else label_profile(data, columns, target)
     return {
-        "total_rows": rows if total_rows is None else total_rows,
+        **({"total_rows": rows if total_rows is None else total_rows} if counted else {}),
         "total_columns": width if total_columns is None else total_columns,
         "profiled_rows": rows,
         "band_rows": band_rows,
