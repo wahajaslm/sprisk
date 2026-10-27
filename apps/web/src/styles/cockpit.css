@@ -3014,14 +3014,6 @@ p { margin: 0; }
   padding: 32px;
 }
 
-.objective-empty-card {
-  max-width: 620px;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
 .objective-empty-title {
   font-size: var(--fs-30);
   font-weight: 500;
@@ -3035,79 +3027,6 @@ p { margin: 0; }
   line-height: 1.55;
   color: var(--ink-3);
   margin: 0 0 16px;
-}
-
-.objective-input-box {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-panel);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
-}
-
-.objective-input-box:focus-within {
-  border-color: var(--border-control-hover);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-}
-
-.objective-file-chip {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  background: var(--gray-2);
-  border: 1px solid var(--alpha-06);
-  border-radius: 4px;
-  font-size: var(--fs-12);
-  color: var(--ink-2);
-}
-
-.objective-file-chip code {
-  font-family: var(--font-mono);
-}
-
-.objective-file-chip button {
-  background: none;
-  border: none;
-  color: var(--ink-4);
-  cursor: pointer;
-  padding: 0;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.objective-file-chip button:hover {
-  color: var(--ink-1);
-}
-
-.objective-textarea {
-  background: transparent;
-  border: none;
-  outline: none;
-  font-family: var(--font-sans);
-  font-size: var(--fs-15);
-  color: var(--ink-0);
-  resize: none;
-  line-height: 1.5;
-}
-
-.objective-input-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-top: 1px solid var(--alpha-04);
-  padding-top: 10px;
-}
-
-.objective-input-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .objective-send-btn {

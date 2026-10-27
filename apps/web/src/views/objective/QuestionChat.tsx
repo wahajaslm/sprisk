@@ -10,19 +10,14 @@ import { Loading } from "../../components/ui/Loading.tsx";
 import { timestamp } from "../../flow/edit.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { SendIcon } from "../Icons.tsx";
-import { answer, chips, nextSlot, opening, prompt, toQuestion, type Chat, type Said } from "./conversation.ts";
+import { answer, chips, localFile, nextSlot, opening, prompt, toQuestion, type Chat, type Said } from "./conversation.ts";
 import { StartWalk } from "./StartWalk.tsx";
 
-type Message = CopilotMessage | { role: "error"; content: string };
+/** A person's words and the model's replies are what the model may see again. The page's own
+ * questions name columns (dataset text, rule 7): they reach the model only in the context. */
+type Message = CopilotMessage | { role: "page" | "error"; content: string };
 
 const CONTEXT_LIMIT = 500;
-
-/** The walk reads file paths: a single local CSV or Parquet file can be filled in for the person. */
-function localFile(source: DatasetVersion): string[] {
-  if (source.file_count !== 1 || !source.location.startsWith("file://")) return [];
-  if (!/\.(csv|parquet)$/i.test(source.location)) return [];
-  return [decodeURIComponent(new URL(source.location).pathname)];
-}
 
 /** A question drafted in a conversation that starts from a data source (ADR-0068). */
 export function QuestionChat({ investigationId, onPick, onLeave }: {
@@ -86,7 +81,7 @@ function Conversation({ source, profile, investigationId, onLeave }: {
   onLeave?: (() => void) | undefined;
 }) {
   const [chat, setChat] = useState<Chat>({ draft: {}, done: [] });
-  const [messages, setMessages] = useState<Message[]>(() => [{ role: "assistant", content: opening(source.name, profile) }]);
+  const [messages, setMessages] = useState<Message[]>(() => [{ role: "page", content: opening(source.name, profile) }]);
   const [text, setText] = useState("");
   const [ids] = useState(() => ({ id: `qv_${ulid()}`, investigation: investigationId ?? `inv_${ulid()}` }));
   const copilot = useMutation({ mutationFn: (turn: CopilotMessage[]) => askCopilot(turn, context()) });
@@ -100,24 +95,24 @@ function Conversation({ source, profile, investigationId, onLeave }: {
   }
 
   function reply(shown: string, value: string, said: Said) {
-    const said_ = { role: "user" as const, content: shown };
+    const mine = { role: "user" as const, content: shown };
     const next = answer(chat, profile, value, said);
     if (next) {
       setChat(next);
-      setMessages([...messages, said_, { role: "assistant", content: prompt(next) }]);
+      setMessages([...messages, mine, { role: "page", content: prompt(next) }]);
       return;
     }
     // The model only talks: its reply is shown, and the same question is asked again.
-    const sent = [...messages, said_];
+    const sent = [...messages, mine];
     setMessages(sent);
-    const turn = sent.filter((m): m is CopilotMessage => m.role !== "error");
+    const turn = sent.filter((m): m is CopilotMessage => m.role === "user" || m.role === "assistant");
     copilot.mutate(turn, {
-      onSuccess: (content) => setMessages((all) => [...all, { role: "assistant", content }, { role: "assistant", content: prompt(chat) }]),
+      onSuccess: (content) => setMessages((all) => [...all, { role: "assistant", content }, { role: "page", content: prompt(chat) }]),
       onError: (error) =>
         setMessages((all) => [
           ...all,
           { role: "error", content: `I could not read that, and the Copilot cannot help: ${error.message}` },
-          { role: "assistant", content: prompt(chat) },
+          { role: "page", content: prompt(chat) },
         ]),
     });
   }
@@ -137,7 +132,7 @@ function Conversation({ source, profile, investigationId, onLeave }: {
             m.role === "error" ? (
               <p key={i} role="alert" className="error">{m.content}</p>
             ) : (
-              <div key={i} className={`copilot-message ${m.role}`}>
+              <div key={i} className={`copilot-message ${m.role === "user" ? "user" : "assistant"}`}>
                 <div className="copilot-message-body">{m.content}</div>
               </div>
             ),
