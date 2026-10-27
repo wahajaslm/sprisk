@@ -1,4 +1,4 @@
-import { parse, type MethodologyReviewItem, type MethodologyRule, type MethodologyRuleSource } from "@sprisk/contracts";
+import { parse, type Method, type MethodologyReviewItem, type MethodologyRule, type MethodologyRuleSource } from "@sprisk/contracts";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -9,6 +9,7 @@ import multicollinearity from "../../../tests/contract/methodology_rule/valid/mu
 import repeatedItems from "../../../tests/contract/method/valid/binds-a-concept.json";
 import splitMethod from "../../../tests/contract/method/valid/split-method.json";
 import { useSelection } from "../src/workbench/selection.ts";
+import { decisionFlow } from "../src/views/methodology/decisionFlow.ts";
 import { MethodologyPage } from "../src/views/methodology/MethodologyPage.tsx";
 import { ruleTree, STAGES } from "../src/views/methodology/ruleTree.ts";
 import { renderWithApi } from "./render.tsx";
@@ -403,7 +404,7 @@ describe("pipeline path switch", () => {
 });
 
 describe("decision order", () => {
-  it("shows every method as a numbered circle in decision order, and the picked one's choices in a card", async () => {
+  it("shows the decisions as a flowchart in order, and the picked one's choices in a card", async () => {
     serve([multicollinearity as MethodologyRule]);
     server.use(http.get("/api/methods", () => HttpResponse.json([repeatedItems, splitMethod])));
     renderWithApi(<MethodologyPage />);
@@ -421,7 +422,7 @@ describe("decision order", () => {
     expect(choices).toHaveTextContent(`If ${splitMethod.options[0]!.when}`);
     expect(choices).toHaveTextContent("→ uses group_split as the split");
     expect(within(card).getByRole("button", { name: "1. Duplicate analysis" })).toBeInTheDocument();
-    expect(card).toHaveTextContent("No measurement: it decides from the decisions it waits for.");
+    expect(card).toHaveTextContent("No measurement: only the earlier decisions it waits for.");
   });
 
   it("says so when the methods cannot be read", async () => {
@@ -430,5 +431,20 @@ describe("decision order", () => {
     renderWithApi(<MethodologyPage />);
     await userEvent.click(await screen.findByRole("tab", { name: "Decision order" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+});
+
+describe("decision flow", () => {
+  it("branches each decision into its choices, and leads every choice on to the next decision", () => {
+    const flow = decisionFlow([splitMethod, repeatedItems] as Method[], "End");
+    const decisions = flow.nodes.filter((n) => n.kind === "decision").map((n) => n.id);
+    // Duplicate analysis is decided first: the split waits for it.
+    expect(decisions).toEqual([`decision:${repeatedItems.id}`, `decision:${splitMethod.id}`]);
+    for (const option of repeatedItems.options) {
+      const choice = `choice:${repeatedItems.id}#${option.id}`;
+      expect(flow.links).toContainEqual(expect.objectContaining({ from: decisions[0], to: choice }));
+      expect(flow.links).toContainEqual(expect.objectContaining({ from: choice, to: decisions[1] }));
+    }
+    expect(flow.links.filter((l) => l.to === "end")).toHaveLength(splitMethod.options.length);
   });
 });

@@ -2456,27 +2456,15 @@ p { margin: 0; }
 .page-pane.flush .page-body { padding: 0; }
 /* The map's look: rings, dots and white strands, no boxes. */
 .mth-map .react-flow__handle { opacity: 0; pointer-events: none; }
-/* Decision order: stages as boxes top to bottom, each method a numbered circle with its name
-   beside it (decisionOrder.ts NODE: 240 x 40, a 28px circle); details are in the .mth-card. */
-.mth-order-stage { width: 100%; height: 100%; border: 1px solid var(--border-panel); border-radius: var(--radius-lg); background: var(--alpha-05); pointer-events: none; }
-.mth-order-stage-title { display: block; padding: 14px 16px 0; font: var(--fw-medium) var(--fs-12) var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-label); }
-.mth-order-node { display: flex; align-items: center; gap: 10px; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.mth-order-circle { flex: none; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--alpha-35); background: var(--ground); font: var(--fw-medium) 11px var(--mono); color: var(--soft); transition: all 0.15s; }
-.mth-order-node:hover .mth-order-circle { border-color: var(--white); }
-.mth-order-node[aria-pressed="true"] .mth-order-circle { background: var(--white); border-color: var(--white); color: var(--ground); box-shadow: 0 0 6px var(--alpha-35); }
-.mth-order-node:focus-visible { outline: none; }
-.mth-order-node:focus-visible .mth-order-circle { box-shadow: 0 0 0 2px var(--white); }
-.mth-order-label { display: grid; min-width: 0; gap: 1px; }
-.mth-order-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-sm); font-weight: 600; color: var(--soft); line-height: 17px; }
-.mth-order-node[aria-pressed="true"] .mth-order-name { color: var(--white); }
-.mth-order-key { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--text-xs) var(--mono); color: var(--quiet); }
-.mth-order .mth-order-edge.waits path { stroke: var(--soft); stroke-width: 1.5; }
-.mth-order .mth-order-edge.measures path { stroke: var(--alpha-35); stroke-width: 1.25; stroke-dasharray: 4 3; }
-.mth-order-measure { display: flex; align-items: center; gap: 10px; width: 100%; height: 100%; color: var(--muted); }
-.mth-order-square { flex: none; border: 1.5px solid var(--alpha-35); border-radius: 2px; background: var(--ground); }
-.mth-order-measure-by { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-xs); color: var(--muted); line-height: 15px; }
-.mth-order-starts { display: grid; gap: 4px; margin: 0; padding-left: 16px; font-size: var(--fs-12-5); color: var(--text-secondary); }
-.mth-order-starts code { font: 11px var(--mono); color: var(--text-primary); }
+/* Decision order: a flowchart read top to bottom (decisionFlow.ts): the flow view's diamonds
+   for decisions and circles for choices, a stage title over each stage's first decision. */
+.mth-order-stage-title { width: 100%; padding-bottom: 6px; border-bottom: 1px solid var(--border-panel); font: var(--fw-medium) var(--fs-12) var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-label); }
+.mth-order-question { font-size: var(--text-xs); line-height: 15px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mth-order-choice { gap: 3px; }
+.mth-order-choice .mth-order-if, .mth-order-choice .mth-order-does { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); line-height: 15px; }
+.mth-order-choice .mth-flow-name { font-weight: 600; }
+.mth-order-choice:hover .mth-flow-circle { border-color: var(--white); }
+.mth-order .mth-order-edge path { stroke: var(--alpha-35); stroke-width: 1.25; }
 .mth-order-choices { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .mth-order-choices li { display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--alpha-05); font-size: var(--fs-12-5); }
 .mth-order-if { color: var(--text-muted); }
