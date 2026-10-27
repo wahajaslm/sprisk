@@ -19,10 +19,10 @@ outputs:
 params_schema:
   type: object
   additionalProperties: false
-  required: [audio_dir, audio_path_column]
+  required: [audio_dir, file_pattern]
   properties:
-    audio_dir: { type: string, minLength: 1, x-sprisk-local-path: true, description: "Root directory of audio files." }
-    audio_path_column: { type: string, minLength: 1, x-sprisk-column: true, description: "Relative audio-file path for each row." }
+    audio_dir: { type: string, minLength: 1, x-sprisk-local-path: true, x-sprisk-asset-root: audio, description: "Root directory of audio files." }
+    file_pattern: { type: string, minLength: 1, x-sprisk-asset-file: audio, description: "How each row's file is named from its columns, e.g. {clip_path} or image_{imageid}.jpg." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 7200 }

@@ -710,6 +710,12 @@ class EvidenceKind(RootModel[str]):
     ]
 
 
+class Asset(StrEnum):
+    image = "image"
+    audio = "audio"
+    video = "video"
+
+
 class QuestionStatement(StrEnum):
     costs = "costs"
     interpretability = "interpretability"
@@ -1462,6 +1468,13 @@ class AssetBinding(StrictModel):
     modality: Modality
     asset_root: Annotated[str, Field(min_length=1)]
     link_column: Annotated[str, Field(min_length=1)]
+    file_pattern: Annotated[
+        str | None,
+        Field(
+            description="How a row's file is named from its columns, e.g. image_{imageid}_product_{productid}.jpg. Absent: link_column holds the file name, relative to asset_root.",
+            pattern="\\{[A-Za-z_][A-Za-z0-9_]*\\}",
+        ),
+    ] = None
     origin: Origin1
 
 
@@ -2325,6 +2338,12 @@ class MethodAppliesWhen(StrictModel):
         extra="forbid",
     )
     task: list[TaskType]
+    assets: Annotated[
+        list[Asset] | None,
+        Field(
+            description="Kinds of file the question must bind to its rows (QuestionVersion.asset_bindings), every one. Absent: none needed."
+        ),
+    ] = None
 
 
 class MethodNeeds(StrictModel):

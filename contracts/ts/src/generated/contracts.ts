@@ -2137,6 +2137,10 @@ export interface Method {
  */
 export interface MethodAppliesWhen {
   task: TaskType[];
+  /**
+   * Kinds of file the question must bind to its rows (QuestionVersion.asset_bindings), every one. Absent: none needed.
+   */
+  assets?: ("image" | "audio" | "video")[];
 }
 /**
  * Everything decide() may read. It reads nothing else.
@@ -3719,6 +3723,10 @@ export interface AssetBinding {
   modality: "image" | "audio" | "video";
   asset_root: string;
   link_column: string;
+  /**
+   * How a row's file is named from its columns, e.g. image_{imageid}_product_{productid}.jpg. Absent: link_column holds the file name, relative to asset_root.
+   */
+  file_pattern?: string;
   origin: "explicit" | "confirmed";
 }
 /**

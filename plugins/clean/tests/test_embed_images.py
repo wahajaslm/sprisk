@@ -18,7 +18,9 @@ def test_embed_images_appends_one_unit_vector_per_found_image(
     train = pl.DataFrame({"imageid": [1, 2], "productid": [10, 20]})
     test = pl.DataFrame({"imageid": [3, 4], "productid": [30, 40]})
 
-    result = module.embed_images(train, test, tmp_path, "imageid", "productid", batch_size=1)
+    result = module.embed_images(
+        train, test, tmp_path, "image_{imageid}_product_{productid}.jpg", batch_size=1
+    )
 
     matrix, names = result["train_words"]
     assert matrix.shape == (2, 8)

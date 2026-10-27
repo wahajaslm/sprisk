@@ -12,7 +12,7 @@ import numpy as np
 import polars as pl
 from PIL import Image, UnidentifiedImageError
 
-from .row_assets import append_features, asset_root, confined_path, identifier
+from .row_assets import append_features, asset_root, confined_path, file_names
 
 # torch and transformers load in the step, not at import: the worker imports every step's
 # module at start, and torch alone takes seconds.
@@ -27,31 +27,26 @@ def embed_images(
     train: pl.DataFrame,
     test: pl.DataFrame,
     image_dir: Path,
-    image_id_column: str,
-    product_id_column: str,
+    file_pattern: str,
     batch_size: int = 64,
     train_words: tuple[Any, tuple[str, ...]] | None = None,
     test_words: tuple[Any, tuple[str, ...]] | None = None,
 ) -> dict[str, Any]:
     """Append frozen CLIP image features to an optional text matrix.
 
-    Rakuten names each file ``image_{imageid}_product_{productid}.jpg``. Matching uses both
-    identifiers, so an image cannot silently attach to a different product. The model is loaded
+    ``file_pattern`` names each row's image from its columns (Rakuten:
+    ``image_{imageid}_product_{productid}.jpg``). The model is loaded
     with ``local_files_only``: pipeline execution never downloads weights or touches a network.
     """
     root = asset_root(image_dir, "image_dir")
-    for rows, name in ((train, "train"), (test, "test")):
-        for column in (image_id_column, product_id_column):
-            if column not in rows.columns:
-                raise ValueError(f"{column!r} is not a column of the {name} rows")
     if batch_size < 1:
         raise ValueError("batch_size must be at least 1")
     processor, model = load_clip()
     train_values, train_state = _encode(
-        train, root, image_id_column, product_id_column, batch_size, processor, model
+        file_names(train, file_pattern), root, batch_size, processor, model
     )
     test_values, test_state = _encode(
-        test, root, image_id_column, product_id_column, batch_size, processor, model
+        file_names(test, file_pattern), root, batch_size, processor, model
     )
     names = tuple(f"image_clip_{i:03d}" for i in range(train_values.shape[1]))
     train_matrix, train_names = append_features(train_values, names, train_words)
@@ -88,10 +83,8 @@ def load_clip() -> tuple[Any, Any]:
 
 
 def _encode(
-    rows: pl.DataFrame,
+    names: list[str | None],
     root: Path,
-    image_id: str,
-    product_id: str,
     batch_size: int,
     processor: Any,
     model: Any,
@@ -100,13 +93,11 @@ def _encode(
         import torch
     except ImportError as error:
         raise ImportError(VISION_MISSING) from error
-    out = np.zeros((rows.height, model.config.projection_dim), dtype=np.float32)
-    state = {"rows": rows.height, "found": 0, "missing": 0, "unreadable": 0}
+    out = np.zeros((len(names), model.config.projection_dim), dtype=np.float32)
+    state = {"rows": len(names), "found": 0, "missing": 0, "unreadable": 0}
     paths: list[tuple[int, Path]] = []
-    for index, (image, product) in enumerate(
-        zip(rows[image_id].to_list(), rows[product_id].to_list(), strict=True)
-    ):
-        path = confined_path(root, f"image_{identifier(image)}_product_{identifier(product)}.jpg")
+    for index, name in enumerate(names):
+        path = confined_path(root, name)
         if path is None or not path.is_file():
             state["missing"] += 1
         else:

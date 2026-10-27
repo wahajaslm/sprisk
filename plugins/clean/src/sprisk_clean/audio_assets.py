@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from .row_assets import append_features, asset_root, confined_path, share, summary
+from .row_assets import append_features, asset_root, confined_path, file_names, share, summary
 
 try:
     import librosa
@@ -47,16 +47,14 @@ AUDIO_FEATURE_NAMES = (
 )
 
 
-def audit_audio(data: pl.DataFrame, audio_dir: Path, audio_path_column: str) -> dict[str, Any]:
+def audit_audio(data: pl.DataFrame, audio_dir: Path, file_pattern: str) -> dict[str, Any]:
     """Report decode coverage and acoustically meaningful quality measures.
 
     Paths are relative to ``audio_dir`` and are rejected if they escape it.  The audit sees
     samples, never labels, so it is valid before the train/test split.
     """
     root = asset_root(audio_dir, "audio_dir")
-    if audio_path_column not in data.columns:
-        raise ValueError(f"{audio_path_column!r} is not a column of the data")
-    values = _measure(data[audio_path_column].to_list(), root)
+    values = _measure(file_names(data, file_pattern), root)
     decoded = values["decoded"]
     durations = [item["duration_seconds"] for item in decoded]
     rates = [item["sample_rate"] for item in decoded]
@@ -83,7 +81,7 @@ def featurize_audio(
     train: pl.DataFrame,
     test: pl.DataFrame,
     audio_dir: Path,
-    audio_path_column: str,
+    file_pattern: str,
     train_words: tuple[Any, tuple[str, ...]] | None = None,
     test_words: tuple[Any, tuple[str, ...]] | None = None,
 ) -> dict[str, Any]:
@@ -94,11 +92,8 @@ def featurize_audio(
     zero-crossing rate and tempo. Missing/unreadable assets produce all-zero rows and evidence.
     """
     root = asset_root(audio_dir, "audio_dir")
-    for frame, name in ((train, "train"), (test, "test")):
-        if audio_path_column not in frame.columns:
-            raise ValueError(f"{audio_path_column!r} is not a column of the {name} rows")
-    train_values, train_state = _features(train[audio_path_column].to_list(), root)
-    test_values, test_state = _features(test[audio_path_column].to_list(), root)
+    train_values, train_state = _features(file_names(train, file_pattern), root)
+    test_values, test_state = _features(file_names(test, file_pattern), root)
     train_matrix, train_names = append_features(train_values, AUDIO_FEATURE_NAMES, train_words)
     test_matrix, test_names = append_features(test_values, AUDIO_FEATURE_NAMES, test_words)
     if train_names != test_names:
@@ -117,9 +112,9 @@ class Unavailable(Enum):
     UNREADABLE = "unreadable"
 
 
-def read_clip(root: Path, raw: object) -> tuple[np.ndarray, int] | Unavailable:
+def read_clip(root: Path, name: str | None) -> tuple[np.ndarray, int] | Unavailable:
     """A row's clip as (channels-last samples, rate), or why there is none."""
-    path = confined_path(root, raw)
+    path = confined_path(root, name)
     if path is None or not path.is_file():
         return Unavailable.MISSING
     try:
@@ -129,7 +124,7 @@ def read_clip(root: Path, raw: object) -> tuple[np.ndarray, int] | Unavailable:
     return samples, int(rate)
 
 
-def _measure(paths: list[object], root: Path) -> dict[str, Any]:
+def _measure(paths: list[str | None], root: Path) -> dict[str, Any]:
     decoded: list[dict[str, float | int]] = []
     counts: Counter[Unavailable] = Counter()
     for raw in paths:
@@ -145,7 +140,7 @@ def _measure(paths: list[object], root: Path) -> dict[str, Any]:
     }
 
 
-def _features(paths: list[object], root: Path) -> tuple[np.ndarray, dict[str, int]]:
+def _features(paths: list[str | None], root: Path) -> tuple[np.ndarray, dict[str, int]]:
     matrix = np.zeros((len(paths), len(AUDIO_FEATURE_NAMES)), dtype=np.float32)
     counts: Counter[Unavailable] = Counter()
     for row, raw in enumerate(paths):

@@ -35,12 +35,11 @@ SETTINGS: dict[str, dict[str, Any]] = {
     "sprisk.clean.spectral_gating@1.0.0": {"signal_column": "x", "snr_column": "y"},
     # Asset steps read one file per row, named by t (and y for images); see `assets`. One
     # image per batch: batching changes float32 sums by 1e-7, which is not leakage.
-    "sprisk.clean.featurize_audio@1.0.0": {"audio_dir": ASSETS, "audio_path_column": "t"},
-    "sprisk.clean.opensmile_audio@1.0.0": {"audio_dir": ASSETS, "audio_path_column": "t"},
+    "sprisk.clean.featurize_audio@1.0.0": {"audio_dir": ASSETS, "file_pattern": "{t}"},
+    "sprisk.clean.opensmile_audio@1.0.0": {"audio_dir": ASSETS, "file_pattern": "{t}"},
     "sprisk.clean.embed_images@1.0.0": {
         "image_dir": ASSETS,
-        "image_id_column": "t",
-        "product_id_column": "y",
+        "file_pattern": "image_{t}_product_{y}.jpg",
         "batch_size": 1,
     },
 }

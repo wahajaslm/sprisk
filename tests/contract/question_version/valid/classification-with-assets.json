@@ -22,7 +22,8 @@
       "modality": "image",
       "asset_root": "images/image_train",
       "link_column": "imageid",
-      "origin": "explicit"
+      "origin": "explicit",
+      "file_pattern": "image_{imageid}_product_{productid}.jpg"
     },
     {
       "modality": "audio",

@@ -1,0 +1,36 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.audio_features@1.0.0
+decides: features.audio_representation
+name: Audio representation
+activity: Features
+question: Are the rows' clips turned into features for the model?
+pitfall: A row with no readable clip gets all-zero descriptors, which the model reads as silence. Descriptors that learn from all rows would let test clips shape the features.
+applies_when: { task: [classification, regression], assets: [audio] }
+needs:
+  concepts: []
+  evidence: [audio.asset_quality]
+  # Read for order: the audio features are added beside the text's word weights.
+  decisions: [features.text_representation]
+options:
+  - id: add_audio_features
+    label: Add audio features
+    description: Adds 70 acoustic descriptors per row (MFCC, chroma, spectral shape, tempo), each from its own clip, beside the text features before the model.
+    condition: readable ≥ 80%
+    when: at least 80% of rows have a readable audio file
+    rationale: With most rows covered, the audio adds signal the table does not hold, and the few zero rows are counted.
+    action:
+      # The audio folder and file name come from the question's asset binding.
+      insert:
+        before: model
+        operator: sprisk.clean.featurize_audio@1.0.0
+        node_id: audio_features
+    verify: []
+  - id: leave_out_audio
+    label: Leave clips out
+    description: Leaves the flow as it is; the model reads the table and text only.
+    condition: readable < 80%
+    when: fewer than 80% of rows have a readable audio file
+    rationale: Rows without a file get all-zero features, which a model reads as one more value, not as missing.
+    verify: []
+verifications: {}
+source: "McFee et al. (2015), librosa: Audio and Music Signal Analysis in Python; MFCC, chroma and spectral descriptors summarised per clip."

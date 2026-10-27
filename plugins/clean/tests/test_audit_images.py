@@ -16,7 +16,7 @@ def test_audit_images_reports_linked_assets_and_candidates(tmp_path: Path) -> No
     (tmp_path / "image_3_product_30.jpg").write_bytes(b"not an image")
     data = pl.DataFrame({"imageid": [1, 2, 3, 4], "productid": [10, 20, 30, 40]})
 
-    report = audit_images(data, tmp_path, "imageid", "productid")[KIND]
+    report = audit_images(data, tmp_path, "image_{imageid}_product_{productid}.jpg")[KIND]
 
     assert report["rows"] == 4
     assert report["found"] == 2
@@ -35,6 +35,6 @@ def test_audit_images_never_reads_a_file_outside_the_image_dir(tmp_path: Path) -
     Image.new("RGB", (4, 4)).save(tmp_path / "secret_product_1.jpg")
     data = pl.DataFrame({"imageid": ["x/../../secret"], "productid": [1]})
 
-    report = audit_images(data, root, "imageid", "productid")[KIND]
+    report = audit_images(data, root, "image_{imageid}_product_{productid}.jpg")[KIND]
 
     assert (report["found"], report["missing"]) == (0, 1)

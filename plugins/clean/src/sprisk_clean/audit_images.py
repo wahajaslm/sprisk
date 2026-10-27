@@ -16,7 +16,7 @@ import numpy as np
 import polars as pl
 from PIL import Image, ImageStat, UnidentifiedImageError
 
-from .row_assets import asset_root, confined_path, identifier, share, summary
+from .row_assets import asset_root, confined_path, file_names, share, summary
 
 KIND = "images.asset_quality"
 
@@ -24,31 +24,24 @@ KIND = "images.asset_quality"
 def audit_images(
     data: pl.DataFrame,
     image_dir: Path,
-    image_id_column: str,
-    product_id_column: str,
+    file_pattern: str,
 ) -> dict[str, Any]:
-    """Audit the actual Rakuten-style images linked by the two identifier columns.
+    """Audit each row's image, named by ``file_pattern`` from its columns
+    (Rakuten: ``image_{imageid}_product_{productid}.jpg``).
 
     A missing or unreadable file is never silently treated as a valid image.  Duplicate
     candidates use a deterministic 8x8 grayscale average hash: equal hashes are candidates,
     rather than proof that the original pixels are identical.
     """
     root = asset_root(image_dir, "image_dir")
-    for column in (image_id_column, product_id_column):
-        if column not in data.columns:
-            raise ValueError(f"{column!r} is not a column of the data")
 
     widths: list[int] = []
     heights: list[int] = []
     brightness: list[float] = []
     hashes: Counter[str] = Counter()
     missing = unreadable = 0
-    for image_id, product_id in zip(
-        data[image_id_column].to_list(), data[product_id_column].to_list(), strict=True
-    ):
-        path = confined_path(
-            root, f"image_{identifier(image_id)}_product_{identifier(product_id)}.jpg"
-        )
+    for name in file_names(data, file_pattern):
+        path = confined_path(root, name)
         if path is None or not path.is_file():
             missing += 1
             continue

@@ -115,6 +115,14 @@
           "items": {
             "$ref": "#/$defs/TaskType"
           }
+        },
+        "assets": {
+          "type": "array",
+          "description": "Kinds of file the question must bind to its rows (QuestionVersion.asset_bindings), every one. Absent: none needed.",
+          "items": {
+            "type": "string",
+            "enum": ["image", "audio", "video"]
+          }
         }
       }
     },

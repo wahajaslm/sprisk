@@ -2553,6 +2553,18 @@
           "items": {
             "$ref": "#/$defs/TaskType"
           }
+        },
+        "assets": {
+          "type": "array",
+          "description": "Kinds of file the question must bind to its rows (QuestionVersion.asset_bindings), every one. Absent: none needed.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "image",
+              "audio",
+              "video"
+            ]
+          }
         }
       }
     },
@@ -5828,6 +5840,11 @@
         "link_column": {
           "type": "string",
           "minLength": 1
+        },
+        "file_pattern": {
+          "type": "string",
+          "pattern": "\\{[A-Za-z_][A-Za-z0-9_]*\\}",
+          "description": "How a row's file is named from its columns, e.g. image_{imageid}_product_{productid}.jpg. Absent: link_column holds the file name, relative to asset_root."
         },
         "origin": {
           "type": "string",

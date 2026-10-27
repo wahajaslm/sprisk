@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
     Binding, GraphEffect, Method, Operator, OperatorAttachSide, PipelineVersion, QuestionVersion,
-    TaskType, parse,
+    parse,
 };
 
 use crate::compare::upstream;
@@ -61,7 +61,7 @@ pub fn measure(
         },
     };
     // A decided method reads nothing more: its producer stays where it is, unmoved.
-    let deciding = fitting(catalog, question.task.value)
+    let deciding = fitting(catalog, question)
         .filter(|m| !made.iter().any(|d| d.decides == m.decides.as_str()));
     let needed = deciding.flat_map(|method| {
         method.needs.evidence.iter().map(move |kind| {
@@ -79,8 +79,9 @@ pub fn measure(
     for (method, kind, need) in needed.chain(promised) {
         let producer = methods::producer_of(&kind, &by_id)?;
         match bound_params(producer, bindings) {
-            Ok(params) => {
-                if let Some(why) = placing.place(producer, params, &need)? {
+            Ok(mut params) => {
+                params.extend(crate::asset_params(producer, question));
+                if let Some(why) = placing.place(producer, Value::Object(params), &need)? {
                     placing
                         .measuring
                         .left_out
@@ -102,19 +103,26 @@ pub fn measure(
     Ok(placing.measuring)
 }
 
-/// The methods that apply to a question of `task`, in decision order.
-pub fn fitting(catalog: &RuleCatalog, task: TaskType) -> impl Iterator<Item = &Method> {
+/// The methods that apply to `question`, in decision order: its task, and every kind of file
+/// a method needs bound to the rows.
+pub fn fitting<'c>(
+    catalog: &'c RuleCatalog,
+    question: &QuestionVersion,
+) -> impl Iterator<Item = &'c Method> {
+    let task = question.task.value;
+    let question = question.clone();
     catalog.methods().filter(move |m| {
-        m.applies_when
-            .as_ref()
-            .is_none_or(|w| w.task.contains(&task))
+        m.applies_when.as_ref().is_none_or(|w| {
+            w.task.contains(&task)
+                && crate::binds_all(&question, w.assets.iter().map(ToString::to_string))
+        })
     })
 }
 
 /// The producer's concept params, each the column `bindings` binds to its concept. A param
 /// its params schema does not require is left out while unbound; the first unbound required
 /// concept otherwise.
-fn bound_params(producer: &Operator, bindings: &[Binding]) -> Result<Value, String> {
+fn bound_params(producer: &Operator, bindings: &[Binding]) -> Result<Map<String, Value>, String> {
     let mut params = Map::new();
     for (param, concept) in &producer.concepts {
         let Some(binding) = bindings.iter().find(|b| b.concept == *concept) else {
@@ -125,7 +133,7 @@ fn bound_params(producer: &Operator, bindings: &[Binding]) -> Result<Value, Stri
         };
         params.insert(param.to_string(), json!(binding.source.column));
     }
-    Ok(Value::Object(params))
+    Ok(params)
 }
 
 fn requires(producer: &Operator, param: &str) -> bool {

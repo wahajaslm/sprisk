@@ -1,0 +1,36 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.image_features@1.0.0
+decides: features.image_representation
+name: Image representation
+activity: Features
+question: Are the rows' images turned into features for the model?
+pitfall: A row with no readable image gets an all-zero vector, which the model reads as a real image. Fitting an image model on all rows would let test images shape the features.
+applies_when: { task: [classification, regression], assets: [image] }
+needs:
+  concepts: []
+  evidence: [images.asset_quality]
+  # Read for order: the image features are added beside the text's word weights.
+  decisions: [features.text_representation]
+options:
+  - id: add_image_features
+    label: Add image features
+    description: Adds 512 frozen CLIP features per row, from a fixed pretrained model, beside the text features before the model.
+    condition: readable ≥ 80%
+    when: at least 80% of rows have a readable image file
+    rationale: With most rows covered, the image adds signal the table does not hold, and the few zero rows are counted.
+    action:
+      # The image folder and file name come from the question's asset binding.
+      insert:
+        before: model
+        operator: sprisk.clean.embed_images@1.0.0
+        node_id: image_features
+    verify: []
+  - id: leave_out_images
+    label: Leave images out
+    description: Leaves the flow as it is; the model reads the table and text only.
+    condition: readable < 80%
+    when: fewer than 80% of rows have a readable image file
+    rationale: Rows without a file get all-zero features, which a model reads as one more value, not as missing.
+    verify: []
+verifications: {}
+source: "Radford et al. (2021), Learning Transferable Visual Models From Natural Language Supervision (CLIP); frozen image embeddings as features, never fitted on the dataset rows."

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from string import Formatter
 from typing import Any
 
 import numpy as np
+import polars as pl
 from scipy import sparse
 
 
@@ -17,10 +19,28 @@ def asset_root(directory: Path, name: str) -> Path:
     return root
 
 
-def confined_path(root: Path, relative: object) -> Path | None:
-    """The file under ``root``, or None when the row's value would escape it."""
-    candidate = (root / str(relative)).resolve()
+def confined_path(root: Path, relative: str | None) -> Path | None:
+    """The file under ``root``, or None when there is none or it would escape the folder."""
+    if relative is None:
+        return None
+    candidate = (root / relative).resolve()
     return candidate if candidate.is_relative_to(root) else None
+
+
+def file_names(rows: pl.DataFrame, pattern: str) -> list[str | None]:
+    """Each row's file name, built from its columns: `image_{imageid}.jpg`. A row with a gap in
+    one of those columns names no file."""
+    columns = [field for _, field, _, _ in Formatter().parse(pattern) if field]
+    for column in columns:
+        if column not in rows.columns:
+            raise ValueError(f"{column!r} is not a column of the rows")
+    names: list[str | None] = []
+    for row in rows.select(columns).iter_rows(named=True):
+        if any(row[c] is None for c in columns):
+            names.append(None)
+        else:
+            names.append(pattern.format(**{c: identifier(row[c]) for c in columns}))
+    return names
 
 
 def identifier(value: object) -> str:

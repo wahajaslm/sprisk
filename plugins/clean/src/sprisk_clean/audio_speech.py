@@ -9,7 +9,7 @@ import numpy as np
 import polars as pl
 
 from .audio_assets import Unavailable, read_clip
-from .row_assets import append_features, asset_root, confined_path
+from .row_assets import append_features, asset_root, confined_path, file_names
 
 try:
     import librosa
@@ -27,7 +27,7 @@ def opensmile_features(
     train: pl.DataFrame,
     test: pl.DataFrame,
     audio_dir: Path,
-    audio_path_column: str,
+    file_pattern: str,
     train_words: tuple[Any, tuple[str, ...]] | None = None,
     test_words: tuple[Any, tuple[str, ...]] | None = None,
 ) -> dict[str, Any]:
@@ -37,18 +37,13 @@ def opensmile_features(
     paths are confined to the declared root and unavailable files become zero rows with evidence.
     """
     root = asset_root(audio_dir, "audio_dir")
-    for frame, name in ((train, "train"), (test, "test")):
-        if audio_path_column not in frame.columns:
-            raise ValueError(f"{audio_path_column!r} is not a column of the {name} rows")
     extractor = opensmile.Smile(
         feature_set=opensmile.FeatureSet.eGeMAPSv02,
         feature_level=opensmile.FeatureLevel.Functionals,
     )
-    train_values, names, train_state = _opensmile(
-        train[audio_path_column].to_list(), root, extractor
-    )
+    train_values, names, train_state = _opensmile(file_names(train, file_pattern), root, extractor)
     test_values, test_names, test_state = _opensmile(
-        test[audio_path_column].to_list(), root, extractor, names
+        file_names(test, file_pattern), root, extractor, names
     )
     if names != test_names:
         raise ValueError("train and test openSMILE features differ")
@@ -73,18 +68,16 @@ def opensmile_features(
 
 
 def voice_activity(
-    data: pl.DataFrame, audio_dir: Path, audio_path_column: str, aggressiveness: int = 2
+    data: pl.DataFrame, audio_dir: Path, file_pattern: str, aggressiveness: int = 2
 ) -> dict[str, Any]:
     """Measure speech segments with local WebRTC VAD, without transcription or speaker identity."""
     root = asset_root(audio_dir, "audio_dir")
-    if audio_path_column not in data.columns:
-        raise ValueError(f"{audio_path_column!r} is not a column of the data")
     if aggressiveness not in range(4):
         raise ValueError("aggressiveness must be 0, 1, 2, or 3")
     found = missing = unreadable = speech_frames = total_frames = segments = 0
     durations: list[float] = []
     vad = webrtcvad.Vad(aggressiveness)
-    for raw in data[audio_path_column].to_list():
+    for raw in file_names(data, file_pattern):
         clip = read_clip(root, raw)
         if clip is Unavailable.MISSING:
             missing += 1
@@ -117,7 +110,7 @@ def voice_activity(
 
 
 def _opensmile(
-    paths: list[object],
+    paths: list[str | None],
     root: Path,
     extractor: opensmile.Smile,
     expected: tuple[str, ...] | None = None,
