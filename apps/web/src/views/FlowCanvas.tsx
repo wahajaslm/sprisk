@@ -8,7 +8,6 @@ import {
   BaseEdge,
   type Edge,
   type EdgeProps,
-  getBezierPath,
   Handle,
   type Node,
   type NodeChange,
@@ -25,7 +24,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
 
-import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun, useStartRun } from "../api/hooks.ts";
+import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../api/hooks.ts";
 import { checkCount, concernsByNode, useRunChecks } from "../api/checks.ts";
 import { hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
@@ -50,6 +49,7 @@ import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
 import { useSelection } from "../workbench/selection.ts";
+import { ink, P } from "../styles/palette.ts";
 import { useNotebooks } from "../api/notebooks.ts";
 import { KindIcon, NotebookIcon, PlayIcon, RedoIcon, RestartIcon, TrashIcon, UndoIcon } from "./Icons.tsx";
 import { Button } from "../components/ui/Button.tsx";
@@ -106,47 +106,26 @@ type StageData = {
   baseHeight?: number;
 };
 
-/** A stage card containing its steps, styled as sleek dark cards with minimalist vector
- * artwork, header metadata, seamlessly aligned steps, and minimal icon controls. */
-function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
-  const { pipelineVersionId, openStageNotebook } = useSelection();
-  const startRun = useStartRun();
-
-  const isLive = (data.running ?? 0) > 0;
-  const handleRunAll = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (pipelineVersionId) {
-      startRun.mutate(pipelineVersionId);
-    }
-  };
-
-  const handleOpenNotebook = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    openStageNotebook(data.name);
-  };
-
+/** A stage card, copied from the design's main screen: its name and step count, then one line on
+ * what it is for. The header is the drag handle (`.stage-head`). */
+function StageHead({ data }: NodeProps<Node<StageData>>) {
+  const summary = data.promises.length > 0 ? promiseSummary(data.promises) : undefined;
   return (
-    <div
-      className={`stage-card${data.active || selected ? " active" : ""}${selected ? " selected" : ""}`}
-      role="region"
-      aria-label={`Stage ${data.name}`}
-    >
-      <div className="stage-card-header stage-head" title={`Stage: ${data.name} (${data.count} steps)`}>
-        <div className="stage-title-row">
-          <h3 className="stage-head stage-name">
-            {data.name}
-          </h3>
-          {/* The header keeps its height: a stage's promises take the step count's place. */}
-          {data.promises.length > 0 ? (
-            <span className={`stage-promise tone-${STANDING[promiseSummary(data.promises).status].tone}`} title={data.promises.map((p) => `${p.promise} ${STANDING[p.status].word}.`).join(" ")}>
-              {promiseSummary(data.promises).text}
-            </span>
-          ) : (
-            <span className="stage-step-count">{data.count} {data.count === 1 ? "step" : "steps"}</span>
-          )}
-        </div>
-        <p className="stage-purpose">{data.purpose}</p>
+    <div role="region" aria-label={`Stage ${data.name}`} style={{ width: "100%", height: "100%", boxSizing: "border-box", background: "var(--bg-card,#171717)", borderRadius: "var(--r-lg,10px)", padding: "12px 12px 0", display: "flex", flexDirection: "column", gap: "4px" }}>
+      <div className="stage-head" title={`Stage: ${data.name} (${data.count} steps)`} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px", cursor: "grab" }}>
+        <h3 style={{ margin: "0", fontSize: "14px", fontWeight: "500", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{data.name}</h3>
+        {/* A stage's promises take the step count's place (ADR-0063). */}
+        {summary ? (
+          <span title={data.promises.map((p) => `${p.promise} ${STANDING[p.status].word}.`).join(" ")} style={{ fontSize: "11.5px", color: STANDING[summary.status].tone === "bad" ? P.redHex : P.t3, whiteSpace: "nowrap" }}>
+            {summary.text}
+          </span>
+        ) : (
+          <span style={{ fontSize: "11.5px", color: P.t3, whiteSpace: "nowrap" }}>{data.count} {data.count === 1 ? "step" : "steps"}</span>
+        )}
       </div>
+      <span title={data.purpose} style={{ fontSize: "11.5px", color: "var(--t-label,#959595)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {data.purpose}
+      </span>
     </div>
   );
 }
@@ -332,6 +311,9 @@ function metricsPortOf(op: Operator): { metricsPort?: string } {
 /** Width of the round icon in Compact (.round-icon); lines run down from its centre. */
 const ROUND_ICON = 30;
 
+/** The design's status dot by tone: done grey, live bright, failed red, not run dim. */
+const DOT: Record<string, string> = { done: P.t3, live: P.t0, bad: P.redHex, idle: P.idle };
+
 /** Compact: a round icon, the step's name and what it is for beside it; its state is a dot. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
@@ -351,7 +333,7 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
   return (
     <button
       type="button"
-      className={`flow-round shape-${data.origin}${data.selected ? " selected" : ""}${bad ? " bad" : ""}`}
+      className={`dx-btn flow-round shape-${data.origin}${data.selected ? " selected" : ""}${bad ? " bad" : ""}`}
       aria-label={`${data.id}, ${data.title}, ${ORIGIN_TEXT[data.origin]}, ${status.text}`}
       title={`${data.operatorRef} · ${ORIGIN_TEXT[data.origin]}`}
       onClick={() => select(data.id)}
@@ -360,33 +342,33 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
         select(data.id);
         openStepMenu({ nodeId: data.id, x: e.clientX, y: e.clientY });
       }}
+      style={{ position: "relative", width: "176px", height: "40px", display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", borderRadius: "var(--r-sm,6px)" }}
     >
       <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
-      <span className={`round-icon kind-${data.kind}`}>
-        <KindIcon kind={data.kind} size={16} />
-        <span className={`state-dot tone-${status.tone}`} role="img" aria-label={status.text} />
+      {/* The disc's fill is drawn by .round-icon::before, so its shape can say where the step comes from. */}
+      <span className={`round-icon kind-${data.kind}${data.selected ? " dx-disc-on" : bad ? " dx-disc-warn" : ""}`} style={{ position: "relative", width: "30px", height: "30px", borderRadius: "50%", flexShrink: "0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <KindIcon kind={data.kind} size={14} />
+        <span className={`state-dot tone-${status.tone}`} role="img" aria-label={status.text} style={{ position: "absolute", right: "0", bottom: "0", width: "6px", height: "6px", borderRadius: "50%", boxShadow: "0 0 0 2px var(--bg-surface,#121212)", background: DOT[status.tone] ?? P.idle }} />
       </span>
-      <span className="round-text">
-        <span className="node-title">{data.title}</span>
+      <span className="round-text" style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: "0" }}>
+        <span className="node-title" style={{ fontSize: "12.5px", fontWeight: "500", color: bad ? P.redHex : P.t0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{data.title}</span>
         {/* Two lines, as the design draws a step. What needs attention takes the second line;
             otherwise, once the step ran, one measured fact about its output. */}
-        {attention.length > 0 ? (
-          <span className={`round-sub round-state tone-${status.tone === "live" ? "live" : "bad"}`}>{attention.join(" · ")}</span>
-        ) : (
-          <span className="round-sub">
-            {data.attemptId ? (
-              <NodeFact attemptId={data.attemptId} operator={data.operatorRef} metricsPort={data.metricsPort} status={data.subject} />
-            ) : (
-              data.subject
-            )}
-            {data.edited && " · edited"}
-          </span>
-        )}
+        <span className="round-sub" style={{ fontSize: "11.5px", color: bad ? P.redHex : P.t3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {attention.length > 0 ? (
+            attention.join(" · ")
+          ) : (
+            <>
+              {data.attemptId ? <NodeFact attemptId={data.attemptId} operator={data.operatorRef} metricsPort={data.metricsPort} status={data.subject} /> : data.subject}
+              {data.edited && " · edited"}
+            </>
+          )}
+        </span>
       </span>
       <span className={`compact-hover-actions${isLive ? " has-live" : ""}`}>
         <StepButtons id={data.id} live={isLive} actions={actions} />
       </span>
-      {/* The node is as wide as its label, so outgoing lines start right after the text. */}
+      {/* The design's node is 176px wide; a line leaves its right edge. */}
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
       {/* Within a stage, lines run down from icon to icon. */}
       <Handle id="top" type="target" position={Position.Top} isConnectable={false} style={{ left: ROUND_ICON / 2 }} />
@@ -395,9 +377,20 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
   );
 }
 
-function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<Edge<FlowEdgeData>>) {
-  const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
-  return <BaseEdge id={id} path={path} className={`flow-edge${data?.active ? " active" : ""}${data?.failed ? " failed" : ""}`} />;
+/** The design's lines: straight down between the steps of one stage, a soft curve from one
+ * stage to the next. A line touching the selected step is brighter; a failed gate's is red. */
+function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, data }: EdgeProps<Edge<FlowEdgeData>>) {
+  const path =
+    sourcePosition === Position.Bottom
+      ? `M${sourceX} ${sourceY}L${targetX} ${targetY}`
+      : `M${sourceX} ${sourceY}C${sourceX + 34} ${sourceY} ${targetX - 34} ${targetY} ${targetX} ${targetY}`;
+  return (
+    <BaseEdge
+      id={id}
+      path={path}
+      style={{ fill: "none", stroke: data?.failed ? P.redHex : ink(data?.active ? 0.5 : 0.18), strokeWidth: data?.active ? 1.3 : 1, strokeDasharray: data?.failed ? "4 3" : undefined }}
+    />
+  );
 }
 
 /** Fit the flow to the panel with a thin margin, so steps stay readable. */
@@ -629,8 +622,8 @@ export function encapsulateStages(nodes: Node[]): Node[] {
     if (node.type === "stage" || node.id.startsWith("stage:")) {
       const bounds = boundsByParent.get(node.id);
       if (!bounds) return node;
-      const baseW = ((node.data as any)?.baseWidth as number | undefined) ?? node.width ?? MIN_STAGE_CARD_WIDTH;
-      const baseH = ((node.data as any)?.baseHeight as number | undefined) ?? node.height ?? MIN_STAGE_CARD_HEIGHT;
+      const baseW = (node.data as Partial<StageData>).baseWidth ?? node.width ?? MIN_STAGE_CARD_WIDTH;
+      const baseH = (node.data as Partial<StageData>).baseHeight ?? node.height ?? MIN_STAGE_CARD_HEIGHT;
       const neededWidth = Math.round(Math.max(baseW, bounds.maxRight + STAGE_PAD_X));
       const neededHeight = Math.round(Math.max(baseH, bounds.maxBottom + STAGE_FOOTER_HEIGHT));
       if (node.width !== neededWidth || node.height !== neededHeight) {
@@ -863,7 +856,7 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
   const onPaneClick = () => {
     selectNode(undefined);
     setNodes((current) => {
-      const hasSelected = current.some((n) => n.selected || (n.data as any)?.selected);
+      const hasSelected = current.some((n) => n.selected || (n.data as Partial<StepData>).selected);
       if (!hasSelected) return current;
       const cleared = current.map((n) => ({
         ...n,
@@ -901,7 +894,7 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
     >
       {/* React Flow sizes a dot by its diameter; the design's 1px-radius dots are 2px across. */}
       <Background variant={BackgroundVariant.Dots} gap={16} size={2} color="rgba(255,255,255,0.06)" />
-      <Panel position="bottom-left" className="canvas-controls">
+      <Panel position="bottom-left" style={{ margin: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
         <ZoomControl
           tidy={tidy}
           undo={undo}
@@ -914,6 +907,12 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
     </ReactFlow>
   );
 }
+
+/** The design's zoom bar: a small surface bar of 24px buttons split by hairlines. */
+const ZOOM_BAR = { width: "max-content", display: "flex", alignItems: "center", gap: "2px", padding: "3px", borderRadius: "var(--r-md,8px)", background: "var(--bg-surface,#121212)", fontSize: "12px", color: "var(--t-secondary,#d4d4d4)" } as const;
+const ZOOM_ICON_BUTTON = { width: "24px", height: "22px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-sm,6px)", cursor: "pointer" } as const;
+const ZOOM_TEXT_BUTTON = { padding: "0 7px", height: "22px", display: "flex", alignItems: "center", borderRadius: "var(--r-sm,6px)", cursor: "pointer" } as const;
+const ZOOM_SEP = <span aria-hidden="true" style={{ width: "1px", height: "12px", background: "rgba(var(--ink-rgb,255,255,255),0.1)", margin: "0 3px" }} />;
 
 function ZoomControl({
   tidy,
@@ -931,34 +930,35 @@ function ZoomControl({
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const { zoom } = useViewport();
   return (
-    <div className="flow-zoom-bar zoom" role="group" aria-label="Zoom controls">
-      <button type="button" className="flow-zoom-btn" aria-label="Undo" title="Undo (Ctrl+Z / ⌘Z)" disabled={!canUndo} onClick={undo}>
+    <div role="group" aria-label="Zoom controls" style={ZOOM_BAR}>
+      <button type="button" className="dx-btn dx-h-06" aria-label="Undo" title="Undo (Ctrl+Z / ⌘Z)" disabled={!canUndo} onClick={undo} style={ZOOM_ICON_BUTTON}>
         <UndoIcon />
       </button>
-      <button type="button" className="flow-zoom-btn" aria-label="Redo" title="Redo (Ctrl+Shift+Z / ⌘⇧Z / ⌘Y)" disabled={!canRedo} onClick={redo}>
+      <button type="button" className="dx-btn dx-h-06" aria-label="Redo" title="Redo (Ctrl+Shift+Z / ⌘⇧Z / ⌘Y)" disabled={!canRedo} onClick={redo} style={ZOOM_ICON_BUTTON}>
         <RedoIcon />
       </button>
-      <span className="zoom-sep" aria-hidden="true" />
-      <button type="button" className="flow-zoom-btn" aria-label="Zoom out" onClick={() => void zoomOut()}>
+      {ZOOM_SEP}
+      <button type="button" className="dx-btn dx-h-06" aria-label="Zoom out" onClick={() => void zoomOut()} style={ZOOM_ICON_BUTTON}>
         −
       </button>
-      <span className="zoom-label">{Math.round(zoom * 100)}%</span>
-      <button type="button" className="flow-zoom-btn" aria-label="Zoom in" onClick={() => void zoomIn()}>
+      <span style={{ padding: "0 4px", fontVariantNumeric: "tabular-nums" }}>{Math.round(zoom * 100)}%</span>
+      <button type="button" className="dx-btn dx-h-06" aria-label="Zoom in" onClick={() => void zoomIn()} style={ZOOM_ICON_BUTTON}>
         +
       </button>
-      <span className="zoom-sep" aria-hidden="true" />
-      <button type="button" className="flow-zoom-text-btn fit" onClick={() => void fitView(FIT)}>
+      {ZOOM_SEP}
+      <button type="button" className="dx-btn dx-h-06" onClick={() => void fitView(FIT)} style={ZOOM_TEXT_BUTTON}>
         Fit
       </button>
-      <span className="zoom-sep" aria-hidden="true" />
+      {ZOOM_SEP}
       <button
         type="button"
-        className="flow-zoom-text-btn fit"
+        className="dx-btn dx-h-06"
         title="Put every step back where the layout places it, then fit"
         onClick={() => {
           tidy();
           requestAnimationFrame(() => void fitView(FIT));
         }}
+        style={ZOOM_TEXT_BUTTON}
       >
         Tidy
       </button>
@@ -968,13 +968,14 @@ function ZoomControl({
 
 const DETAIL_LABEL: Record<DetailLevel, string> = { compact: "Compact", detail: "Detail" };
 
-/** How much each node shows. Kept per browser; it never changes the flow. */
+/** How much each node shows. Kept per browser; it never changes the flow. Drawn as the design's
+ * segmented switch in a zoom bar. */
 function DetailSwitch() {
   const { level, setLevel } = useCanvasDetail();
   return (
-    <div className="detail-switch" role="radiogroup" aria-label="Node detail">
+    <div role="radiogroup" aria-label="Node detail" style={ZOOM_BAR}>
       {DETAIL_LEVELS.map((l) => (
-        <button key={l} type="button" role="radio" aria-checked={level === l} onClick={() => setLevel(l)}>
+        <button key={l} type="button" role="radio" aria-checked={level === l} className="dx-btn dx-h-text" onClick={() => setLevel(l)} style={{ ...ZOOM_TEXT_BUTTON, padding: "0 9px", fontWeight: "500", background: level === l ? ink(0.1) : "transparent", color: level === l ? P.t0 : P.t3 }}>
           {DETAIL_LABEL[l]}
         </button>
       ))}
