@@ -190,6 +190,7 @@ def test_a_sampled_profile_names_its_row_groups(tmp_path: Path) -> None:
         ("s3://lake/events/t.parquet", pafs.S3FileSystem, "lake/events/t.parquet"),
         ("gs://lake/events/t.parquet", pafs.GcsFileSystem, "lake/events/t.parquet"),
         ("az://lake/events/t.parquet", pafs.AzureFileSystem, "lake/events/t.parquet"),
+        ("s3://lake/a#b?c=d.parquet", pafs.S3FileSystem, "lake/a#b?c=d.parquet"),
     ],
 )
 def test_each_location_is_read_with_its_own_store(
@@ -208,3 +209,17 @@ def test_an_azure_location_without_an_account_is_refused(monkeypatch: pytest.Mon
 
     with pytest.raises(ValueError, match="AZURE_STORAGE_ACCOUNT_NAME"):
         filesystem("az://lake/t.parquet")
+
+
+def test_a_single_row_group_is_its_first_rows_not_a_random_pick(tmp_path: Path) -> None:
+    path = tmp_path / "t.parquet"
+    grouped(path, 100, 100)
+
+    data, rows, _, sampled = read_source("parquet", [str(path)], max_rows=30)
+
+    assert (data["x"].to_list(), rows, sampled) == (list(range(30)), 100, None)
+
+
+def test_an_object_csv_key_that_a_url_would_cut_is_refused() -> None:
+    with pytest.raises(ValueError, match="cannot be read exactly"):
+        read_source("csv", ["s3://lake/a#b.csv"])

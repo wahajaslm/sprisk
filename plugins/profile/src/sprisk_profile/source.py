@@ -14,7 +14,6 @@ import os
 import random
 import sys
 from typing import Any
-from urllib.parse import urlparse
 
 import polars as pl
 import pyarrow.fs as pafs
@@ -35,22 +34,22 @@ def filesystem(location: str) -> tuple[pafs.FileSystem, str]:
     """The store a local path or `s3://`, `gs://` or `az://` URI is in, and its path there.
     Each reads its credentials from the environment, as Rust's object_store does; Azure names
     its account there too, since an `az://` URI holds only the container."""
-    # Rust sends a local file as its resolved path; a URL parse would cut it at a `#` or `?`.
+    # Rust sends a local file as its resolved path, and an object as `scheme://bucket/key`
+    # with the key as listed. Neither is parsed as a URL, which would cut it at `#` or `?`.
     if "://" not in location:
         return pafs.LocalFileSystem(), location
-    url = urlparse(location)
-    path = f"{url.netloc}{url.path}"
-    if url.scheme == "s3":
+    scheme, path = location.split("://", 1)
+    if scheme == "s3":
         return pafs.S3FileSystem(), path
-    if url.scheme == "gs":
+    if scheme == "gs":
         return pafs.GcsFileSystem(), path
-    if url.scheme == "az":
+    if scheme == "az":
         account = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME")
         if not account:
             raise ValueError(f"{location}: set AZURE_STORAGE_ACCOUNT_NAME to read from Azure")
         key = os.environ.get("AZURE_STORAGE_ACCOUNT_KEY")
         return pafs.AzureFileSystem(account_name=account, account_key=key), path
-    raise ValueError(f"{location}: unsupported scheme {url.scheme!r}")
+    raise ValueError(f"{location}: unsupported scheme {scheme!r}")
 
 
 def read_source(
@@ -62,6 +61,10 @@ def read_source(
         return _read_parquet(files, max_rows, max_columns)
     if format != "csv":
         raise ValueError(f"unknown format {format!r}")
+    # Polars reads an object by its URL, which would cut a key at `#` or `?`.
+    cut = [f for f in files if "://" in f and ("#" in f or "?" in f)]
+    if cut:
+        raise ValueError(f"{cut[0]}: a key with # or ? cannot be read exactly")
     # glob=False: a path is read as named. A name like `*.csv` must not reach files Rust
     # never checked against the data roots.
     scan = pl.scan_csv(files, null_values=CSV_MISSING, glob=False)
@@ -84,6 +87,8 @@ def _read_parquet(
     if rows <= max_rows:
         data = pl.concat([pl.DataFrame(file.read(columns=columns)) for file in opened])
         return data, rows, len(names), None
+    if len(groups) == 1:
+        return _head(opened[0], 0, columns, max_rows), rows, len(names), None
     shuffled = random.Random(SEED).sample(groups, len(groups))
     chosen, covered = [], 0
     for group in shuffled:
@@ -91,14 +96,21 @@ def _read_parquet(
         covered += size[group]
         if covered >= max_rows:
             break
-    # In file order, so a sample reads as the source does; the last chosen group is cut.
+    # In file order, so a sample reads as the source does. The last chosen group is cut, and
+    # read only as far as the cut: one group may be far larger than the sample.
     last = chosen[-1]
     parts = []
     for f, g in sorted(chosen):
-        part = pl.DataFrame(opened[f].read_row_group(g, columns=columns))
-        parts.append(part.head(size[last] - (covered - max_rows)) if (f, g) == last else part)
+        need = size[last] - (covered - max_rows) if (f, g) == last else size[(f, g)]
+        parts.append(_head(opened[f], g, columns, need))
     sampled = {"seed": SEED, "chosen": len(chosen), "of": len(groups)}
     return pl.concat(parts), rows, len(names), sampled
+
+
+def _head(file: pq.ParquetFile, group: int, columns: list[str], rows: int) -> pl.DataFrame:
+    """The first `rows` of row group `group`, without reading the rest of it."""
+    batch = next(file.iter_batches(batch_size=rows, row_groups=[group], columns=columns))
+    return pl.DataFrame(batch)
 
 
 def profile_source(
