@@ -3,8 +3,8 @@ import ELK from "elkjs/lib/elk.bundled.js";
 
 const elk = new ELK();
 
-/** A method's card: its head, then one line per choice. */
-export const CARD = { width: 300, head: 76, choice: 40, foot: 10 } as const;
+/** A method on the canvas: a numbered circle with its name beside it. */
+export const NODE = { width: 240, height: 40, circle: 28 } as const;
 const STAGE_PAD = { top: 44, side: 16, bottom: 16 } as const;
 
 /** Stages in decision order (ADR-0059): the area of a decision key names its stage. */
@@ -57,7 +57,7 @@ export async function decisionOrder(methods: Method[]): Promise<DecisionOrder> {
       },
       children: ordered
         .filter((m) => stageOf(m.method.decides) === key)
-        .map((m) => ({ id: m.method.id, width: CARD.width, height: cardHeight(m.method) })),
+        .map((m) => ({ id: m.method.id, width: NODE.width, height: NODE.height })),
     })),
     // Stages follow one another even where no method waits across them.
     edges: [
@@ -74,13 +74,11 @@ export async function decisionOrder(methods: Method[]): Promise<DecisionOrder> {
     for (const child of stage.children ?? []) {
       const m = ordered.find((o) => o.method.id === child.id);
       if (!m) continue;
-      methodBoxes.push({ ...m, stage: stage.id, x: child.x ?? 0, y: child.y ?? 0, width: child.width ?? CARD.width, height: child.height ?? 0 });
+      methodBoxes.push({ ...m, stage: stage.id, x: child.x ?? 0, y: child.y ?? 0, width: NODE.width, height: NODE.height });
     }
   }
   return { stages: stageBoxes, methods: methodBoxes, edges };
 }
-
-export const cardHeight = (method: Method) => CARD.head + CARD.choice * method.options.length + CARD.foot;
 
 /** What a choice does to the flow, in a few words. */
 export function effect(option: Method["options"][number]): string {

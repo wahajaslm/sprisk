@@ -163,11 +163,20 @@ export function MethodologyPage() {
 /** The methods as one tree, in the order the engine decides them. */
 function DecisionOrderTab({ picked, onPick }: { picked: string | undefined; onPick: (id: string) => void }) {
   const methods = useMethods();
+  // Its own pick: a method the rules list leaves out can still be read here.
+  const [mine, setMine] = useState(picked);
   if (methods.isError) return <p role="alert" className="error pad">{methods.error.message}</p>;
   if (methods.isPending) return <Loading text="Loading the methods…" />;
   return (
     <div className="mth-canvas">
-      <DecisionOrderMap methods={methods.data} picked={picked} onPick={onPick} />
+      <DecisionOrderMap
+        methods={methods.data}
+        picked={mine}
+        onPick={(id) => {
+          setMine(id);
+          onPick(id);
+        }}
+      />
     </div>
   );
 }

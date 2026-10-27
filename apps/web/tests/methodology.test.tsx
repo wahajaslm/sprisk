@@ -403,19 +403,24 @@ describe("pipeline path switch", () => {
 });
 
 describe("decision order", () => {
-  it("shows every method in decision order, each with its choices and when it takes them", async () => {
+  it("shows every method as a numbered circle in decision order, and the picked one's choices in a card", async () => {
     serve([multicollinearity as MethodologyRule]);
     server.use(http.get("/api/methods", () => HttpResponse.json([repeatedItems, splitMethod])));
     renderWithApi(<MethodologyPage />);
     await userEvent.click(await screen.findByRole("tab", { name: "Decision order" }));
 
-    const split = await screen.findByRole("button", { name: "Train/test split" });
-    expect(within(split).getByText("2")).toBeInTheDocument();
-    const choices = within(split).getByRole("list", { name: "Choices of Train/test split" });
+    const canvas = await screen.findByRole("region", { name: "Decision order" });
+    const split = await within(canvas).findByRole("button", { name: "Train/test split" });
+    expect(split).toHaveTextContent("2");
+    expect(within(canvas).getByRole("button", { name: "Duplicate analysis" })).toHaveTextContent("1");
+
+    await userEvent.click(split);
+    const card = screen.getByRole("region", { name: "Train/test split" });
+    const choices = within(card).getByRole("list", { name: "Choices of Train/test split" });
     expect(within(choices).getAllByRole("listitem")).toHaveLength(splitMethod.options.length);
-    expect(choices).toHaveTextContent(`if ${splitMethod.options[0]!.when}`);
+    expect(choices).toHaveTextContent(`If ${splitMethod.options[0]!.when}`);
     expect(choices).toHaveTextContent("→ uses group_split as the split");
-    expect(within(screen.getByRole("button", { name: "Duplicate analysis" })).getByText("1")).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "1. Duplicate analysis" })).toBeInTheDocument();
   });
 
   it("says so when the methods cannot be read", async () => {
