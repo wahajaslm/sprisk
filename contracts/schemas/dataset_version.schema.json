@@ -117,7 +117,7 @@
             "minLength": 1,
             "maxLength": 4096
           },
-          "description": "At least one. Local paths, in order."
+          "description": "At least one, in order: resolved local paths, or object-store URIs (s3://, gs://, az://) read with the credentials in the environment."
         }
       }
     }

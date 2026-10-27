@@ -110,14 +110,18 @@ function ProfileView({ profile, plan, dataset, view, questionVersionId }: { prof
 }
 
 /** What part of the table the profile read, or nothing when it read all of it. A registered
- * CSV source larger than the sample has no counted total (ADR-0067). */
+ * CSV source larger than the sample has no counted total; a larger Parquet source is sampled on
+ * whole row groups picked at random (ADR-0067). */
 export function sampleNote(p: DatasetProfile): string | undefined {
+  const groups = p.sampled_row_groups;
   const rows =
     p.total_rows === undefined
       ? `Profiled the first ${p.profiled_rows.toLocaleString()} rows. The total was not counted: the source has more. `
-      : p.profiled_rows < p.total_rows
-        ? `Profiled the first ${p.profiled_rows.toLocaleString()} of ${p.total_rows.toLocaleString()} rows. `
-        : "";
+      : groups
+        ? `Profiled ${p.profiled_rows.toLocaleString()} of ${p.total_rows.toLocaleString()} rows, from ${groups.chosen} of ${groups.of} row groups picked at random. `
+        : p.profiled_rows < p.total_rows
+          ? `Profiled the first ${p.profiled_rows.toLocaleString()} of ${p.total_rows.toLocaleString()} rows. `
+          : "";
   const columns = p.columns.length < p.total_columns ? `Showing the first ${p.columns.length} of ${p.total_columns} columns.` : "";
   return `${rows}${columns}`.trim() || undefined;
 }

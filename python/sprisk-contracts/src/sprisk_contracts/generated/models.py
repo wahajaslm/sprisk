@@ -91,6 +91,15 @@ class ProfileSectionId(StrEnum):
     change_report = "change_report"
 
 
+class SampledRowGroups(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    seed: Annotated[int, Field(ge=0)]
+    chosen: Annotated[int, Field(ge=0)]
+    of: Annotated[int, Field(ge=0)]
+
+
 class Count(RootModel[int]):
     root: Annotated[int, Field(ge=0)]
 
@@ -667,7 +676,12 @@ class SourceProfileRequest(StrictModel):
             min_length=1,
         ),
     ] = None
-    files: Annotated[list[File], Field(description="At least one. Local paths, in order.")]
+    files: Annotated[
+        list[File],
+        Field(
+            description="At least one, in order: resolved local paths, or object-store URIs (s3://, gs://, az://) read with the credentials in the environment."
+        ),
+    ]
 
 
 class Change(StrEnum):
@@ -4451,10 +4465,16 @@ class DatasetProfile(StrictModel):
     profiled_rows: Annotated[
         int,
         Field(
-            description="Rows the profile covers: all of them, or the first 1,000,000 of a larger table.",
+            description="Rows the profile covers: all of them, or 1,000,000 of a larger table, from its first rows or from the row groups sampled_row_groups names.",
             ge=0,
         ),
     ]
+    sampled_row_groups: Annotated[
+        SampledRowGroups | None,
+        Field(
+            description="Set when a Parquet source larger than the sample was profiled on whole row groups chosen at random (ADR-0067). Absent: the profile covers the first rows, or all of them."
+        ),
+    ] = None
     band_rows: Annotated[
         int,
         Field(

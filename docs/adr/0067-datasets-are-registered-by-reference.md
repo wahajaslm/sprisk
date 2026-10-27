@@ -21,7 +21,7 @@ Arch doc sections: §1.4 (integrate, do not build an object store), §3 (`Datase
 - **Registering again is idempotent.** The same location with the same fingerprint returns the existing version. A changed fingerprint makes a new version; the old one is never edited (rule 5).
 - **The profile reads a bounded sample in place.** A profile is made once per fingerprint and profiler code, and kept. To make one, `GET /dataset_versions/{id}/profile` lists the location again and refuses a changed fingerprint (`source_changed`). Rust sends Python a `SourceProfileRequest`: the files, resolved through symlinks and checked against the roots. Python reads exactly those paths (never as patterns), the first 1,000,000 rows and 200 columns, with Polars, without copying the files.
 - **The sample is stated honestly.** Parquet row counts come from file metadata, so the total is known. A CSV is read only up to the sample; if it has more rows, `total_rows` is omitted and the page says the total was not counted.
-- **Object-store profiling is designed, not built.** Registration of `s3://`, `gs://` and `az://` works. Their profile answers `profile_not_local` until Python reads them in place (Polars cloud readers with the same environment credentials). That needs a network test harness first.
+- **Object-store profiling is designed, not built.** Registration of `s3://`, `gs://` and `az://` works. Their profile answers `profile_not_local` until Python reads them in place (Polars cloud readers with the same environment credentials). That needs a network test harness first. *Superseded by the amendment below.*
 - **Endpoints follow the repo's naming** (`/question_versions`, `/pipeline_versions`): `POST /dataset_versions`, `GET /dataset_versions`, `GET /dataset_versions/{id}/profile`. A `Dataset` grouping of versions waits until a second version of one dataset is needed.
 
 ## Alternatives considered
@@ -46,3 +46,11 @@ Arch doc sections: §1.4 (integrate, do not build an object store), §3 (`Datase
 ## Arch doc edits
 - §3: `DatasetVersion` is a reference (location + fingerprint), never a copy, and is immutable.
 - §18.1: object-store and local locations are listed through `object_store`; credentials come from the environment only.
+
+## Amendment (2026-10-28): object stores are profiled, and Parquet is sampled by row group
+
+- **Object stores are profiled in place.** `profile_not_local` goes. Rust sends the listed object URIs in the `SourceProfileRequest`, as it sends resolved local paths. Python reads each one through `pyarrow.fs` (S3, GCS, Azure), with the credentials in the environment, as Rust's `object_store` reads them. An `az://` URI holds only the container, so the account comes from `AZURE_STORAGE_ACCOUNT_NAME`; without it the profile fails and says so.
+- **A large Parquet source is a seeded sample of whole row groups.** When the files hold more rows than the sample, row groups are shuffled with a fixed seed and taken until they cover it; the last one is cut. Only those groups' bytes are read. The profile names them in `sampled_row_groups` (seed, chosen, of), and the page says "from N of M row groups picked at random". The same files give the same sample, so a profile kept per fingerprint stays true.
+- **A CSV stays the first rows.** It has no row groups, and a random row needs a full scan.
+- **No network in tests.** The reader is tested through local files, which take the same code path; the scheme-to-store mapping is tested offline. A bucket test waits for the hosted milestone.
+- Bad: a source with one huge row group is still its first rows. The note says how many groups were read.

@@ -6567,9 +6567,12 @@ async fn a_folder_mixing_formats_or_a_uri_carrying_a_secret_is_refused() {
     }
 }
 
+/// An object-store source is profiled like a local one (ADR-0067): once made for its
+/// fingerprint, its profile is served as kept, without reading the bucket again.
 #[tokio::test]
-async fn an_object_store_source_is_not_profiled_yet() {
+async fn an_object_store_source_serves_the_profile_kept_for_its_fingerprint() {
     let api = api().await;
+    let fingerprint = "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
     let remote: sprisk_contracts::DatasetVersion = parse(
         &json!({
             "schema_version": "sprisk.dataset_version/v1",
@@ -6579,19 +6582,31 @@ async fn an_object_store_source_is_not_profiled_yet() {
             "format": "parquet",
             "file_count": 2,
             "size_bytes": 10,
-            "fingerprint": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "fingerprint": fingerprint,
             "created_at": "2026-10-27T10:00:00Z",
         })
         .to_string(),
     )
     .unwrap();
     api.store.insert_dataset_version(&remote).await.unwrap();
+    let kept: sprisk_contracts::DatasetProfile = parse(
+        &std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/contract/dataset_profile/valid/sampled-row-groups.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    api.store
+        .save_profile(fingerprint, PROFILER_CODE, None, &kept)
+        .await
+        .unwrap();
 
     let path = "/dataset_versions/dsv_01JABCDEFGHJKMNPQRSTVWXYZ0/profile";
     let (status, body) = call(&api.app, "GET", path, None).await;
 
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "profile_not_local");
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body, serde_json::to_value(&kept).unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread")]

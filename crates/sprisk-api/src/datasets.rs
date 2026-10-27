@@ -76,8 +76,8 @@ pub(crate) async fn get_dataset_version(
     Ok(Json(state.store.get_dataset_version(&id(&raw)?).await?))
 }
 
-/// `GET /dataset_versions/{id}/profile`: the first rows profiled in place, made once per
-/// fingerprint and profiler code. The files are listed again first: data that changed since
+/// `GET /dataset_versions/{id}/profile`: a bounded sample profiled in place, local or in an
+/// object store, made once per fingerprint and profiler code. The files are listed again first: data that changed since
 /// it was registered is a different version, so it is refused, not profiled.
 pub(crate) async fn get_dataset_version_profile(
     State(state): State<AppState>,
@@ -86,15 +86,6 @@ pub(crate) async fn get_dataset_version_profile(
 ) -> Result<Json<DatasetProfile>, ApiError> {
     let version = state.store.get_dataset_version(&id(&raw)?).await?;
     let location = parse_location(&version.location).map_err(ApiError::Source)?;
-    if let Location::Remote(_) = location {
-        return Err(ApiError::BadRequest {
-            code: "profile_not_local",
-            message: format!(
-                "{} is in an object store; only local sources can be profiled yet",
-                version.location.as_str()
-            ),
-        });
-    }
     let fingerprint = version.fingerprint.as_str();
     let code = state.profiler.code();
     let target = query.get("target").map(String::as_str);

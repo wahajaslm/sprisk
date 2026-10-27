@@ -912,6 +912,17 @@ export interface ProfilePlanSection {
   reason: string;
 }
 /**
+ * Which row groups a sampled profile read: `chosen` of the source's `of` row groups, picked with `seed`, so the same files give the same sample.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SampledRowGroups".
+ */
+export interface SampledRowGroups {
+  seed: number;
+  chosen: number;
+  of: number;
+}
+/**
  * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038; GET /dataset_versions/{id}/profile, ADR-0067), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bins or the 30 most common values, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -924,9 +935,10 @@ export interface DatasetProfile {
   total_rows?: number;
   total_columns: number;
   /**
-   * Rows the profile covers: all of them, or the first 1,000,000 of a larger table.
+   * Rows the profile covers: all of them, or 1,000,000 of a larger table, from its first rows or from the row groups sampled_row_groups names.
    */
   profiled_rows: number;
+  sampled_row_groups?: SampledRowGroups1;
   /**
    * Rows in each band of the missing-value map; the last band may hold fewer.
    */
@@ -952,6 +964,14 @@ export interface DatasetProfile {
    * @maxItems 60
    */
   findings?: ProfileFinding[];
+}
+/**
+ * Set when a Parquet source larger than the sample was profiled on whole row groups chosen at random (ADR-0067). Absent: the profile covers the first rows, or all of them.
+ */
+export interface SampledRowGroups1 {
+  seed: number;
+  chosen: number;
+  of: number;
 }
 /**
  * Two columns and the profiled rows where both are empty.
@@ -2077,7 +2097,7 @@ export interface SourceProfileRequest {
    */
   target?: string;
   /**
-   * At least one. Local paths, in order.
+   * At least one, in order: resolved local paths, or object-store URIs (s3://, gs://, az://) read with the credentials in the environment.
    */
   files: string[];
 }
