@@ -44,19 +44,81 @@ pub struct Comparison {
     pub edges: Vec<Edge>,
 }
 
-/// The comparison of `proposal`'s shortlist on `base`, its flow. The registry gives each
-/// candidate's operator, so the baseline is the one model with no family, and the steps the
-/// comparison builds, by role.
+/// The models a comparison compares on one model step, from a rule's shortlist proposal or a
+/// compared method's options (ADR-0063 D3), and the options left off, each with why.
+pub struct Candidates<'c> {
+    pub subject: &'c str,
+    pub models: Vec<Candidate<'c>>,
+    pub left_out: Vec<(String, String)>,
+}
+
+/// One model a comparison fits: its operator and its settings on the model step.
+pub struct Candidate<'c> {
+    pub id: &'c str,
+    pub operator: &'c str,
+    pub params: &'c serde_json::Map<String, serde_json::Value>,
+}
+
+impl<'p> Candidates<'p> {
+    /// `proposal`'s shortlist: each shortlisted alternative replaces the model step.
+    pub fn of_proposal(proposal: &'p DecisionProposal) -> Result<Self, ResolveError> {
+        if proposal.shortlist.is_empty() {
+            return Err(ResolveError::Selection(format!(
+                "proposal {} has no shortlist to compare",
+                proposal.id.as_str()
+            )));
+        }
+        let models = proposal
+            .shortlist
+            .iter()
+            .map(|id| {
+                let (operator, params) = candidate(proposal, id.as_str())?;
+                Ok(Candidate {
+                    id: id.as_str(),
+                    operator,
+                    params,
+                })
+            })
+            .collect::<Result<_, ResolveError>>()?;
+        let left_out = proposal
+            .alternatives
+            .iter()
+            .filter(|a| {
+                !proposal
+                    .shortlist
+                    .iter()
+                    .any(|s| s.as_str() == a.id.as_str())
+            })
+            .map(|a| (a.id.to_string(), a.reason.to_string()))
+            .collect();
+        Ok(Self {
+            subject: proposal.subject_node_id.as_str(),
+            models,
+            left_out,
+        })
+    }
+}
+
+/// The comparison of `candidates` on `base`, its flow. The registry gives each candidate's
+/// operator, so the baseline is the one model with no family, and the steps the comparison
+/// builds, by role.
 pub fn comparison(
     base: &PipelineVersion,
-    proposal: &DecisionProposal,
+    candidates: &Candidates,
     scoring: Scoring,
     keeps_train: impl Fn(&Node) -> bool,
     registry: &Registry,
 ) -> Result<Comparison, ResolveError> {
     let operator_of = |operator: &str| registry.get(operator);
     let is_split = |n: &Node| is_split(registry, n);
-    let shortlist = shortlist(base, proposal, scoring, is_split, keeps_train, &operator_of)?;
+    let shortlist = shortlist(
+        base,
+        candidates,
+        scoring,
+        is_split,
+        keeps_train,
+        &operator_of,
+    )?;
     build(base, &shortlist, &Study::default(), registry)
 }
 
@@ -70,12 +132,12 @@ pub struct StudySearch<'s> {
     pub earlier_looks: &'s [PipelineVersionId],
 }
 
-/// A study of `proposal`'s shortlist (ADR-0052): a model whose manifest declares a search
-/// gets one trial per setting the strategy lists, tuned on inner folds; any other gets one
-/// trial at the flow's settings. Every trial scores the recall each guardrail names.
+/// A study of `candidates` (ADR-0052): a model whose manifest declares a search gets one
+/// trial per setting the strategy lists, tuned on inner folds; any other gets one trial at
+/// the flow's settings. Every trial scores the recall each guardrail names.
 pub fn study_comparison(
     base: &PipelineVersion,
-    proposal: &DecisionProposal,
+    candidates: &Candidates,
     scoring: Scoring,
     keeps_train: impl Fn(&Node) -> bool,
     registry: &Registry,
@@ -83,7 +145,14 @@ pub fn study_comparison(
 ) -> Result<Comparison, ResolveError> {
     let operator_of = |operator: &str| registry.get(operator);
     let is_split = |n: &Node| is_split(registry, n);
-    let mut shortlist = shortlist(base, proposal, scoring, is_split, keeps_train, &operator_of)?;
+    let mut shortlist = shortlist(
+        base,
+        candidates,
+        scoring,
+        is_split,
+        keeps_train,
+        &operator_of,
+    )?;
     let searches: Vec<_> = shortlist
         .trials
         .iter()
@@ -162,34 +231,19 @@ struct Shortlist<'p> {
 
 fn shortlist<'p, 'a>(
     base: &'p PipelineVersion,
-    proposal: &DecisionProposal,
+    candidates: &Candidates,
     scoring: Scoring,
     is_split: impl Fn(&Node) -> bool,
     keeps_train: impl Fn(&Node) -> bool,
     operator_of: &impl Fn(&str) -> Option<&'a Operator>,
 ) -> Result<Shortlist<'p>, ResolveError> {
-    if proposal.shortlist.is_empty() {
-        return Err(ResolveError::Selection(format!(
-            "proposal {} has no shortlist to compare",
-            proposal.id.as_str()
-        )));
-    }
-    let metric = metric_of(scoring, step_of(base, proposal.subject_node_id.as_str())?)?;
-    let chain = train_rows_chain(
-        base,
-        proposal.subject_node_id.as_str(),
-        is_split,
-        keeps_train,
-    )?;
+    let subject = candidates.subject;
+    let metric = metric_of(scoring, step_of(base, subject)?)?;
+    let chain = train_rows_chain(base, subject, is_split, keeps_train)?;
     let (split, between) = chain
         .split_last()
         .ok_or_else(|| ResolveError::NotTrainRows("no split feeds the model".into()))?;
-    words_as_the_flow_reads(
-        base,
-        proposal.subject_node_id.as_str(),
-        between,
-        operator_of,
-    )?;
+    words_as_the_flow_reads(base, subject, between, operator_of)?;
     // Every step between the split and the model fits on train (the walk above refuses any
     // other), so each fold refits them, in flow order, before the candidate (ADR-0050).
     let prepare = between
@@ -200,9 +254,12 @@ fn shortlist<'p, 'a>(
 
     let mut trials = Vec::new();
     let mut baselines = Vec::new();
-    for id in &proposal.shortlist {
-        let id = id.as_str();
-        let (operator, params) = candidate(proposal, id)?;
+    for &Candidate {
+        id,
+        operator,
+        params,
+    } in &candidates.models
+    {
         let model = operator_of(operator)
             .ok_or_else(|| ResolveError::UnknownOperator(operator.to_owned()))?
             .model
@@ -230,13 +287,12 @@ fn shortlist<'p, 'a>(
             baselines.len()
         )));
     };
-    let not_compared = proposal
-        .alternatives
+    let not_compared = candidates
+        .left_out
         .iter()
-        .filter(|a| !proposal.shortlist.iter().any(|s| s.as_str() == a.id.as_str()))
-        .map(|a| {
-            json!({ "id": a.id.as_str(), "reason": format!("Not on the shortlist: {}", a.reason.as_str()) })
-        })
+        .map(
+            |(id, reason)| json!({ "id": id, "reason": format!("Not on the shortlist: {reason}") }),
+        )
         .collect();
     Ok(Shortlist {
         split,

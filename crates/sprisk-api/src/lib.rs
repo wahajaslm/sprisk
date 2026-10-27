@@ -2259,16 +2259,26 @@ async fn comparison_version(
             &state.registry,
         )
     } else if let Some(study) = study {
-        sprisk_methodology::study_comparison(
-            &base,
-            proposal,
-            scoring,
-            keeps_train,
-            &state.registry,
-            study,
-        )
+        sprisk_methodology::Candidates::of_proposal(proposal).and_then(|candidates| {
+            sprisk_methodology::study_comparison(
+                &base,
+                &candidates,
+                scoring,
+                keeps_train,
+                &state.registry,
+                study,
+            )
+        })
     } else {
-        sprisk_methodology::comparison(&base, proposal, scoring, keeps_train, &state.registry)
+        sprisk_methodology::Candidates::of_proposal(proposal).and_then(|candidates| {
+            sprisk_methodology::comparison(
+                &base,
+                &candidates,
+                scoring,
+                keeps_train,
+                &state.registry,
+            )
+        })
     }
     .map_err(|e| match e {
         sprisk_methodology::ResolveError::NothingToCompare(_) => ApiError::BadRequest {

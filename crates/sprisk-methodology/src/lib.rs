@@ -19,8 +19,8 @@ pub mod verifying;
 pub use assets::{asset_params, binds_all};
 pub use catalog::{CatalogError, RuleCatalog, decides, reopened_stage};
 pub use compare::{
-    Comparison, FOLDS, INNER_FOLDS, REPEATS, SEED, SELECT_NODE, Scoring, StudySearch, TrialStep,
-    comparison, preparation_comparison, study_comparison, trial_steps,
+    Candidate, Candidates, Comparison, FOLDS, INNER_FOLDS, REPEATS, SEED, SELECT_NODE, Scoring,
+    StudySearch, TrialStep, comparison, preparation_comparison, study_comparison, trial_steps,
 };
 pub use decision::{
     Stamp, candidate_facts, candidates, flow_facts, input_facts, join_facts, key_columns,

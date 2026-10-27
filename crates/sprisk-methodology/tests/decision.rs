@@ -10,8 +10,8 @@ use sprisk_contracts::{
 };
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
-    Comparison, RuleCatalog, Scoring, Stamp, candidate_facts, candidates, comparison, facts,
-    flow_facts, input_facts, join_facts, key_columns, observation, preparation_comparison,
+    Candidates, Comparison, RuleCatalog, Scoring, Stamp, candidate_facts, candidates, comparison,
+    facts, flow_facts, input_facts, join_facts, key_columns, observation, preparation_comparison,
     profile_facts, proposal, result_facts, target_facts, train_rows_source, unread_sources,
     with_node_before, without_node,
 };
@@ -1606,7 +1606,7 @@ fn compare_by(
     let registry = registry();
     comparison(
         pipeline,
-        proposal,
+        &Candidates::of_proposal(proposal)?,
         Scoring {
             task: TaskType::Classification,
             stated,
@@ -1840,7 +1840,7 @@ fn a_split_s_folds_come_from_its_manifest_not_its_name() {
 
     let built = comparison(
         &pipeline,
-        &proposal,
+        &Candidates::of_proposal(&proposal).unwrap(),
         Scoring {
             task: TaskType::Classification,
             stated: None,
@@ -1884,7 +1884,8 @@ fn a_split_that_declares_no_folds_cannot_be_compared() {
         stated: None,
     };
 
-    let err = comparison(&pipeline, &proposal, scoring, keeps_train, &registry).unwrap_err();
+    let candidates = Candidates::of_proposal(&proposal).unwrap();
+    let err = comparison(&pipeline, &candidates, scoring, keeps_train, &registry).unwrap_err();
 
     assert!(
         err.to_string()
