@@ -12,18 +12,20 @@ export interface QuestionLedgerInferenceResult {
 /** Counts per column only, never values: what the local model may see (ADR-0014 level 2). */
 export function summarizeDatasetProfile(profile: DatasetProfile | undefined): CopilotDatasetSummary | undefined {
   if (!profile) return undefined;
+  // A registered CSV source's total is not counted (ADR-0067); the counts then cover the profiled rows.
+  const rows = profile.total_rows ?? profile.profiled_rows;
   return {
-    total_rows: profile.total_rows,
+    total_rows: rows,
     total_columns: profile.total_columns,
     columns: profile.columns.map((c) => {
       const isCandidateTarget = c.distinct > 1 && c.distinct <= 50;
-      const isCandidateId = c.distinct === profile.total_rows;
+      const isCandidateId = c.distinct === rows;
       return {
         name: c.name,
         type: c.data_type,
         distinct: c.distinct,
         missing: c.missing,
-        missing_pct: profile.total_rows > 0 ? Number(((c.missing / profile.total_rows) * 100).toFixed(1)) : 0,
+        missing_pct: rows > 0 ? Number(((c.missing / rows) * 100).toFixed(1)) : 0,
         ...(isCandidateTarget ? { candidate_target_or_class: true } : {}),
         ...(isCandidateId ? { candidate_id: true } : {}),
       };

@@ -10,7 +10,7 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     Binding, ClassificationReport, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
     ConceptSet, CopilotChatReply, CopilotChatRequest, CopilotLedgerDraft, CopilotLedgerRequest,
-    CreateRun, CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet,
+    CreateDatasetVersion, CreateRun, CreateStudy, CreateWalk, DatasetProfile, DatasetVersion, DecisionProposal, EvidenceSet, FigureSet,
     FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest,
     MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
@@ -77,10 +77,12 @@ const ENTITIES: &[&str] = &[
     "copilot_chat_request",
     "copilot_ledger_draft",
     "copilot_ledger_request",
+    "create_dataset_version",
     "create_run",
     "create_study",
     "create_walk",
     "dataset_profile",
+    "dataset_version",
     "decision_proposal",
     "evidence_set",
     "figure_set",
@@ -260,6 +262,16 @@ fn key_matches() {
 #[test]
 fn dataset_profile() {
     check::<DatasetProfile>("dataset_profile");
+}
+
+#[test]
+fn dataset_version() {
+    check::<DatasetVersion>("dataset_version");
+}
+
+#[test]
+fn create_dataset_version() {
+    check::<CreateDatasetVersion>("create_dataset_version");
 }
 
 #[test]

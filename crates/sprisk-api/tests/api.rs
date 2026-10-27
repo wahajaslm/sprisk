@@ -1622,7 +1622,7 @@ async fn a_table_is_profiled_once_and_its_profile_kept() {
         .await
         .unwrap()
         .unwrap();
-    marked.total_rows = 999;
+    marked.total_rows = Some(999);
     let other = format!("sha256:{}", "b".repeat(64));
     api.store
         .save_profile(&other, PROFILER_CODE, None, &marked)

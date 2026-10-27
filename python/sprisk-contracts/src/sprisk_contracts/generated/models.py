@@ -563,6 +563,66 @@ class Unknown(RootModel[str]):
     root: Annotated[str, Field(min_length=1)]
 
 
+class DatasetVersionId(RootModel[str]):
+    root: Annotated[str, Field(pattern="^dsv_[0-9A-HJKMNP-TV-Z]{26}$")]
+
+
+class DataFormat(StrEnum):
+    csv = "csv"
+    parquet = "parquet"
+
+
+class CreateDatasetVersion(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    location: Annotated[
+        str,
+        Field(
+            description="An absolute local path, or a file://, s3://, gs:// or az:// URI, of one file or a folder of files. The API refuses other schemes and local paths outside the data roots.",
+            max_length=4096,
+            min_length=1,
+        ),
+    ]
+
+
+class DatasetVersion(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.dataset_version/v1"]
+    id: DatasetVersionId
+    name: Annotated[
+        str,
+        Field(
+            description="The last part of the location. Dataset text (untrusted, rule 7).",
+            max_length=256,
+            min_length=1,
+        ),
+    ]
+    location: Annotated[
+        str,
+        Field(
+            description="Where the data lives. A local path is kept as its canonical file:// URI.",
+            max_length=4096,
+            min_length=1,
+            pattern="^(file|s3|gs|az)://",
+        ),
+    ]
+    format: DataFormat
+    file_count: Annotated[int, Field(ge=0)]
+    size_bytes: Annotated[
+        int, Field(description="Total bytes of the files. Exact in JavaScript up to 9 PB.", ge=0)
+    ]
+    fingerprint: Annotated[
+        ContentHash,
+        Field(
+            description="sha256 over each file's path, size, and e-tag or modified time, sorted by path. Metadata, not content: the bytes are never read to register."
+        ),
+    ]
+    created_at: Timestamp
+
+
 class MethodRef(RootModel[str]):
     root: Annotated[
         str,
@@ -4364,7 +4424,13 @@ class DatasetProfile(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    total_rows: Annotated[int, Field(ge=0)]
+    total_rows: Annotated[
+        int | None,
+        Field(
+            description="Rows in the whole table. Absent: not counted, because counting would read a registered CSV source to its end (ADR-0067); the table has more rows than profiled_rows.",
+            ge=0,
+        ),
+    ] = None
     total_columns: Annotated[int, Field(ge=0)]
     profiled_rows: Annotated[
         int,

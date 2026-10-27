@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "DatasetVersionId": {
+      "type": "string",
+      "pattern": "^dsv_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "DataFormat": {
+      "title": "DataFormat",
+      "description": "How the files of a dataset are written, read from their extensions.",
+      "type": "string",
+      "enum": ["csv", "parquet"]
+    },
+    "CreateDatasetVersion": {
+      "title": "CreateDatasetVersion",
+      "description": "Request body for POST /dataset_versions (ADR-0067): register data where it lives. Never a copy, never credentials.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location"],
+      "properties": {
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "description": "An absolute local path, or a file://, s3://, gs:// or az:// URI, of one file or a folder of files. The API refuses other schemes and local paths outside the data roots."
+        }
+      }
+    },
+    "DatasetVersion": {
+      "title": "DatasetVersion",
+      "description": "Immutable reference to data where it lives (arch doc §3, ADR-0067): its location and a fingerprint of its files' metadata. sprisk never copies the data and never stores credentials. Changed data is a new version.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "name",
+        "location",
+        "format",
+        "file_count",
+        "size_bytes",
+        "fingerprint",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["sprisk.dataset_version/v1"] },
+        "id": { "$ref": "#/$defs/DatasetVersionId" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "The last part of the location. Dataset text (untrusted, rule 7)."
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^(file|s3|gs|az)://",
+          "description": "Where the data lives. A local path is kept as its canonical file:// URI."
+        },
+        "format": { "$ref": "#/$defs/DataFormat" },
+        "file_count": { "type": "integer", "minimum": 0 },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total bytes of the files. Exact in JavaScript up to 9 PB."
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/ContentHash",
+          "description": "sha256 over each file's path, size, and e-tag or modified time, sorted by path. Metadata, not content: the bytes are never read to register."
+        },
+        "created_at": { "$ref": "#/$defs/Timestamp" }
+      }
+    }
+  }
+}

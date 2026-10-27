@@ -48,6 +48,8 @@ export interface Entities {
   FigureSet: C.FigureSet;
   LoadedTable: C.LoadedTable;
   DatasetProfile: C.DatasetProfile;
+  DatasetVersion: C.DatasetVersion;
+  CreateDatasetVersion: C.CreateDatasetVersion;
   KeyMatches: C.KeyMatches;
   TableShift: C.TableShift;
   ClassificationReport: C.ClassificationReport;

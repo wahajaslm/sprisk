@@ -149,6 +149,18 @@ export type WorkerId = string;
  */
 export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
 /**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "DatasetVersionId".
+ */
+export type DatasetVersionId = string;
+/**
+ * How the files of a dataset are written, read from their extensions.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "DataFormat".
+ */
+export type DataFormat = "csv" | "parquet";
+/**
  * methodology.<pack>.<method>@<semver>
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -843,13 +855,16 @@ export interface KeyMatch {
   most_rows_per_key: number;
 }
 /**
- * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bins or the 30 most common values, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).
+ * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038; GET /dataset_versions/{id}/profile, ADR-0067), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bins or the 30 most common values, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "DatasetProfile".
  */
 export interface DatasetProfile {
-  total_rows: number;
+  /**
+   * Rows in the whole table. Absent: not counted, because counting would read a registered CSV source to its end (ADR-0067); the table has more rows than profiled_rows.
+   */
+  total_rows?: number;
   total_columns: number;
   /**
    * Rows the profile covers: all of them, or the first 1,000,000 of a larger table.
@@ -1944,6 +1959,47 @@ export interface Costs {
    * Cost of predicting `positive` for another row. Positive; the API refuses others. A correct prediction costs nothing.
    */
   false_positive: number;
+}
+/**
+ * Request body for POST /dataset_versions (ADR-0067): register data where it lives. Never a copy, never credentials.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CreateDatasetVersion".
+ */
+export interface CreateDatasetVersion {
+  /**
+   * An absolute local path, or a file://, s3://, gs:// or az:// URI, of one file or a folder of files. The API refuses other schemes and local paths outside the data roots.
+   */
+  location: string;
+}
+/**
+ * Immutable reference to data where it lives (arch doc §3, ADR-0067): its location and a fingerprint of its files' metadata. sprisk never copies the data and never stores credentials. Changed data is a new version.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "DatasetVersion".
+ */
+export interface DatasetVersion {
+  schema_version: "sprisk.dataset_version/v1";
+  id: DatasetVersionId;
+  /**
+   * The last part of the location. Dataset text (untrusted, rule 7).
+   */
+  name: string;
+  /**
+   * Where the data lives. A local path is kept as its canonical file:// URI.
+   */
+  location: string;
+  format: DataFormat;
+  file_count: number;
+  /**
+   * Total bytes of the files. Exact in JavaScript up to 9 PB.
+   */
+  size_bytes: number;
+  /**
+   * sha256 over each file's path, size, and e-tag or modified time, sorted by path. Metadata, not content: the bytes are never read to register.
+   */
+  fingerprint: string;
+  created_at: Timestamp;
 }
 /**
  * A method's method.yaml (ADR-0063): the decision it owns, what it needs, its options and what each option promises. Its method.py holds decide() and one verify_<name>() per verification.

@@ -14,7 +14,9 @@ const text = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").repla
 
 /** Rows each input held and each output holds: a split's sides, a filter's loss. */
 export function rowsInOut(inputs: PortTable[], outputs: PortTable[], color: Color): Figure {
-  const bars = [...inputs.map((t) => ({ label: `in · ${t.port}`, rows: t.profile.total_rows, input: true })), ...outputs.map((t) => ({ label: `out · ${t.port}`, rows: t.profile.total_rows, input: false }))];
+  const all = [...inputs.map((t) => ({ label: `in · ${t.port}`, rows: t.profile.total_rows, input: true })), ...outputs.map((t) => ({ label: `out · ${t.port}`, rows: t.profile.total_rows, input: false }))];
+  // A step's tables are artifacts, always counted; a table whose total is not counted has no bar.
+  const bars = all.filter((b): b is typeof b & { rows: number } => b.rows !== undefined);
   return {
     data: [
       {

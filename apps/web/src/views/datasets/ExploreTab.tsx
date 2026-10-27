@@ -62,12 +62,7 @@ export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?:
   const column = p.columns[at];
   return (
     <div className="ds-profile ds-explore">
-      {(p.profiled_rows < p.total_rows || p.columns.length < p.total_columns) && (
-        <p className="ds-overview">
-          {p.profiled_rows < p.total_rows && `Profiled the first ${p.profiled_rows.toLocaleString()} of ${p.total_rows.toLocaleString()} rows. `}
-          {p.columns.length < p.total_columns && `Showing the first ${p.columns.length} of ${p.total_columns} columns.`}
-        </p>
-      )}
+      {sampleNote(p) && <p className="ds-overview">{sampleNote(p)}</p>}
       <LookAtRows dataset={dataset} profile={p} picked={column?.name} onPick={pick} />
       <ColumnProfileTable profile={p} />
       {column && <ReadOneColumn profile={p} at={at} onMove={setPicked} />}
@@ -83,6 +78,19 @@ export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?:
       <p className="ds-note">Includes every row, including held-out test rows. Use it to understand the data, not to choose features, transforms or models.</p>
     </div>
   );
+}
+
+/** What part of the table the profile read, or nothing when it read all of it. A registered
+ * CSV source larger than the sample has no counted total (ADR-0067). */
+export function sampleNote(p: DatasetProfile): string | undefined {
+  const rows =
+    p.total_rows === undefined
+      ? `Profiled the first ${p.profiled_rows.toLocaleString()} rows. The total was not counted: the source has more. `
+      : p.profiled_rows < p.total_rows
+        ? `Profiled the first ${p.profiled_rows.toLocaleString()} of ${p.total_rows.toLocaleString()} rows. `
+        : "";
+  const columns = p.columns.length < p.total_columns ? `Showing the first ${p.columns.length} of ${p.total_columns} columns.` : "";
+  return `${rows}${columns}`.trim() || undefined;
 }
 
 /** The column the page opens on: a measured number, else a category, else free text. */

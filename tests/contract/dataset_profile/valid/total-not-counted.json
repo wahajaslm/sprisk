@@ -1,0 +1,84 @@
+{
+  "total_columns": 3,
+  "band_rows": 12,
+  "columns": [
+    {
+      "name": "bmi",
+      "data_type": "Float64",
+      "missing": 3,
+      "distinct": 163,
+      "iqr": 12.5,
+      "missing_by_band": [
+        0.0,
+        0.083,
+        0.0,
+        0.167
+      ],
+      "histogram": {
+        "kind": "bins",
+        "bars": [
+          {
+            "label": "18.0\u201322.5",
+            "count": 40
+          },
+          {
+            "label": "22.5\u201327.0",
+            "count": 180
+          }
+        ]
+      }
+    },
+    {
+      "name": "sex",
+      "data_type": "String",
+      "missing": 0,
+      "distinct": 2,
+      "missing_by_band": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "histogram": {
+        "kind": "top_values",
+        "bars": [
+          {
+            "label": "F",
+            "count": 235
+          },
+          {
+            "label": "M",
+            "count": 207
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty",
+      "data_type": "Float64",
+      "missing": 442,
+      "distinct": 0,
+      "missing_by_band": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "correlation": {
+    "columns": [
+      "bmi",
+      "progression"
+    ],
+    "pairs": [
+      {
+        "column_a": "bmi",
+        "column_b": "progression",
+        "pearson": 0.59,
+        "rows": 439
+      }
+    ]
+  },
+  "profiled_rows": 442
+}
