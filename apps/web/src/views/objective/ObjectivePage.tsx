@@ -10,12 +10,13 @@ import { inferQuestionLedger } from "../../api/copilot.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { Tag } from "../../components/ui/Tag.tsx";
-import { SendIcon, SparkIcon } from "../Icons.tsx";
+import { SparkIcon } from "../Icons.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { stepTitle } from "../../flow/stages.ts";
 import { nextVersion, timestamp } from "../../flow/edit.ts";
 import { currentQuestion } from "./ledger.ts";
 import { StartWalk } from "./StartWalk.tsx";
+import { QuestionChat } from "./QuestionChat.tsx";
 import { when } from "../when.ts";
 
 const fact = (value: string): Fact => ({ value: value.trim(), origin: "explicit" });
@@ -88,6 +89,8 @@ export function ObjectivePage() {
   const [copilotClarification, setCopilotClarification] = useState<string>();
   // The question being revised; undefined for a new question.
   const [revising, setRevising] = useState<QuestionVersion>();
+  // A new question is drafted in a conversation (ADR-0068); it stays open until the person leaves.
+  const [composing, setComposing] = useState(false);
 
   const questions = useMemo(() => questionsQuery.data ?? [], [questionsQuery.data]);
   const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
@@ -246,62 +249,14 @@ export function ObjectivePage() {
     return <Loading text="Loading questions ledger…" pad />;
   }
 
-  // Empty state when no question versions exist at the backend yet
-  if (questions.length === 0 && !isEditing) {
-    if (isInferring) {
-      return (
-        <div className="single-panel-layout objective-page-layout">
-          <main className="center-screen objective-empty-screen">
-            <Loading text="Copilot is analyzing dataset profile and formulating the question ledger with Qwen 2.5…" pad />
-          </main>
-        </div>
-      );
-    }
+  if (composing || (questions.length === 0 && !isEditing)) {
     return (
       <div className="single-panel-layout objective-page-layout">
         <main className="center-screen objective-empty-screen">
-          <div className="objective-empty-card">
-            <h1 className="objective-empty-title">What do you want to find out?</h1>
-            <p className="objective-empty-sub">
-              Describe the investigation goal in your own words. Sprisk Copilot extracts your objective, identifies target and entity columns grounded by the dataset profile, and drafts the question ledger.
-            </p>
-
-            <div className="objective-input-box">
-              {tables.length > 0 && (
-                <div className="objective-file-chip">
-                  <code>{tables[0]!.name}</code>
-                  <span>({tables[0]!.total_rows.toLocaleString()} rows)</span>
-                </div>
-              )}
-              <textarea
-                className="objective-textarea"
-                value={formObjective}
-                onChange={(e) => setFormObjective(e.target.value)}
-                placeholder="e.g. Predict product category (prdtypecode) from title and description."
-                rows={3}
-              />
-              <div className="objective-input-foot">
-                <div className="objective-input-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Tag tone="default">Objective</Tag>
-                  {activeTable && (
-                    <span style={{ fontSize: "var(--fs-12)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 4 }}>
-                      <SparkIcon size={12} />
-                      Grounded by {activeTable.name} profile
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="objective-send-btn"
-                  disabled={!formObjective.trim() || isInferring}
-                  onClick={() => handleInferLedger(formObjective)}
-                  title="Infer ledger with Copilot"
-                >
-                  <SendIcon />
-                </button>
-              </div>
-            </div>
-          </div>
+          <QuestionChat
+            {...(question ? { investigationId: question.investigation_id, onLeave: () => setComposing(false) } : {})}
+            onPick={() => setComposing(true)}
+          />
         </main>
       </div>
     );
@@ -344,7 +299,7 @@ export function ObjectivePage() {
             <Button variant="secondary" size="sm" onClick={() => openEditor(question)}>
               Revise question
             </Button>
-            <Button variant="primary" size="sm" onClick={() => openEditor()}>
+            <Button variant="primary" size="sm" onClick={() => setComposing(true)}>
               New question
             </Button>
           </div>

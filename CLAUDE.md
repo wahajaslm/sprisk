@@ -69,6 +69,8 @@ Simple, tested, boring, correct. The goal is code a tired engineer understands a
 
 Never hand-build what a mature, maintained library already does. Write only the sprisk-specific part (policy, verification, domain rules) on top.
 
+**Unfamiliar feature? Research before writing.** Before building anything new to the codebase, search GitHub for mature open-source projects that solve it. Compare at least two approaches (maturity, maintenance, licence, fit with this stack), pick one, and name it in the plan or commit. Only then start. Do not write it from scratch first.
+
 | Need | Rust | Python | TS |
 | --- | --- | --- | --- |
 | Object/artifact storage | `object_store` | `fsspec` | — |

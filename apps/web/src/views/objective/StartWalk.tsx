@@ -29,9 +29,15 @@ const STOPPED: Record<WalkStopReason, string> = {
 
 /** Starts the engine on this question and the files a person names, then follows it. When the
  * walk's look stops with questions, they are answered here in one revision, and the walk starts
- * again on it (ADR-0063 amendment). */
-export function StartWalk({ question }: { question: QuestionVersion }) {
-  const [sourceText, setSourceText] = useState("");
+ * again on it (ADR-0063 amendment). A `draft` is not saved yet: starting saves it first, so the
+ * person confirms the record the walk starts on (ADR-0068). */
+export function StartWalk({ question, draft = false, initialSources = [] }: {
+  question: QuestionVersion;
+  draft?: boolean;
+  initialSources?: string[];
+}) {
+  const [sourceText, setSourceText] = useState(initialSources.join("\n"));
+  const [unsaved, setUnsaved] = useState(draft);
   const startWalk = useStartWalk();
   const saveQuestion = useSaveQuestionVersion();
   const walk = useWalk(startWalk.data?.id);
@@ -50,6 +56,16 @@ export function StartWalk({ question }: { question: QuestionVersion }) {
       max_actions: MAX_ACTIONS,
       max_wall_seconds: MAX_WALL_SECONDS,
     });
+
+  const begin = () =>
+    unsaved
+      ? saveQuestion.mutate(question, {
+          onSuccess: (saved) => {
+            setUnsaved(false);
+            start(saved.id);
+          },
+        })
+      : start(question.id);
 
   const answer = (answers: Record<string, string>) =>
     saveQuestion.mutate(withAnswers(question, answers, `qv_${ulid()}`, timestamp()), {
@@ -73,8 +89,8 @@ export function StartWalk({ question }: { question: QuestionVersion }) {
         <Button
           variant="primary"
           size="sm"
-          disabled={sources.length === 0 || missing.length > 0 || startWalk.isPending}
-          onClick={() => start(question.id)}
+          disabled={sources.length === 0 || missing.length > 0 || startWalk.isPending || saveQuestion.isPending}
+          onClick={begin}
         >
           Start auto run
         </Button>
@@ -102,7 +118,7 @@ export function StartWalk({ question }: { question: QuestionVersion }) {
       )}
       {saveQuestion.error && (
         <p role="alert" className="error" style={{ margin: 0 }}>
-          The answers were not saved: {saveQuestion.error.message}
+          The question was not saved: {saveQuestion.error.message}
         </p>
       )}
       {walk.isError && (

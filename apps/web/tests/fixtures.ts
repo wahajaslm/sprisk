@@ -1,7 +1,8 @@
+import { parse } from "@sprisk/contracts";
 import { vi } from "vitest";
 
 import type { DockCommands } from "../src/workbench/workbench.ts";
-import type { TablePage } from "@sprisk/contracts";
+import type { ColumnRole, TablePage } from "@sprisk/contracts";
 import type { Attempt, AttemptOutput, Operator, PipelineVersion, Run } from "@sprisk/contracts";
 
 const resources = { cpu_cores: 1, memory_mb: 512, gpu: "none", timeout_seconds: 60 } as const;
@@ -254,4 +255,28 @@ export const codeDisplayJson = JSON.stringify({
     { kind: "table", table: { ...tablePage(0, 1), total_rows: 150 } },
     { kind: "image", png_base64: "iVBORw0KGgo=" },
   ],
+});
+
+export const column = (name: string, data_type: string, distinct: number, role?: ColumnRole) => ({
+  name,
+  data_type,
+  missing: 0,
+  distinct,
+  missing_by_band: [0],
+  ...(role ? { role } : {}),
+});
+
+/** A Rakuten-like table: an id, two free-text columns and a 27-class code. */
+export const rakuten = parse("DatasetProfile", {
+  total_rows: 84916,
+  total_columns: 4,
+  profiled_rows: 84916,
+  band_rows: 1000,
+  columns: [
+    column("id", "Int64", 84916, "identifier"),
+    column("designation", "String", 82265, "text"),
+    column("description", "String", 47508, "text"),
+    column("prdtypecode", "Int64", 27, "category"),
+  ],
+  correlation: { columns: [], pairs: [] },
 });
