@@ -21,8 +21,8 @@ pub use compare::{
     StudySearch, TrialStep, comparison, study_comparison, trial_steps,
 };
 pub use decision::{
-    Stamp, key_columns, one_table_into, train_rows_source, unread_sources, with_node_before,
-    without_node,
+    Stamp, costs_follow_the_split, key_columns, one_table_into, train_rows_source, unread_sources,
+    with_node_before, without_node,
 };
 pub use defaults::Defaults;
 
@@ -40,6 +40,10 @@ pub enum ResolveError {
     },
     #[error("the model selection scored no candidate {0}")]
     NotCompared(String),
+    #[error(
+        "step {step} has costs, but split {split} keeps time order or whole groups, and the inner folds that tune its cut-off shuffle rows; remove the costs or use a random split"
+    )]
+    CostsAfterOrderedSplit { step: String, split: String },
     #[error("the train rows cannot be traced to a split: {0}")]
     NotTrainRows(String),
     #[error(

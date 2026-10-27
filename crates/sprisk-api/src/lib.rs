@@ -2582,6 +2582,13 @@ async fn start_run(
 async fn run_plan(state: &AppState, pipeline: &PipelineVersion) -> Result<Plan, ApiError> {
     let mut plan = compile(pipeline, &state.registry).map_err(ApiError::Compile)?;
     check_local_paths(&plan, &state.data_roots)?;
+    let folds_of = |n: &sprisk_contracts::Node| state.registry.get(n.operator.as_str())?.folds;
+    sprisk_methodology::costs_follow_the_split(pipeline, folds_of).map_err(|e| {
+        ApiError::BadRequest {
+            code: "costs_after_ordered_split",
+            message: e.to_string(),
+        }
+    })?;
     if let Some(id) = &pipeline.question_version_id {
         let question = state.store.get_question_version(id).await?;
         let keys = sprisk_methodology::key_columns(&question, pipeline);

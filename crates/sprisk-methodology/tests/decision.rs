@@ -5,14 +5,14 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use sprisk_contracts::{
-    DecisionProposal, Node, Operator, PipelineVersion, QuestionVersion, SelectionMetric, TaskType,
-    parse,
+    DecisionProposal, Node, Operator, PipelineVersion, QuestionVersion, SelectionMetric,
+    SplitFolds, TaskType, parse,
 };
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::deciding::{Basis, bindings, compared_proposal};
 use sprisk_methodology::{
-    Candidates, Comparison, Scoring, Stamp, comparison, key_columns, train_rows_source,
-    unread_sources, with_node_before, without_node,
+    Candidates, Comparison, Scoring, Stamp, comparison, costs_follow_the_split, key_columns,
+    train_rows_source, unread_sources, with_node_before, without_node,
 };
 use sprisk_registry::Registry;
 
@@ -1020,4 +1020,48 @@ fn a_comparison_refuses_a_step_it_would_refit_with_other_code_than_the_flows() {
         err.to_string().starts_with("step scale runs its own code"),
         "{err}"
     );
+}
+
+/// `before_forest` with `split` replaced by `split_operator` and costs on the forest.
+fn costed_forest(split_operator: &str) -> PipelineVersion {
+    let mut version = before_forest();
+    for node in &mut version.nodes {
+        match node.id.as_str() {
+            "split" => node.operator = parse(&json!(split_operator).to_string()).unwrap(),
+            "rf" => {
+                let costs = json!({ "positive": "bad", "false_negative": 5, "false_positive": 1 });
+                node.params = parse(&json!({ "costs": costs }).to_string()).unwrap();
+            }
+            _ => {}
+        }
+    }
+    version
+}
+
+fn folds_of(registry: &Registry) -> impl Fn(&Node) -> Option<SplitFolds> + '_ {
+    |node| registry.get(node.operator.as_str()).and_then(|op| op.folds)
+}
+
+#[test]
+fn costs_after_a_time_or_group_split_are_refused() {
+    let registry = registry();
+    for split in [
+        "sprisk.validation.temporal_split@1.0.0",
+        "sprisk.validation.group_split@1.0.0",
+    ] {
+        let err = costs_follow_the_split(&costed_forest(split), folds_of(&registry)).unwrap_err();
+        assert!(
+            matches!(&err, ResolveError::CostsAfterOrderedSplit { step, split } if step == "rf" && split == "split"),
+            "{err}"
+        );
+        assert!(err.to_string().contains("shuffle"), "{err}");
+    }
+}
+
+#[test]
+fn costs_after_a_random_split_or_no_costs_are_allowed() {
+    let registry = registry();
+    let random = costed_forest("sprisk.validation.random_split@1.0.0");
+    costs_follow_the_split(&random, folds_of(&registry)).unwrap();
+    costs_follow_the_split(&before_forest(), folds_of(&registry)).unwrap();
 }

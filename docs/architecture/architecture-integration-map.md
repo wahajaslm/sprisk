@@ -99,7 +99,7 @@ Most important first.
 
 1. **M4 experiments:** studies, trials, budgets, grid and random search and recall guardrails exist (ADR-0052), proven end to end on German credit. Open:
    - Costs and decision thresholds work after a random split only (ADR-0053); time and group splits need inner threshold folds that keep time order or whole groups.
-   - Costs set by hand on a model step after a time or group split are not refused yet; only comparisons and the decision threshold rule refuse them.
+   - Costs on a model step after a time or group split are refused when the flow runs (`costs_after_ordered_split`), as comparisons and the decision threshold method refuse them.
    - Search is over finite lists only: no adaptive search or continuous ranges.
 2. **Checks cite decisions for the split only.** Other Gate B checks do not link to the decision that set a step.
 3. **Encoding:** no standalone one-hot step, and the `categorical_encoding` rule is a draft (SCI-03, SCI-05).

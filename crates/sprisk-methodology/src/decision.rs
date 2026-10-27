@@ -5,11 +5,12 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
-    CapabilityClass, Edge, Node, Operator, PipelineVersion, PortRef, QuestionVersion, parse,
+    CapabilityClass, Edge, Node, Operator, PipelineVersion, PortRef, QuestionVersion, SplitFolds,
+    parse,
 };
 
 use crate::ResolveError;
-use crate::compare::edge;
+use crate::compare::{edge, upstream};
 
 /// The columns that identify rows, groups or time: the question's unit and time columns, and
 /// every step's group and time column. They are never model inputs, even when a model step
@@ -293,6 +294,35 @@ fn on_the_one_table(
     let mut nodes = pipeline.nodes.clone();
     nodes.insert(at, step);
     Ok((nodes, edges))
+}
+
+/// A step with misclassification costs tunes its cut-off on shuffled inner folds of its train
+/// rows (ADR-0053). After a time or group split those folds would mix time order or groups,
+/// so such a step is refused until its inner folds can follow the split (M4).
+pub fn costs_follow_the_split(
+    pipeline: &PipelineVersion,
+    folds_of: impl Fn(&Node) -> Option<SplitFolds>,
+) -> Result<(), ResolveError> {
+    let ordered = |n: &&Node| matches!(folds_of(n), Some(SplitFolds::Time | SplitFolds::Group));
+    for step in pipeline
+        .nodes
+        .iter()
+        .filter(|n| n.params.contains_key("costs"))
+    {
+        let above = upstream(pipeline, step.id.as_str());
+        let split = pipeline
+            .nodes
+            .iter()
+            .filter(ordered)
+            .find(|n| above.contains(n.id.as_str()));
+        if let Some(split) = split {
+            return Err(ResolveError::CostsAfterOrderedSplit {
+                step: step.id.to_string(),
+                split: split.id.to_string(),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// The step whose `train` output feeds `node_id`'s `train` input, walked back to a split's

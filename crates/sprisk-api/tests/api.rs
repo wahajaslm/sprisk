@@ -6729,3 +6729,38 @@ async fn a_person_compares_a_compared_method_s_options_and_applies_the_winner() 
     assert_eq!(model["params"]["target"], "returned_within_30d", "{model}");
     assert_eq!(model["params"]["features"], json!(["age"]), "{model}");
 }
+
+/// Costs set by hand on a model after a time split are refused when it runs: the inner folds
+/// that tune its cut-off shuffle rows (ADR-0053, M4 gap 1).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_with_costs_after_a_time_split_is_refused() {
+    let api = api().await;
+    let mut flow = pipeline(&api.csv);
+    let costs = json!({ "positive": "1", "false_negative": 5.0, "false_positive": 1.0 });
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
+                "params":{"time_column":"order_date","test_fraction":0.25} }),
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
+                "params":{"target":"returned_within_30d","task":"classification","costs":costs} }),
+    ]);
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let create = json!({ "pipeline_version_id": BASE });
+    let (status, body) = call(&api.app, "POST", "/runs", Some(create)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(
+        body["errors"][0]["code"], "costs_after_ordered_split",
+        "{body}"
+    );
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("split"),
+        "{body}"
+    );
+}
