@@ -78,6 +78,10 @@ pub fn measure(
     });
     for (method, kind, need) in needed.chain(promised) {
         let producer = methods::producer_of(&kind, &by_id)?;
+        // A select step is placed by a comparison, never here (ADR-0063 D4).
+        if producer.attach.is_none() {
+            continue;
+        }
         match bound_params(producer, bindings) {
             Ok(mut params) => {
                 params.extend(crate::asset_params(producer, question));

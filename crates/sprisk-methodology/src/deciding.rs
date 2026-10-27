@@ -272,7 +272,8 @@ impl Made {
 /// they read is made, no concept they read is only a guess, no undecided method may still
 /// change the rows their evidence is measured on, and each evidence kind they need is in
 /// `measured` or cannot be measured (see `measure::measurable`). One whose evidence can be
-/// measured but is not yet waits for the walk to measure it.
+/// measured but is not yet waits for the walk to measure it, as does one needing what a
+/// comparison finds, until the walk compares.
 pub fn ready<'c>(
     catalog: &'c RuleCatalog,
     question: &QuestionVersion,
@@ -384,6 +385,10 @@ pub fn ready<'c>(
                 continue;
             }
             let producer = methods::producer_of(kind.as_str(), &by_id)?;
+            // What a comparison finds is measured once the walk compares.
+            if producer.attach.is_none() {
+                continue 'methods;
+            }
             let operator_of = |id: &str| by_id.get(id).copied();
             if measurable(producer, |c| bound.contains(c), pipeline, operator_of)? {
                 continue 'methods;

@@ -1478,3 +1478,54 @@ fn a_compared_method_waits_until_no_other_method_may_change_its_model_s_rows_or_
     assert!(!ready_now(&all_but_threshold).contains(&MODEL_CHOICE.to_owned()));
     assert_eq!(ready_now(&others), [MODEL_CHOICE]);
 }
+
+/// The fixture pack with the duplicate method reading what a comparison found instead.
+fn reading_a_comparison() -> tempfile::TempDir {
+    let pack = tempfile::tempdir().unwrap();
+    copy_dir(&fixture(), pack.path());
+    let manifest = pack
+        .path()
+        .join("methodology/core/methods/repeated_items/method.yaml");
+    let text = std::fs::read_to_string(&manifest)
+        .unwrap()
+        .replace(
+            "evidence: [data.near_duplicate_groups]",
+            "evidence: [models.comparison]",
+        )
+        .replace(
+            "evidence: data.near_duplicate_groups, ",
+            "evidence: models.comparison, ",
+        );
+    std::fs::write(&manifest, text).unwrap();
+    pack
+}
+
+#[test]
+fn what_a_comparison_found_is_never_placed_and_a_method_reading_it_waits_for_it() {
+    let ops = operators();
+    let pack = reading_a_comparison();
+    let catalog = RuleCatalog::load_dir(&pack.path().join("methodology"), &ops).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &[]).unwrap();
+    let measuring = sprisk_methodology::measure::measure(
+        &catalog,
+        &measured_flow(),
+        &q,
+        &effective.bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
+    assert!(measuring.effects.is_empty(), "{:?}", measuring.effects);
+    assert!(measuring.left_out.is_empty(), "{:?}", measuring.left_out);
+
+    let waiting = ready_ids(&catalog, &q, &[], &BTreeMap::new(), &ops);
+    assert!(!waiting.contains(&REPEATED.to_owned()), "{waiting:?}");
+    let compared = BTreeMap::from([(
+        "models.comparison".to_owned(),
+        json!({ "metric": "balanced_accuracy", "score": 0.8, "baseline_score": 0.5,
+                "beats_baseline": true, "looks": 1 }),
+    )]);
+    let found = ready_ids(&catalog, &q, &[], &compared, &ops);
+    assert!(found.contains(&REPEATED.to_owned()), "{found:?}");
+}
