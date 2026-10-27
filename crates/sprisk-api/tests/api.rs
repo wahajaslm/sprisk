@@ -5657,59 +5657,6 @@ async fn a_restarted_walk_finishes_scoring_its_test_rows_and_ends_on_that_score(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
-    let api = api().await;
-    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
-    rakuten_like_question(&api).await;
-    let (walk, head) = walk_left_walking(&api).await;
-    // The head was run, then round 1 applied a rule that reads its rows, and the server
-    // stopped before it recorded the step.
-    let (status, run) = call(
-        &api.app,
-        "POST",
-        "/runs",
-        Some(json!({ "pipeline_version_id": head })),
-    )
-    .await;
-    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
-    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
-    for _ in 0..400 {
-        let (_, body) = call(&api.app, "GET", &run_uri, None).await;
-        if body["finished_at"].is_string() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    let uri =
-        format!("/pipeline_versions/{head}/methodology/proposals/model/models.estimator_selection");
-    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    let apply = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let choice = json!({
-        "alternative_id": proposal["alternatives"][0]["id"],
-        "idempotency_key": format!("{}-round-1", walk.id.as_str()),
-        "reason": "Chosen before the comparison ran.",
-    });
-    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-
-    assert_eq!(resume_walks(&api.state).await.unwrap(), 1);
-    let detail = stopped(&api, &serde_json::to_value(&walk).unwrap()).await;
-
-    // Not stale: the version its head gained is the one its own round made.
-    let steps = detail["steps"].as_array().unwrap();
-    assert_eq!(steps[1]["action"], "apply", "{detail}");
-    assert_eq!(
-        steps[1]["methodology_decision_id"], applied["decision"]["id"],
-        "{detail}"
-    );
-    assert_ne!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn a_question_s_walks_are_found_by_the_question_newest_first() {
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
