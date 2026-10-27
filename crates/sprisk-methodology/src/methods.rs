@@ -124,8 +124,12 @@ fn check_operator(operator: &Operator, provided: &Provided) -> Result<(), Catalo
             "produces evidence, so it needs an output named {EVIDENCE_PORT}"
         )));
     }
-    // The engine adds a producer only where its manifest says it attaches.
-    if !operator.produces.is_empty() && operator.attach.is_none() {
+    // The engine adds a producer only where its manifest says it attaches. A select step is
+    // never added by it: a comparison runs one, and the walk reads what it found there.
+    if !operator.produces.is_empty()
+        && operator.attach.is_none()
+        && operator.role != Some(OperatorRole::Select)
+    {
         return Err(refuse("produces evidence, so it needs an attach".into()));
     }
     // A producer on a split's outputs that reads the test rows is a look at them: it may read

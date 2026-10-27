@@ -1,17 +1,21 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.select_model@5.0.0
+id: sprisk.ml.select_model@6.0.0
 title: Model selection
 capability_class: decision_evaluator
 role: select
 role_default: true
-description: Choose among cross-validated candidates (ADR-0044). Of the candidates that beat the baseline on the same folds, the simplest within one standard error of the best wins (ADR-0050). If none beats it, a floor baseline means no winner and a reference baseline stands. A study's tuned candidate takes each outer fold's score from the trial its inner folds chose, and a candidate that misses a guardrail cannot win (ADR-0052). Writes a SelectionDecision.
-entrypoint: sprisk_ml.compare:select_model
+description: Choose among cross-validated candidates (ADR-0044). Of the candidates that beat the baseline on the same folds, the simplest within one standard error of the best wins (ADR-0050). If none beats it, a floor baseline means no winner and a reference baseline stands. A study's tuned candidate takes each outer fold's score from the trial its inner folds chose, and a candidate that misses a guardrail cannot win (ADR-0052). Writes a SelectionDecision, and what it found as evidence a method reads (ADR-0063 D4).
+entrypoint: sprisk_ml.compare:select_and_measure
+# Never placed by the engine: it runs where a comparison puts it (ADR-0063 D4).
+produces:
+  models.comparison:
+    fields: { metric: string, score: number, baseline_score: number, beats_baseline: boolean, looks: integer }
 inputs: []
-outputs: [{ name: decision, kind: report }]
+outputs: [{ name: decision, kind: report }, { name: evidence, kind: report }]
 params_schema:
   type: object
   additionalProperties: false
-  required: [trials, baseline, baseline_role, metric, complexity, not_compared]
+  required: [trials, baseline, baseline_role, metric, complexity, not_compared, looks]
   properties:
     trials:
       type: array
@@ -47,6 +51,7 @@ params_schema:
           metric: { type: string, enum: [recall] }
           label: { type: string, minLength: 1 }
           at_least: { type: number, minimum: 0, maximum: 1 }
+    looks: { type: integer, minimum: 1, description: "This comparison's place among the looks the flow's family of versions has taken at its folds, counting it." }
     earlier_looks:
       type: array
       description: "Earlier comparisons of the same version and step, started on the same folds, recorded as given."

@@ -2336,6 +2336,7 @@ async fn comparison_version(
     let scoring = sprisk_methodology::Scoring {
         task: question.task.value,
         stated: question.success_bar.as_ref().map(|bar| bar.value.metric),
+        look: state.store.looks(&base.id).await? + 1,
     };
     let built = if proposal.shortlist.is_empty() {
         let rule = state.rules.rule(proposal.rule.as_str())?;
@@ -2375,17 +2376,18 @@ async fn comparison_version(
 
 /// The comparison of a compared method's `candidates` on `base`, its flow (ADR-0063 D3),
 /// built and checked but not stored.
-pub(crate) fn method_comparison(
+pub(crate) async fn method_comparison(
     state: &AppState,
     base: &PipelineVersion,
     question: &QuestionVersion,
     method: &sprisk_contracts::MethodRef,
-    candidates: &sprisk_methodology::Candidates,
+    candidates: &sprisk_methodology::Candidates<'_>,
 ) -> Result<PipelineVersion, ApiError> {
     let keeps_train = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let scoring = sprisk_methodology::Scoring {
         task: question.task.value,
         stated: question.success_bar.as_ref().map(|bar| bar.value.metric),
+        look: state.store.looks(&base.id).await? + 1,
     };
     let built =
         sprisk_methodology::comparison(base, candidates, scoring, keeps_train, &state.registry)

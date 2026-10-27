@@ -355,7 +355,7 @@ def test_unconnected_fitting_transform_train_is_an_input_error() -> None:
 
 
 CROSS_VALIDATE = "sprisk.ml.cross_validate@4.0.0"
-SELECT = "sprisk.ml.select_model@5.0.0"
+SELECT = "sprisk.ml.select_model@6.0.0"
 
 
 def cross_validated(rows_from: str) -> PipelineVersion:

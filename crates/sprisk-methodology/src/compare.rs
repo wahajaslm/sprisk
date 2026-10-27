@@ -227,6 +227,7 @@ struct Shortlist<'p> {
     trials: Vec<Trial>,
     baseline: Baseline,
     not_compared: Vec<serde_json::Value>,
+    look: i64,
 }
 
 fn shortlist<'p, 'a>(
@@ -303,6 +304,7 @@ fn shortlist<'p, 'a>(
             role: BaselineRole::Floor,
         },
         not_compared,
+        look: scoring.look,
     })
 }
 
@@ -394,6 +396,7 @@ pub fn preparation_comparison(
             role: BaselineRole::Reference,
         },
         not_compared,
+        look: scoring.look,
     };
     build(base, &shortlist, &Study::default(), registry)
 }
@@ -443,6 +446,7 @@ fn build(
         trials,
         baseline,
         not_compared,
+        look,
     } = shortlist;
     let split = *split;
     // Folds must keep what the split keeps apart: time order, or whole groups (ADR-0050).
@@ -501,7 +505,8 @@ fn build(
     let mut select = json!({
         "trials": trials.iter().map(|t| &t.id).collect::<Vec<_>>(),
         "baseline": baseline.id, "baseline_role": baseline.role,
-        "metric": metric, "complexity": complexity, "not_compared": not_compared
+        "metric": metric, "complexity": complexity, "not_compared": not_compared,
+        "looks": look
     });
     if !study.tuned.is_empty() {
         select["tuned"] = json!(study.tuned);
@@ -574,18 +579,20 @@ pub fn trial_steps(comparison: &PipelineVersion) -> Result<Vec<TrialStep<'_>>, R
 }
 
 /// What a comparison scores by (ADR-0059): the question's task, and the metric a person
-/// stated with the success bar, if any.
+/// stated with the success bar, if any. `look` is which look at the folds it is, counting it,
+/// which its select step reports (ADR-0063 D4).
 #[derive(Clone, Copy, Debug)]
 pub struct Scoring {
     pub task: TaskType,
     pub stated: Option<SelectionMetric>,
+    pub look: i64,
 }
 
 /// Fixed before any score is seen (ADR-0044): expected cost when the `model` step states
 /// misclassification costs (ADR-0053), whatever the bar's metric; else the metric a person
 /// stated with the success bar (ADR-0059) when it fits the task, else the task's.
 fn metric_of(scoring: Scoring, model: &Node) -> Result<&'static str, ResolveError> {
-    let Scoring { task, stated } = scoring;
+    let Scoring { task, stated, .. } = scoring;
     use SelectionMetric::{BalancedAccuracy, ExpectedCost, Rmse, WeightedF1};
     let costed = model.params.contains_key("costs");
     let refuse = |why: String| Err(ResolveError::Selection(why));

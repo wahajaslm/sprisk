@@ -1610,6 +1610,7 @@ fn compare_by(
         Scoring {
             task: TaskType::Classification,
             stated,
+            look: 3,
         },
         keeps_train,
         &registry,
@@ -1702,7 +1703,8 @@ fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
             "trials": ["ml_dummy_baseline", "ml_linear_model"], "baseline": "ml_dummy_baseline",
             "baseline_role": "floor", "metric": "balanced_accuracy",
             "complexity": { "ml_dummy_baseline": 0, "ml_linear_model": 1 },
-            "not_compared": [{ "id": "ml_random_forest", "reason": "Not on the shortlist: Too few rows to trust." }]
+            "not_compared": [{ "id": "ml_random_forest", "reason": "Not on the shortlist: Too few rows to trust." }],
+            "looks": 3
         })
     );
 }
@@ -1844,6 +1846,7 @@ fn a_split_s_folds_come_from_its_manifest_not_its_name() {
         Scoring {
             task: TaskType::Classification,
             stated: None,
+            look: 1,
         },
         keeps_train,
         &registry,
@@ -1882,6 +1885,7 @@ fn a_split_that_declares_no_folds_cannot_be_compared() {
     let scoring = Scoring {
         task: TaskType::Classification,
         stated: None,
+        look: 1,
     };
 
     let candidates = Candidates::of_proposal(&proposal).unwrap();
@@ -2011,6 +2015,7 @@ fn compare_preparation(
         Scoring {
             task: TaskType::Classification,
             stated: None,
+            look: 1,
         },
         fits,
         &registry,
@@ -2075,7 +2080,8 @@ fn a_preparation_comparison_scores_each_way_of_doing_the_step_with_the_flows_mod
             "baseline": "standard_scaling", "baseline_role": "reference",
             "metric": "balanced_accuracy",
             "complexity": { "no_scaling": 0, "robust_scaling": 1, "standard_scaling": 1 },
-            "not_compared": [{ "id": "maxabs_scaling_sparse", "reason": "Not applicable here: The scale step has no max-abs method." }]
+            "not_compared": [{ "id": "maxabs_scaling_sparse", "reason": "Not applicable here: The scale step has no max-abs method." }],
+            "looks": 1
         })
     );
     for edge in &built.edges {

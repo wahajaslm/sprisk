@@ -1603,6 +1603,7 @@ async fn compare_method(
         Some(saved) => saved,
         None => {
             let made = match method_comparison(state, head, read.question, &method.id, &candidates)
+                .await
             {
                 Ok(made) => made,
                 Err(ApiError::BadRequest { code, message }) if code == NOTHING_TO_COMPARE => {

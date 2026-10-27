@@ -407,6 +407,30 @@ def _digest(rows: np.ndarray) -> str:
     return "sha256:" + hashlib.sha256(np.asarray(rows, dtype=np.int64).tobytes()).hexdigest()
 
 
+def select_and_measure(
+    trials: dict[str, pl.DataFrame], looks: int, **settings: Any
+) -> dict[str, Any]:
+    """The select step (ADR-0063 D4): the SelectionDecision, and what the comparison found as
+    evidence a method reads, `models.comparison`. Its score is the winner's mean or, with no
+    winner, the best mean of the others. `looks` is this comparison's place among the flow's
+    looks at its folds, counting it, as the comparison was built."""
+    decision = select_model(trials, **settings)
+    sign = 1.0 if GREATER_IS_BETTER[decision["metric"]] else -1.0
+    means = {c["id"]: c["mean"] for c in decision["candidates"]}
+    baseline = decision["baseline"]
+    winner = decision.get("winner")
+    others = [mean for id, mean in means.items() if id != baseline]
+    score = means[winner] if winner is not None else max(others, key=lambda m: sign * m)
+    measured = {
+        "metric": decision["metric"],
+        "score": score,
+        "baseline_score": means[baseline],
+        "beats_baseline": winner is not None and winner != baseline,
+        "looks": looks,
+    }
+    return {"decision": decision, "evidence": {"models.comparison": measured}}
+
+
 def select_model(
     trials: dict[str, pl.DataFrame],
     baseline: str,
