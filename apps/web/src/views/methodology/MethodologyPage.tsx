@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource, useMethods } from "../../api/methodology.ts";
 import { ApiError } from "../../api/client.ts";
+import { useOperators } from "../../api/hooks.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
@@ -163,14 +164,17 @@ export function MethodologyPage() {
 /** The methods as one tree, in the order the engine decides them. */
 function DecisionOrderTab({ picked, onPick }: { picked: string | undefined; onPick: (id: string) => void }) {
   const methods = useMethods();
+  const operators = useOperators();
   // Its own pick: a method the rules list leaves out can still be read here.
   const [mine, setMine] = useState(picked);
   if (methods.isError) return <p role="alert" className="error pad">{methods.error.message}</p>;
-  if (methods.isPending) return <Loading text="Loading the methods…" />;
+  if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
+  if (methods.isPending || operators.isPending) return <Loading text="Loading the methods…" />;
   return (
     <div className="mth-canvas">
       <DecisionOrderMap
         methods={methods.data}
+        operators={operators.data}
         picked={mine}
         onPick={(id) => {
           setMine(id);

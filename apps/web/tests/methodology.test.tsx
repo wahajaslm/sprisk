@@ -421,6 +421,7 @@ describe("decision order", () => {
     expect(choices).toHaveTextContent(`If ${splitMethod.options[0]!.when}`);
     expect(choices).toHaveTextContent("→ uses group_split as the split");
     expect(within(card).getByRole("button", { name: "1. Duplicate analysis" })).toBeInTheDocument();
+    expect(card).toHaveTextContent("No measurement: it decides from the decisions it waits for.");
   });
 
   it("says so when the methods cannot be read", async () => {

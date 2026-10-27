@@ -2470,7 +2470,13 @@ p { margin: 0; }
 .mth-order-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-sm); font-weight: 600; color: var(--soft); line-height: 17px; }
 .mth-order-node[aria-pressed="true"] .mth-order-name { color: var(--white); }
 .mth-order-key { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--text-xs) var(--mono); color: var(--quiet); }
-.mth-order .mth-order-edge path { stroke: var(--alpha-35); stroke-width: 1.25; }
+.mth-order .mth-order-edge.waits path { stroke: var(--soft); stroke-width: 1.5; }
+.mth-order .mth-order-edge.measures path { stroke: var(--alpha-35); stroke-width: 1.25; stroke-dasharray: 4 3; }
+.mth-order-measure { display: flex; align-items: center; gap: 10px; width: 100%; height: 100%; color: var(--muted); }
+.mth-order-square { flex: none; border: 1.5px solid var(--alpha-35); border-radius: 2px; background: var(--ground); }
+.mth-order-measure-by { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-xs); color: var(--muted); line-height: 15px; }
+.mth-order-starts { display: grid; gap: 4px; margin: 0; padding-left: 16px; font-size: var(--fs-12-5); color: var(--text-secondary); }
+.mth-order-starts code { font: 11px var(--mono); color: var(--text-primary); }
 .mth-order-choices { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .mth-order-choices li { display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--alpha-05); font-size: var(--fs-12-5); }
 .mth-order-if { color: var(--text-muted); }
