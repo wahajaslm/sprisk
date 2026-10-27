@@ -655,6 +655,14 @@ def test_the_select_step_measures_the_winner_against_the_baseline() -> None:
     }
 
 
+def test_a_select_step_with_only_the_baseline_is_refused() -> None:
+    settings = {"complexity": COMPLEXITY, "baseline_role": "floor", "not_compared": []}
+    with pytest.raises(ValueError, match="nothing but the baseline"):
+        select_and_measure(
+            {BASE: trial([0.5] * 5)}, baseline=BASE, metric="balanced_accuracy", looks=1, **settings
+        )
+
+
 def test_with_no_winner_the_select_step_measures_the_best_model_that_did_not_beat_it() -> None:
     trials = {
         BASE: trial([1.0, 1.0, 1.0, 1.0, 1.0], "rmse"),

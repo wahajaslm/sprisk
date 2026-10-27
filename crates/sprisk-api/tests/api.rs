@@ -2560,7 +2560,7 @@ async fn methods_are_listed_in_decision_order() {
     let (status, methods) = call(&api.app, "GET", "/methods", None).await;
     assert_eq!(status, StatusCode::OK, "{methods}");
     let methods = methods.as_array().unwrap();
-    assert_eq!(methods.len(), 24);
+    assert_eq!(methods.len(), 25);
     let at = |decides: &str| {
         methods
             .iter()
@@ -3134,72 +3134,6 @@ async fn sprisk_selects_a_model_by_itself_once_per_version() {
     assert_eq!(run["status"], "succeeded", "{run}");
     let decision = output(&api, &attempts, "select_model", "decision").await;
     assert_eq!(decision["winner"], "ml_linear_model", "{decision}");
-}
-
-#[tokio::test]
-async fn the_loop_back_rule_reads_the_results_the_chosen_model_was_compared_by() {
-    let api = api().await;
-    learnable_model_flow(&api).await;
-    let loop_back = |version: &str| {
-        format!("/pipeline_versions/{version}/methodology/proposals/model/evaluation.loop_back")
-    };
-    let base = "plv_01JABCDEFGHJKMNPQRSTVWXYZ0";
-    let (status, body) = call(&api.app, "POST", &loop_back(base), Some(json!({}))).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(
-        body["errors"][0]["code"],
-        "methodology_evidence_unavailable"
-    );
-    assert!(
-        body["errors"][0]["message"]
-            .as_str()
-            .unwrap()
-            .contains("compare the models first"),
-        "{body}"
-    );
-
-    let (_, selection) = select_model(&api, "model").await;
-    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-    let decided = output(&api, &attempts, "select_model", "decision").await;
-    assert_eq!(decided["winner"], "ml_linear_model", "{decided}");
-
-    // Choosing the winner makes a new version, which the same comparison scored.
-    let uri = format!(
-        "/methodology_proposals/{}/apply",
-        selection["proposal"]["id"].as_str().unwrap()
-    );
-    let choice =
-        json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-loop-back" });
-    let (status, applied) = call(&api.app, "POST", &uri, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    let chosen = applied["pipeline"]["id"].as_str().unwrap();
-
-    let (status, proposal) = call(&api.app, "POST", &loop_back(chosen), Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(
-        proposal["recommended_alternative_id"], "proceed",
-        "{proposal}"
-    );
-    let proceed = &proposal["alternatives"][0];
-    assert_eq!(proceed["applicability"], "applicable", "{proposal}");
-    assert!(
-        proceed["reason"]
-            .as_str()
-            .unwrap()
-            .contains("meets the bar of 0.7"),
-        "{proposal}"
-    );
-    let looks = proposal["evidence"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|e| e["label"] == "Looks at these folds")
-        .unwrap();
-    assert_eq!(
-        looks["value"], "1",
-        "choosing the winner is no new look: {proposal}"
-    );
 }
 
 #[tokio::test]
@@ -4438,49 +4372,17 @@ fn statuses(review: &Value) -> Vec<(String, String)> {
 }
 
 #[tokio::test]
-async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_shaping_them() {
-    let api = api().await;
-    forest_flow(&api).await;
-
-    let review = review(&api).await;
-    let expected: Vec<(String, String)> = [
-        // The question, the data, the split, the features and the model shortlist are
-        // methods' decisions, made in walks (ADR-0063); loop-back reads the comparison's
-        // results, which the flow has not made.
-        ("evaluation.loop_back", "needs_run"),
-    ]
-    .iter()
-    .map(|(d, s)| ((*d).to_owned(), (*s).to_owned()))
-    .collect();
-    assert_eq!(statuses(&review), expected, "{review}");
-    assert_eq!(review["next"], json!([0]), "run the flow next: {review}");
-}
-
-#[tokio::test]
-async fn after_a_run_the_review_decides_the_rules_that_measure_rows_and_lists_what_is_next() {
+async fn a_supervised_flow_s_review_lists_no_rule_since_methods_decide_it_in_walks() {
     let api = api().await;
     forest_flow(&api).await;
     let (run, _) = run_to_end(&api).await;
     assert_eq!(run["status"], "succeeded", "{run}");
 
+    // The question, the data, the split, the features, the models and loop-back are
+    // methods' decisions, made in walks (ADR-0063).
     let review = review(&api).await;
-    let items = statuses(&review);
-    // A run makes no comparison: loop-back still waits for the models to be compared.
-    assert_eq!(
-        items,
-        [("evaluation.loop_back".to_owned(), "needs_run".to_owned())],
-        "{review}"
-    );
-    assert!(
-        review["items"][0]["reason"]
-            .as_str()
-            .unwrap()
-            .contains("compare the models first"),
-        "{review}"
-    );
-    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (_, again) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(statuses(&again), items, "the review is deterministic");
+    assert_eq!(statuses(&review), [], "{review}");
+    assert_eq!(review["next"], json!([]), "{review}");
 }
 
 #[tokio::test]
@@ -4626,7 +4528,7 @@ async fn the_look_settles_the_task_and_class_balance_from_the_train_rows() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
     let mut request = walk_request(&[&api.csv], "walk-target");
-    request["max_actions"] = json!(30);
+    request["max_actions"] = json!(31);
 
     let detail = walk_to_end(&api, request).await;
     let steps = detail["steps"].as_array().unwrap();
@@ -4923,6 +4825,7 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "compare models.estimator_selection",
             "decide models.estimator_selection ml_linear_model",
             "run",
+            "decide evaluation.loop_back proceed",
             "decide question.class_balance balanced",
             "score",
             "stop",
@@ -5982,6 +5885,7 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "compare models.estimator_selection",
             "decide models.estimator_selection ml_linear_model",
             "run",
+            "decide evaluation.loop_back proceed",
             "decide question.class_balance balanced",
             "score",
             "stop",
@@ -7035,8 +6939,54 @@ async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner(
     );
     let (_, decision) = call(&api.app, "GET", &uri, None).await;
     assert!(decision["selection_id"].is_string(), "{decision}");
-    // Loop-back reads the comparison the method's decision won by, and the walk scores.
+    // Loop-back reads what the comparison the winner won by found, and the walk scores.
+    let looped = steps
+        .iter()
+        .find(|s| s["action"] == "decide" && s["decides"] == "evaluation.loop_back")
+        .unwrap_or_else(|| panic!("loop-back did not decide: {detail}"));
+    assert_eq!(looped["option"], "proceed", "{looped}");
+    assert_eq!(
+        looped["evidence"][0]["kind"], "models.comparison",
+        "{looped}"
+    );
+    assert_eq!(looped["evidence"][0]["fields"]["looks"], 1, "{looped}");
     assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+}
+
+/// The same flow, held to a bar no model reaches: loop-back stops the walk and names what to
+/// change, before any test row is scored.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_winner_below_the_success_bar_stops_the_walk_naming_the_features_to_change() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["target"]["value"] = json!("outcome");
+    q["interpretability"] = json!({ "value": "low", "origin": "explicit" });
+    q["costs"] = json!({ "value": { "positive": "responds", "false_negative": 1.0, "false_positive": 1.0 },
+                         "origin": "explicit" });
+    q["success_bar"] =
+        json!({ "value": { "metric": "expected_cost", "score": 0.0001 }, "origin": "explicit" });
+    let facts = q.as_object_mut().unwrap();
+    for gone in ["time_column", "entity_column", "prediction_horizon"] {
+        facts.remove(gone);
+    }
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-below-bar")).await;
+    let trail = trail(&detail);
+    assert!(
+        trail.contains(&"decide evaluation.loop_back reopen".to_owned()),
+        "{detail}"
+    );
+    assert!(
+        !trail.contains(&"score".to_owned()),
+        "no test row is scored: {detail}"
+    );
+    assert_eq!(detail["walk"]["stop"]["reason"], "uncovered", "{detail}");
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains("change the features"), "{why}");
+    assert!(why.contains("1 of 3 looks"), "{why}");
 }
 
 /// The Experiments page's path (ADR-0063 D3): a person compares every option of the compared

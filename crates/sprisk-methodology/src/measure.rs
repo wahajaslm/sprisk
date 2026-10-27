@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
-    Binding, GraphEffect, Method, Operator, OperatorAttachSide, PipelineVersion, QuestionVersion,
-    parse,
+    Binding, GraphEffect, Method, Operator, OperatorAttachSide, OperatorRole, PipelineVersion,
+    QuestionVersion, parse,
 };
 
 use crate::compare::upstream;
@@ -79,7 +79,7 @@ pub fn measure(
     for (method, kind, need) in needed.chain(promised) {
         let producer = methods::producer_of(&kind, &by_id)?;
         // A select step is placed by a comparison, never here (ADR-0063 D4).
-        if producer.attach.is_none() {
+        if producer.role == Some(OperatorRole::Select) {
             continue;
         }
         match bound_params(producer, bindings) {

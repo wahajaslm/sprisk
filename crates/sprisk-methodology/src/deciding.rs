@@ -6,9 +6,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
-    Binding, GraphEffect, Method, MethodAssurance, MethodRequest, Operator, OperatorAttachSide,
-    OperatorRole, PipelineVersion, PromiseResult, QuestionStatement, QuestionVersion,
-    RuledOutOption, WalkAction, WalkAsk, WalkStep, parse,
+    Binding, GraphEffect, Method, MethodAssurance, MethodRequest, MethodStop, Operator,
+    OperatorAttachSide, OperatorRole, PipelineVersion, PromiseResult, QuestionStatement,
+    QuestionVersion, RuledOutOption, WalkAction, WalkAsk, WalkStep, parse,
 };
 
 use crate::compare::upstream;
@@ -109,6 +109,40 @@ pub fn made_by(catalog: &RuleCatalog, steps: &[WalkStep]) -> Result<Vec<Made>, R
         }
     }
     Ok(made)
+}
+
+/// The stop a decision in force asks for (ADR-0063 slice 6): its option's `stop`, and why, as
+/// the decide step that made it says. The walk stops on it, before anything else.
+pub fn stop_asked(
+    catalog: &RuleCatalog,
+    made: &[Made],
+    steps: &[WalkStep],
+) -> Result<Option<(MethodStop, String)>, ResolveError> {
+    for step in steps.iter().filter(|s| s.action == WalkAction::Decide) {
+        let (Some(decides), Some(option)) = (&step.decides, &step.option) else {
+            continue;
+        };
+        let in_force = made
+            .iter()
+            .any(|m| m.round == step.round && m.decides == decides.as_str());
+        if !in_force {
+            continue;
+        }
+        let method = catalog
+            .methods()
+            .find(|m| m.decides.as_str() == decides.as_str())
+            .ok_or_else(|| ResolveError::UnknownMethod(decides.to_string()))?;
+        let stop = method
+            .options
+            .iter()
+            .find(|o| o.id == *option)
+            .and_then(|o| o.action.as_ref())
+            .and_then(|a| a.stop);
+        if let Some(stop) = stop {
+            return Ok(Some((stop, step.reason.to_string())));
+        }
+    }
+    Ok(None)
 }
 
 /// Why the walk cannot reopen a decision a failed promise ruled out: a comparison, a rule's
@@ -386,7 +420,7 @@ pub fn ready<'c>(
             }
             let producer = methods::producer_of(kind.as_str(), &by_id)?;
             // What a comparison finds is measured once the walk compares.
-            if producer.attach.is_none() {
+            if producer.role == Some(OperatorRole::Select) {
                 continue 'methods;
             }
             let operator_of = |id: &str| by_id.get(id).copied();

@@ -414,6 +414,8 @@ def select_and_measure(
     evidence a method reads, `models.comparison`. Its score is the winner's mean or, with no
     winner, the best mean of the others. `looks` is this comparison's place among the flow's
     looks at its folds, counting it, as the comparison was built."""
+    if len(trials) < 2:
+        raise ValueError("a comparison of nothing but the baseline measures nothing")
     decision = select_model(trials, **settings)
     sign = 1.0 if GREATER_IS_BETTER[decision["metric"]] else -1.0
     means = {c["id"]: c["mean"] for c in decision["candidates"]}

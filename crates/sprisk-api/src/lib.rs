@@ -1928,6 +1928,19 @@ async fn chosen_by(
     pipeline: &PipelineVersion,
     node: &sprisk_contracts::Node,
 ) -> Result<Option<sprisk_contracts::SelectionDecision>, ApiError> {
+    match chosen_selection(state, pipeline, node).await? {
+        Some(artifact) => Ok(Some(read_selection(state, &artifact).await?)),
+        None => Ok(None),
+    }
+}
+
+/// The artifact holding the SelectionDecision `node`'s model was chosen by, when that choice
+/// made `pipeline`: a rule's swap, or a compared method's winner (ADR-0063 D3).
+pub(crate) async fn chosen_selection(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+    node: &sprisk_contracts::Node,
+) -> Result<Option<sprisk_contracts::Artifact>, ApiError> {
     let Some(id) = &node.methodology_decision_id else {
         return Ok(None);
     };
@@ -1935,7 +1948,6 @@ async fn chosen_by(
         .store
         .methodology_decisions(std::slice::from_ref(id))
         .await?;
-    // A rule's swap, or a compared method's winner (ADR-0063 D3).
     let Some(selection) = decisions.into_iter().find_map(|d| match d {
         MethodologyDecision::Rule(d) if d.pipeline_version_id == pipeline.id => d.selection_id,
         MethodologyDecision::Method(d) if d.pipeline_version_id.as_ref() == Some(&pipeline.id) => {
@@ -1945,8 +1957,7 @@ async fn chosen_by(
     }) else {
         return Ok(None);
     };
-    let artifact = state.store.get_artifact(&selection).await?;
-    Ok(Some(read_selection(state, &artifact).await?))
+    Ok(Some(state.store.get_artifact(&selection).await?))
 }
 
 /// How the rows `node` reads match the one loaded table no step reads (ADR-0059), measured on

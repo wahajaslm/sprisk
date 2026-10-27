@@ -6,9 +6,11 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use sprisk_contracts::{MethodAssurance, Operator, PipelineVersion, QuestionVersion, parse};
+use sprisk_contracts::{
+    MethodAssurance, MethodStop, Operator, PipelineVersion, QuestionVersion, parse,
+};
 use sprisk_methodology::deciding::{
-    Basis, Made, apply_option, bindings, made_by, ready, reopened_too_late,
+    Basis, Made, apply_option, bindings, made_by, ready, reopened_too_late, stop_asked,
 };
 use sprisk_methodology::{RuleCatalog, patch};
 use sprisk_registry::Registry;
@@ -1557,4 +1559,42 @@ fn a_request_carries_the_method_s_limits() {
     .unwrap();
     let request = serde_json::to_value(&found.ready[0].request).unwrap();
     assert_eq!(request["limits"], json!({ "max_groups": 2 }));
+}
+
+#[test]
+fn a_decision_whose_option_stops_the_walk_says_how_and_why() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let loop_back = |round: u32, option: &str| {
+        let mut taken = serde_json::to_value(step(
+            round,
+            "decide",
+            json!({ "decides": "evaluation.loop_back",
+                    "method": "methodology.supervised.loop_back@1.0.0", "option": option }),
+        ))
+        .unwrap();
+        taken["reason"] = json!(format!("{option}, as the comparison found"));
+        parse::<sprisk_contracts::WalkStep>(&taken.to_string()).unwrap()
+    };
+    let stops = |steps: &[sprisk_contracts::WalkStep]| {
+        let made = made_by(&catalog, steps).unwrap();
+        stop_asked(&catalog, &made, steps).unwrap()
+    };
+
+    assert_eq!(stops(&[loop_back(4, "proceed")]), None);
+    assert_eq!(
+        stops(&[loop_back(4, "stop")]),
+        Some((
+            MethodStop::Limitation,
+            "stop, as the comparison found".to_owned()
+        ))
+    );
+    assert_eq!(
+        stops(&[loop_back(4, "reopen")]),
+        Some((
+            MethodStop::Uncovered,
+            "reopen, as the comparison found".to_owned()
+        ))
+    );
 }

@@ -10,14 +10,14 @@ use std::collections::BTreeMap;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ArtifactId, AttemptState, CreateWalk, DecisionProposal,
     GraphEffect, Method, MethodAssurance, MethodDecided, MethodDecidedOutcome, MethodRequest,
-    MethodShortlisted, MethodologyDecision, MethodologyDecisionByRule, MethodologyReviewItem,
-    Operator, PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId, Report,
-    RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId, WalkStatus, WalkStep,
-    WalkStopReason, parse,
+    MethodShortlisted, MethodStop, MethodologyDecision, MethodologyDecisionByRule,
+    MethodologyReviewItem, Operator, PipelineVersion, PipelineVersionId, QuestionVersion,
+    QuestionVersionId, Report, RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId,
+    WalkStatus, WalkStep, WalkStopReason, parse,
 };
 use sprisk_core::time::format;
 use sprisk_methodology::deciding::{
-    Basis, Effective, Ready, apply_option, bindings, made_by, ready, reopened_too_late,
+    Basis, Effective, Ready, apply_option, bindings, made_by, ready, reopened_too_late, stop_asked,
 };
 use sprisk_methodology::engine::{
     Action, HeadRun, MODEL_NODE, SCORE_BASELINE_NODE, SCORE_NODE, SHARES_NODE, Start, look_asks,
@@ -32,12 +32,13 @@ use crate::method_session::{Decision, MethodSession};
 use crate::report::{self, Scored};
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, Query, apply_methodology, body,
-    check_local_paths, cite_decision, claim_run, claim_selection, compile, decision_of, drive_run,
-    id, limit, method_comparison, optional_id, propose, queued_run, review_methodology, run_plan,
+    check_local_paths, chosen_selection, cite_decision, claim_run, claim_selection, compile,
+    decision_of, drive_run, id, limit, method_comparison, optional_id, propose, queued_run,
+    review_methodology, run_plan,
 };
 
-/// What the loop-back rule decides; its `max_looks` caps the walk's comparisons too, so the
-/// cap has one source.
+/// What the loop-back method decides; its `max_looks` limit caps the walk's comparisons too,
+/// so the cap has one source.
 const LOOP_BACK: &str = "evaluation.loop_back";
 
 const MAX_ACTIONS: u64 = 200;
@@ -347,6 +348,13 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
     let pipeline = state.store.get_pipeline_version(&head).await?;
     let operators: Vec<Operator> = state.registry.operators().cloned().collect();
     let made = made_by(&state.rules, &steps).map_err(resolve_error)?;
+    if let Some((stop, why)) = stop_asked(&state.rules, &made, &steps).map_err(resolve_error)? {
+        let reason = match stop {
+            MethodStop::Limitation => WalkStopReason::Limitation,
+            MethodStop::Uncovered => WalkStopReason::Uncovered,
+        };
+        return record_stop(state, walk, round, reason, &why).await;
+    }
     let effective = bindings(&question, &made).map_err(resolve_error)?;
     let mut notes = Vec::new();
     // Producers are put in place before a run or a stop, and moved back onto their rows when a
@@ -656,14 +664,15 @@ fn produced_kinds(state: &AppState, pipeline: &PipelineVersion) -> Vec<String> {
 }
 
 /// What the producers of `head` measured in the walk's run of it, by evidence kind, with the
-/// step that measured it. Empty when the walk has not run it.
+/// step that measured it, and what the comparison that chose a model step found, with that
+/// step. Only the comparisons when the walk has not run it.
 async fn evidence(
     state: &AppState,
     steps: &[WalkStep],
     head: &PipelineVersionId,
     pipeline: &PipelineVersion,
 ) -> Result<Measured, ApiError> {
-    let mut found = BTreeMap::new();
+    let mut found = compared(state, pipeline).await?;
     let Some(run_id) = head_run_id(steps, head) else {
         return Ok(found);
     };
@@ -701,6 +710,41 @@ async fn evidence(
                 .map(|(kind, fields)| (kind, (node.id.to_string(), fields))),
         );
     }
+    Ok(found)
+}
+
+/// What the comparison the model step of `pipeline` was chosen by found (ADR-0063 D4): the
+/// select step's evidence, written beside the SelectionDecision the step's decision cites.
+/// A select step without that output predates D4 and is refused.
+async fn compared(state: &AppState, pipeline: &PipelineVersion) -> Result<Measured, ApiError> {
+    let mut found = BTreeMap::new();
+    let Some(model) = pipeline.nodes.iter().find(|n| n.id.as_str() == MODEL_NODE) else {
+        return Ok(found);
+    };
+    let Some(selection) = chosen_selection(state, pipeline, model).await? else {
+        return Ok(found);
+    };
+    let (_, written) = state
+        .store
+        .outputs(&selection.producer_attempt_id)
+        .await?
+        .into_iter()
+        .find(|(port, _)| port == EVIDENCE_PORT)
+        .ok_or_else(|| {
+            ApiError::Internal(format!(
+                "the select step that wrote {} wrote no evidence",
+                selection.id.as_str()
+            ))
+        })?;
+    let bytes = state.artifacts.get(written.content_hash.as_str()).await?;
+    // Checked against the select step's manifest when its outputs were saved.
+    let set: BTreeMap<String, Value> = serde_json::from_slice(&bytes).map_err(|e| {
+        ApiError::Internal(format!("evidence beside {}: {e}", selection.id.as_str()))
+    })?;
+    found.extend(
+        set.into_iter()
+            .map(|(kind, fields)| (kind, (model.id.to_string(), fields))),
+    );
     Ok(found)
 }
 
@@ -1874,13 +1918,18 @@ fn internal<T>(parsed: Result<T, sprisk_contracts::ContractError>) -> Result<T, 
     parsed.map_err(|e| ApiError::Internal(e.to_string()))
 }
 
-/// The most looks at a flow's folds, as the loop-back rule's settings state it.
+/// The most looks at a flow's folds, as the loop-back method's limits state it.
 fn max_looks(state: &AppState) -> Result<i64, ApiError> {
     state
         .rules
-        .rules()
-        .find(|r| r.decides.as_str() == LOOP_BACK)
-        .and_then(|r| r.policy_thresholds.get("max_looks"))
-        .and_then(serde_json::Value::as_i64)
-        .ok_or_else(|| ApiError::Internal(format!("no rule deciding {LOOP_BACK} states max_looks")))
+        .methods()
+        .find(|m| m.decides.as_str() == LOOP_BACK)
+        .and_then(|m| m.limits.as_ref())
+        .and_then(|limits| limits.iter().find(|(k, _)| k.as_str() == "max_looks"))
+        .ok_or_else(|| {
+            ApiError::Internal(format!("no method deciding {LOOP_BACK} states max_looks"))
+        })
+        .and_then(|(_, most)| {
+            i64::try_from(*most).map_err(|e| ApiError::Internal(format!("max_looks: {e}")))
+        })
 }

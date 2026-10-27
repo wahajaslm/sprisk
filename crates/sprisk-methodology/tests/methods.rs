@@ -782,3 +782,22 @@ fn an_option_that_stops_the_walk_is_shown_as_a_limitation() {
     let action = serde_json::to_value(&shown.alternatives[0].action).unwrap();
     assert_eq!(action["type"], "emit_methodology_limitation", "{action}");
 }
+
+#[test]
+fn an_option_that_stops_the_walk_as_uncovered_is_shown_as_a_reopen() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        REPEATED,
+        "    action:\n      bind: { concept: common.item_identity, evidence: data.near_duplicate_groups, column: item_group }\n",
+        "    action: { stop: uncovered }\n",
+    );
+    let catalog = load(pack.path()).unwrap();
+    let shown = catalog
+        .all_rules()
+        .into_iter()
+        .find(|r| r.decides.as_str() == "data.repeated_items")
+        .unwrap();
+    let action = serde_json::to_value(&shown.alternatives[0].action).unwrap();
+    assert_eq!(action["type"], "reopen", "{action}");
+}
