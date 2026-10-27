@@ -12,6 +12,8 @@ const TRUNK_X = 8;
 const LABEL = { x: 24, width: 100 };
 const STEPS_X = 136;
 const STEP = { width: 144, gap: 16 };
+const MODEL_W = 170;
+const MODEL_H = 72;
 
 /** What the methods do to the data, top to bottom then left to right: the decisions with no
  * step, the steps on the whole table up to the split, then one lane per kind of model input,
@@ -27,7 +29,7 @@ export function DataFlowMap({ methods, operators, picked, onPick }: { methods: M
   const laneY = (i: number) => i * LANE + LANE / 2;
   const mergeX = STEPS_X + flow.columns * (STEP.width + STEP.gap);
   const modelX = mergeX + 40;
-  const afterX = modelX + 130;
+  const afterX = modelX + MODEL_W + 40;
   const width = afterX + (flow.afterModel.length > 0 ? 170 : 0) + 8;
 
   const button = (m: Method, className: string, style?: React.CSSProperties) => (
@@ -67,7 +69,7 @@ export function DataFlowMap({ methods, operators, picked, onPick }: { methods: M
               ))}
               <path d={`M${mergeX} ${laneY(0)}V${laneY(Math.max(0, flow.lanes.length - 1))}`} className="merge" />
               <path d={`M${mergeX} ${mid}H${modelX}`} />
-              {flow.afterModel.length > 0 && <path d={`M${modelX + 90} ${mid}H${afterX}`} />}
+              {flow.afterModel.length > 0 && <path d={`M${modelX + MODEL_W} ${mid}H${afterX}`} />}
             </svg>
             {flow.lanes.map((lane, i) => (
               <div key={lane.kind} className="mth-data-lane" style={{ left: LABEL.x, top: laneY(i) - BOX_H / 2, width: LABEL.width, height: BOX_H }}>
@@ -84,8 +86,9 @@ export function DataFlowMap({ methods, operators, picked, onPick }: { methods: M
             <span className="mth-data-caption merge" style={{ left: mergeX - 20, top: laneY(0) - BOX_H / 2 - 18 }}>
               merge
             </span>
-            <div className="mth-data-block model" style={{ left: modelX, top: mid - BOX_H / 2, width: 90, height: BOX_H }}>
-              Model
+            <div className="mth-data-block model" style={{ left: modelX, top: mid - MODEL_H / 2, width: MODEL_W, height: MODEL_H }}>
+              <span className="mth-data-caption">Model</span>
+              {flow.model.map((m) => button(m, "chip"))}
             </div>
             {flow.afterModel.length > 0 && (
               <div className="mth-data-block" style={{ left: afterX, top: mid - 36, width: 170, height: 72 }}>

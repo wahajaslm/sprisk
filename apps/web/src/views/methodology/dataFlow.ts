@@ -19,17 +19,18 @@ export type LaneStep = { method: Method; lanes: InputKind[]; column: number };
 export type Lane = { kind: InputKind; label: string; steps: LaneStep[] };
 
 /** What the methods do to the data, in the order it happens: steps on the whole table, the
- * split, a lane per kind of model input, then settings on the model. `noStep` holds the
- * decisions that only set what later ones read. */
-export type DataFlow = { noStep: Method[]; table: Method[]; split: Method | undefined; lanes: Lane[]; columns: number; afterModel: Method[] };
+ * split, a lane per kind of model input, the model (`model`: the methods that choose it), then
+ * settings on the model. `noStep` holds the decisions that only set what later ones read. */
+export type DataFlow = { noStep: Method[]; table: Method[]; split: Method | undefined; lanes: Lane[]; columns: number; model: Method[]; afterModel: Method[] };
 
 export function dataFlow(methods: Method[]): DataFlow {
-  const flow: DataFlow = { noStep: [], table: [], split: undefined, lanes: [], columns: 0, afterModel: [] };
+  const flow: DataFlow = { noStep: [], table: [], split: undefined, lanes: [], columns: 0, model: [], afterModel: [] };
   const steps: LaneStep[] = [];
   const last = new Map<InputKind, number>();
   for (const { method } of numbered(methods)) {
     const actions = method.options.flatMap((o) => (o.action ? [o.action] : []));
     if (actions.some((a) => a.replace?.role === "split")) flow.split = method;
+    else if (actions.some((a) => a.replace?.role === "model")) flow.model.push(method);
     else if (actions.some((a) => a.set?.role === "model")) flow.afterModel.push(method);
     else if (actions.some((a) => a.insert?.before === "model") && method.changes) {
       const lanes = LANES.map((l) => l.kind).filter((k) => method.changes!.includes(k));

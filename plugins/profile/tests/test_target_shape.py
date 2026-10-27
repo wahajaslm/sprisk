@@ -22,6 +22,11 @@ def test_product_codes_are_whole_numbers_with_their_rarest_share() -> None:
     }
 
 
+def test_the_train_rows_are_counted_on_their_own_for_the_model_shortlist() -> None:
+    found = target_shape(pl.DataFrame({"y": ["yes", "no", None]}), target="y")
+    assert found["data.train_rows"] == {"rows": 3}
+
+
 def test_a_measured_quantity_is_numeric_but_not_whole() -> None:
     found = target_shape(pl.DataFrame({"y": [0.5, 1.25, 3.0, 3.0]}), target="y")[KIND]
     assert (found["numeric"], found["whole_numbers"], found["distinct"]) == (True, False, 3)
@@ -48,4 +53,4 @@ def test_the_worker_stores_one_evidence_set(tmp_path: Path) -> None:
     out = tmp_path / "out"
     out.mkdir()
     written = {o.port: o for o in step.run({"target": "y"}, {"train": source}, out)}
-    assert list(json.loads(written["evidence"].path.read_text())) == [KIND]
+    assert list(json.loads(written["evidence"].path.read_text())) == [KIND, "data.train_rows"]

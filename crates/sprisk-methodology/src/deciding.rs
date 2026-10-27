@@ -890,10 +890,7 @@ fn one_step(
 
 /// The compared method that decides a step running operator `operator` (ADR-0063 D3): one
 /// whose options swap a step of that operator's role. None when no compared method does.
-pub fn compared_method<'c>(
-    catalog: &'c RuleCatalog,
-    operator: &Operator,
-) -> Option<&'c Method> {
+pub fn compared_method<'c>(catalog: &'c RuleCatalog, operator: &Operator) -> Option<&'c Method> {
     let role = operator.role?;
     catalog.methods().find(|m| {
         m.compare == Some(true)
@@ -904,20 +901,61 @@ pub fn compared_method<'c>(
     })
 }
 
-/// A compared method's options offered to a person for step `node_id` (ADR-0063 D3): every
-/// option is on the shortlist, each swapping the step for its model on the basis's flow, so a
-/// person compares, studies and applies them as a rule's shortlist. Nothing is recommended:
-/// the comparison is.
+/// The request a compared method decides on outside a walk, for a person's model selection
+/// (ADR-0063 D3): `evidence` measured on the step's train rows and the question's statements.
+/// A method that reads decisions or concepts has none to read there, so it is refused.
+pub fn person_request(
+    catalog: &RuleCatalog,
+    method: &Method,
+    question: &QuestionVersion,
+    evidence: Map<String, Value>,
+) -> Result<MethodRequest, ResolveError> {
+    if !method.needs.decisions.is_empty() || !method.needs.concepts.is_empty() {
+        return Err(ResolveError::Selection(format!(
+            "{} reads decisions or concepts, which only a walk makes",
+            method.id.as_str()
+        )));
+    }
+    let module = catalog.method_module(method.id.as_str())?;
+    let options: Vec<&str> = method.options.iter().map(|o| o.id.as_str()).collect();
+    Ok(parse(
+        &json!({
+            "schema_version": "sprisk.method_request/v1",
+            "module": module.display().to_string(), "method": method.id,
+            "needs": method.needs, "options": options, "task": question.task.value,
+            "evidence": evidence, "decisions": {}, "bound": [],
+            "statements": statements(question, &method.needs.statements)?,
+        })
+        .to_string(),
+    )?)
+}
+
+/// A compared method's options offered to a person for step `node_id` (ADR-0063 D3), each
+/// swapping the step for its model on the basis's flow, with the shortlist its decide()
+/// answered, so a person compares, studies and applies them as a rule's shortlist. An option
+/// left off can still be chosen with a reason. Nothing is recommended: the comparison is.
+/// `evidence` is what the shortlist was decided on, for the person to read.
 pub fn compared_proposal(
     method: &Method,
     basis: &Basis,
     node_id: &str,
+    listed: &sprisk_contracts::MethodShortlisted,
+    evidence: Value,
     stamp: crate::Stamp,
 ) -> Result<sprisk_contracts::DecisionProposal, ResolveError> {
     let mut alternatives = Vec::with_capacity(method.options.len());
     for option in &method.options {
-        let applied = apply_option(method, option.id.as_str(), MethodAssurance::Confirmed, basis)?;
-        let [effect @ GraphEffect::ReplaceNode { node_id: swapped, .. }] = applied.effects.as_slice()
+        let applied = apply_option(
+            method,
+            option.id.as_str(),
+            MethodAssurance::Confirmed,
+            basis,
+        )?;
+        let [
+            effect @ GraphEffect::ReplaceNode {
+                node_id: swapped, ..
+            },
+        ] = applied.effects.as_slice()
         else {
             return Err(ResolveError::Selection(format!(
                 "option {} of {} does not swap exactly one step",
@@ -933,9 +971,14 @@ pub fn compared_proposal(
                 swapped.as_str()
             )));
         }
+        let reason = if listed.shortlist.contains(&option.id) {
+            option.rationale.to_string()
+        } else {
+            format!("Left off: {}", listed.reason.as_str())
+        };
         alternatives.push(json!({
             "id": option.id, "label": option.label, "description": option.description,
-            "applicability": "applicable", "reason": option.rationale, "effect": effect,
+            "applicability": "applicable", "reason": reason, "effect": effect,
         }));
     }
     let fingerprint = json!({ "rule": method.id, "question": basis.question,
@@ -950,8 +993,8 @@ pub fn compared_proposal(
         &json!({
             "schema_version": "sprisk.decision_proposal/v1", "id": stamp.id, "rule": method.id,
             "question_version_id": basis.question.id, "pipeline_version_id": basis.pipeline.id,
-            "subject_node_id": node_id, "evidence": [], "alternatives": alternatives,
-            "shortlist": method.options.iter().map(|o| &o.id).collect::<Vec<_>>(),
+            "subject_node_id": node_id, "evidence": evidence, "alternatives": alternatives,
+            "shortlist": listed.shortlist,
             "fingerprint": fingerprint, "created_at": stamp.created_at,
         })
         .to_string(),

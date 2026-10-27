@@ -509,6 +509,7 @@ describe("data flow", () => {
     const flow = dataFlow([
       step("join", undefined, [], "data.join", { insert: { before: "split", operator: "sprisk.io.join@1.0.0", node_id: "join" } }),
       step("threshold", undefined, [], "evaluation.threshold", { set: { role: "model", settings: {} } }),
+      step("shortlist", undefined, [], "models.shortlist", { replace: { role: "model", operator: "sprisk.ml.linear_model@3.0.0" } }),
       { ...splitMethod },
       repeatedItems,
       step("text", ["text"]),
@@ -516,6 +517,9 @@ describe("data flow", () => {
     expect(flow.table.map((m) => m.name)).toEqual(["join"]);
     expect(flow.split?.id).toBe(splitMethod.id);
     expect(flow.afterModel.map((m) => m.name)).toEqual(["threshold"]);
+    // A method that swaps the model chooses the model itself.
+    expect(flow.model.map((m) => m.name)).toEqual(["shortlist"]);
+    expect(flow.table.map((m) => m.name)).toEqual(["join"]);
     // Duplicate analysis names a concept and adds no step.
     expect(flow.noStep.map((m) => m.id)).toEqual([repeatedItems.id]);
     expect(flow.lanes.map((l) => l.kind)).toEqual(["text"]);

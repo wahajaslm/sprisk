@@ -1526,6 +1526,10 @@ fn keeps_flow_facts(registry: &Registry, node: &sprisk_contracts::Node) -> bool 
     rows_only || (keeps_train_rows(registry, node) && !zero_fill)
 }
 
+/// The evidence of how many train rows a model step reads, which a compared method's
+/// shortlist may need.
+const TRAIN_ROWS: &str = "data.train_rows";
+
 /// Codes the review turns into statuses, so a rename cannot slip past it.
 const NOT_APPLICABLE: &str = "methodology_not_applicable";
 const EVIDENCE_UNAVAILABLE: &str = "methodology_evidence_unavailable";
@@ -1596,7 +1600,7 @@ async fn propose(
                     node.operator.as_str()
                 ))
             })?;
-        let proposal = compared_proposal(state, &pipeline, &question, method, node_id)?;
+        let proposal = compared_proposal(state, &pipeline, &question, method, node).await?;
         state.store.insert_methodology_proposal(&proposal).await?;
         return Ok((StatusCode::CREATED, Json(proposal)));
     };
@@ -1614,15 +1618,44 @@ async fn propose(
     Ok((StatusCode::CREATED, Json(proposal)))
 }
 
-/// A compared method's options as the proposal for step `node_id`, on the bindings the
-/// question states (ADR-0063 D3).
-fn compared_proposal(
+/// A compared method's options as the proposal for step `node`, on the bindings the question
+/// states (ADR-0063 D3). Its decide() shortlists them on the train rows the step reads, counted
+/// as the rule it replaces counted them, so a person compares what a walk would.
+async fn compared_proposal(
     state: &AppState,
     pipeline: &PipelineVersion,
     question: &QuestionVersion,
     method: &sprisk_contracts::Method,
-    node_id: &str,
+    node: &sprisk_contracts::Node,
 ) -> Result<DecisionProposal, ApiError> {
+    let profile =
+        train_profile_facts(state, pipeline, question, node, &mut Profiles::default()).await?;
+    let mut evidence = serde_json::Map::new();
+    let mut shown = Vec::new();
+    if let Some(rows) = profile.get("rows") {
+        evidence.insert(TRAIN_ROWS.into(), json!({ "rows": rows }));
+        shown.push(json!({ "kind": "profile_fact", "label": "Train rows",
+                           "value": rows.to_string(), "origin": "measured" }));
+    }
+    let request =
+        sprisk_methodology::deciding::person_request(&state.rules, method, question, evidence)
+            .map_err(|e| not_applicable(e.to_string()))?;
+    let listed = match state
+        .method_runner
+        .session()
+        .decide(&request)
+        .await
+        .map_err(|e| ApiError::Internal(format!("method {}: {e}", method.id.as_str())))?
+    {
+        crate::method_session::Decision::Shortlisted(listed) => listed,
+        crate::method_session::Decision::Decided(_) => {
+            return Err(ApiError::Internal(format!(
+                "compared method {} chose an option: it shortlists, and the comparison chooses",
+                method.id.as_str()
+            )));
+        }
+    };
+    let node_id = node.id.as_str();
     let effective = sprisk_methodology::deciding::bindings(question, &[])
         .map_err(|e| not_applicable(e.to_string()))?;
     let operators: Vec<sprisk_contracts::Operator> = state.registry.operators().cloned().collect();
@@ -1637,8 +1670,15 @@ fn compared_proposal(
         id: &format!("mpr_{}", ulid::Ulid::new()),
         created_at: &now(),
     };
-    sprisk_methodology::deciding::compared_proposal(method, &basis, node_id, stamp)
-        .map_err(|e| not_applicable(e.to_string()))
+    sprisk_methodology::deciding::compared_proposal(
+        method,
+        &basis,
+        node_id,
+        &listed,
+        json!(shown),
+        stamp,
+    )
+    .map_err(|e| not_applicable(e.to_string()))
 }
 
 /// The proposal `rule` makes for step `node`, decided by the rule's Python `decide()`. Every

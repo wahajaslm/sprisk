@@ -1737,12 +1737,16 @@ async fn record_apply(
     decision: &MethodologyDecisionByRule,
     reason: &str,
 ) -> Result<WalkStatus, ApiError> {
-    let decides = state
-        .rules
-        .rule(decision.rule.as_str())
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .decides
-        .clone();
+    // A person's apply may be of a compared method's proposal (ADR-0063 D3).
+    let decides = match state.rules.rule(decision.rule.as_str()) {
+        Ok(rule) => rule.decides.to_string(),
+        Err(e) => state
+            .rules
+            .methods()
+            .find(|m| m.id.as_str() == decision.rule.as_str())
+            .map(|m| m.decides.to_string())
+            .ok_or_else(|| ApiError::Internal(e.to_string()))?,
+    };
     let made = json!({
         "pipeline_version_id": decision.base_pipeline_version_id, "rule": decision.rule,
         "decides": decides, "subject_node_id": decision.subject_node_id,

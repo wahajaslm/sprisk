@@ -2449,7 +2449,7 @@ async fn propose_model(api: &Api) -> (StatusCode, Value) {
     call(
         &api.app,
         "POST",
-        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/model/modeling.estimator_selection",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/model/models.estimator_selection",
         Some(json!({})),
     )
     .await
@@ -2464,7 +2464,7 @@ async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     assert_eq!(
         proposal["rule"],
-        "methodology.supervised.model_baseline_selection@2.1.0"
+        "methodology.supervised.model_shortlist@1.0.0"
     );
     // 30 train rows: too few for a forest, so the baseline and the linear model.
     assert_eq!(
@@ -2486,7 +2486,7 @@ async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
 }
 
 #[tokio::test]
-async fn a_model_with_no_features_is_measured_on_every_column_but_its_target() {
+async fn a_model_with_no_features_is_shortlisted_on_the_train_rows_it_reads() {
     let api = api().await;
     let model = json!({
         "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
@@ -2503,13 +2503,13 @@ async fn a_model_with_no_features_is_measured_on_every_column_but_its_target() {
 
     let (status, proposal) = propose_model(&api).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    let features = proposal["evidence"]
+    let rows = proposal["evidence"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|e| e["label"] == "Feature columns")
-        .unwrap();
-    assert_eq!(features["value"], "1", "age alone: {proposal}");
+        .find(|e| e["label"] == "Train rows")
+        .unwrap_or_else(|| panic!("{proposal}"));
+    assert_eq!(rows["value"], "30", "{proposal}");
 }
 
 #[tokio::test]
@@ -2560,7 +2560,7 @@ async fn methods_are_listed_in_decision_order() {
     let (status, methods) = call(&api.app, "GET", "/methods", None).await;
     assert_eq!(status, StatusCode::OK, "{methods}");
     let methods = methods.as_array().unwrap();
-    assert_eq!(methods.len(), 23);
+    assert_eq!(methods.len(), 24);
     let at = |decides: &str| {
         methods
             .iter()
@@ -4444,11 +4444,10 @@ async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_
 
     let review = review(&api).await;
     let expected: Vec<(String, String)> = [
-        // The question, the data before the split and the split are methods' decisions, made
-        // in the walk's look (ADR-0063); the Objective page asks what the question must say.
-        ("modeling.estimator_selection", "needs_run"),
-        // It reads the model selection's results, so it waits for the model step's rules.
-        ("evaluation.loop_back", "waiting"),
+        // The question, the data, the split, the features and the model shortlist are
+        // methods' decisions, made in walks (ADR-0063); loop-back reads the comparison's
+        // results, which the flow has not made.
+        ("evaluation.loop_back", "needs_run"),
     ]
     .iter()
     .map(|(d, s)| ((*d).to_owned(), (*s).to_owned()))
@@ -4466,14 +4465,19 @@ async fn after_a_run_the_review_decides_the_rules_that_measure_rows_and_lists_wh
 
     let review = review(&api).await;
     let items = statuses(&review);
-    assert!(!items.iter().any(|(_, s)| s == "needs_run"), "{review}");
-    for at in review["next"].as_array().unwrap() {
-        let status = &items[at.as_u64().unwrap() as usize].1;
-        assert!(
-            ["proposal", "needs_fact"].contains(&status.as_str()),
-            "{review}"
-        );
-    }
+    // A run makes no comparison: loop-back still waits for the models to be compared.
+    assert_eq!(
+        items,
+        [("evaluation.loop_back".to_owned(), "needs_run".to_owned())],
+        "{review}"
+    );
+    assert!(
+        review["items"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("compare the models first"),
+        "{review}"
+    );
     let uri = format!("/pipeline_versions/{BASE}/methodology/review");
     let (_, again) = call(&api.app, "GET", &uri, None).await;
     assert_eq!(statuses(&again), items, "the review is deterministic");
@@ -4916,10 +4920,10 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "verify",
             "decide question.error_costs not_two_classes",
             "decide evaluation.decision_threshold default_half",
-            "decide question.class_balance balanced",
-            "compare modeling.estimator_selection",
-            "apply modeling.estimator_selection ml_linear_model",
+            "compare models.estimator_selection",
+            "decide models.estimator_selection ml_linear_model",
             "run",
+            "decide question.class_balance balanced",
             "score",
             "stop",
         ],
@@ -5773,9 +5777,8 @@ async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    let uri = format!(
-        "/pipeline_versions/{head}/methodology/proposals/model/modeling.estimator_selection"
-    );
+    let uri =
+        format!("/pipeline_versions/{head}/methodology/proposals/model/models.estimator_selection");
     let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     let apply = format!(
@@ -5976,10 +5979,10 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "verify",
             "decide question.error_costs not_two_classes",
             "decide evaluation.decision_threshold default_half",
-            "decide question.class_balance balanced",
-            "compare modeling.estimator_selection",
-            "apply modeling.estimator_selection ml_linear_model",
+            "compare models.estimator_selection",
+            "decide models.estimator_selection ml_linear_model",
             "run",
+            "decide question.class_balance balanced",
             "score",
             "stop",
         ],
@@ -6563,7 +6566,7 @@ async fn the_engine_fills_gaps_before_the_model_and_walks_on_to_the_comparison()
         .unwrap_or_else(|| panic!("the gaps are filled: {detail}"));
     let compared = trail
         .iter()
-        .position(|s| s == "compare modeling.estimator_selection")
+        .position(|s| s == "compare models.estimator_selection")
         .unwrap_or_else(|| panic!("the filled flow runs, so the shortlist is compared: {detail}"));
     assert!(filled < compared, "{detail}");
 }
@@ -6578,11 +6581,11 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
     let trail = trail(&detail);
     let compared = trail
         .iter()
-        .position(|s| s == "compare modeling.estimator_selection")
+        .position(|s| s == "compare models.estimator_selection")
         .unwrap_or_else(|| panic!("the shortlist is compared: {detail}"));
     assert!(
-        trail[compared + 1].starts_with("apply modeling.estimator_selection ml_"),
-        "then its winner is applied: {detail}"
+        trail[compared + 1].starts_with("decide models.estimator_selection ml_"),
+        "then the method takes its winner: {detail}"
     );
     let steps = detail["steps"].as_array().unwrap();
     assert!(
@@ -6647,7 +6650,7 @@ async fn a_walk_where_no_model_beats_the_baseline_stops_and_says_so() {
     assert!(
         !trail
             .iter()
-            .any(|t| t.starts_with("apply modeling.estimator_selection")),
+            .any(|t| t.starts_with("apply models.estimator_selection")),
         "no model is chosen: {detail}"
     );
     assert_eq!(detail["walk"]["stop"]["reason"], "limitation", "{detail}");
@@ -7004,76 +7007,9 @@ async fn an_object_store_source_is_not_profiled_yet() {
     assert_eq!(body["errors"][0]["code"], "profile_not_local");
 }
 
-/// A compared method in the model shortlist rule's place (ADR-0063 D3): it lets the
-/// baseline and both learners through, and the engine picks the winner.
-const SHORTLIST_METHOD: &str = r#"schema_version: sprisk.method/v2
-id: methodology.supervised.model_shortlist@1.0.0
-decides: models.estimator_selection
-name: Model shortlist
-activity: Models
-question: Which models are worth comparing?
-pitfall: One complex model picked before measuring hides whether it beats a naive guess.
-compare: true
-needs: { concepts: [], evidence: [], decisions: [] }
-options:
-  - id: dummy_baseline
-    label: Baseline
-    description: Predicts without the features.
-    condition: always
-    when: always
-    rationale: The floor every model must beat.
-    action: { replace: { role: model, operator: sprisk.ml.dummy_baseline@3.0.0 } }
-    verify: []
-  - id: linear_model
-    label: Linear model
-    description: A linear model.
-    condition: always
-    when: always
-    rationale: The simplest learner.
-    action: { replace: { role: model, operator: sprisk.ml.linear_model@3.0.0 } }
-    verify: []
-  - id: random_forest
-    label: Random forest
-    description: A forest of trees.
-    condition: always
-    when: always
-    rationale: Catches interactions a linear model misses.
-    action: { replace: { role: model, operator: sprisk.ml.random_forest@3.0.0 } }
-    verify: []
-verifications: {}
-source: "Hastie, Tibshirani & Friedman (2009), ch. 7."
-"#;
-
-const SHORTLIST_MODULE: &str = "def decide(ctx):\n    \
-    return ctx.compare(['dummy_baseline', 'linear_model', 'random_forest'], 'All three.')\n";
-
-/// An API whose packs have the compared shortlist method in the shortlist rule's place. The
-/// packs live as long as the returned folder.
-async fn api_with_shortlist_method() -> (Api, tempfile::TempDir) {
-    let mut api = api().await;
-    let packs = tempfile::tempdir().unwrap();
-    let methodology_root = packs.path().join("methodology");
-    copy_tree(&root().join("methodology"), &methodology_root);
-    let supervised = methodology_root.join("supervised");
-    std::fs::remove_dir_all(supervised.join("rules/model_baseline_selection")).unwrap();
-    let folder = supervised.join("methods/model_shortlist");
-    std::fs::create_dir_all(&folder).unwrap();
-    std::fs::write(folder.join("method.yaml"), SHORTLIST_METHOD).unwrap();
-    std::fs::write(folder.join("method.py"), SHORTLIST_MODULE).unwrap();
-    api.state.rules = Arc::new(
-        sprisk_methodology::RuleCatalog::load_dir(
-            &methodology_root,
-            api.state.registry.operators(),
-        )
-        .unwrap(),
-    );
-    api.app = router(api.state.clone());
-    (api, packs)
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner() {
-    let (api, _packs) = api_with_shortlist_method().await;
+    let api = api().await;
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
@@ -7092,7 +7028,7 @@ async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner(
         .find(|s| s["action"] == "decide" && s["decides"] == "models.estimator_selection")
         .unwrap_or_else(|| panic!("no winner taken: {detail}"));
     assert_eq!(chosen["assurance"], "rule", "{chosen}");
-    assert_ne!(chosen["option"], "dummy_baseline", "{chosen}");
+    assert_ne!(chosen["option"], "ml_dummy_baseline", "{chosen}");
     let uri = format!(
         "/methodology_decisions/{}",
         chosen["methodology_decision_id"].as_str().unwrap()
@@ -7108,7 +7044,7 @@ async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner(
 /// shortlist.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_person_compares_a_compared_method_s_options_and_applies_the_winner() {
-    let (api, _packs) = api_with_shortlist_method().await;
+    let api = api().await;
     learnable_model_flow(&api).await;
 
     let (status, selection) = select_model(&api, "model").await;
@@ -7120,7 +7056,8 @@ async fn a_person_compares_a_compared_method_s_options_and_applies_the_winner() 
     );
     assert_eq!(
         proposal["shortlist"],
-        json!(["dummy_baseline", "linear_model", "random_forest"])
+        json!(["ml_dummy_baseline", "ml_linear_model"]),
+        "32 train rows leave the forest off: {proposal}"
     );
     let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
     assert_eq!(run["status"], "succeeded", "{run}");
@@ -7128,7 +7065,7 @@ async fn a_person_compares_a_compared_method_s_options_and_applies_the_winner() 
     let winner = decided["winner"]
         .as_str()
         .unwrap_or_else(|| panic!("{decided}"));
-    assert_ne!(winner, "dummy_baseline", "{decided}");
+    assert_eq!(winner, "ml_linear_model", "{decided}");
     let (status, study) = call(
         &api.app,
         "POST",
@@ -7158,5 +7095,4 @@ async fn a_person_compares_a_compared_method_s_options_and_applies_the_winner() 
     // The swapped-in model keeps the step's target, task and features.
     assert_eq!(model["params"]["target"], "returned_within_30d", "{model}");
     assert_eq!(model["params"]["features"], json!(["age"]), "{model}");
-
 }
