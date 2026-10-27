@@ -2338,6 +2338,28 @@ class CopilotDatasetSummary(StrictModel):
     columns: list[CopilotColumnSummary]
 
 
+class ExecutionInput(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    port: PortName
+    from_: Annotated[PortRef, Field(alias="from")]
+
+
+class ExecutionOutput(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: PortName
+    kind: PortKind
+    rows_from: Annotated[
+        list[PortName],
+        Field(
+            description="The input ports whose rows this output holds: every input, except that a fits_on_train step's train outputs hold only its train input (ADR-0018)."
+        ),
+    ]
+
+
 class MethodAppliesWhen(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3553,6 +3575,21 @@ class CopilotLedgerDraft(StrictModel):
     unknowns: list[Unknown]
 
 
+class ExecutionStep(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    node_id: NodeId
+    operator: OperatorRef
+    inputs: Annotated[
+        list[ExecutionInput], Field(description="Each connected input, by port name.")
+    ]
+    outputs: Annotated[
+        list[ExecutionOutput],
+        Field(description="Every output port, a code step's named ones included (ADR-0031)."),
+    ]
+
+
 class MethodStatements(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -4120,6 +4157,15 @@ class LabelProfile(StrictModel):
             description="Categories with 2 to 20 values, at most 6, and the first class's share in each value."
         ),
     ]
+
+
+class ExecutionPlan(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.execution_plan/v1"]
+    pipeline_version_id: PipelineVersionId
+    steps: Annotated[list[ExecutionStep], Field(description="At least one, in run order.")]
 
 
 class MethodOption(StrictModel):

@@ -2468,6 +2468,107 @@
         }
       }
     },
+    "ExecutionPlan": {
+      "title": "ExecutionPlan",
+      "description": "A pipeline version as Rust compiled it (arch doc §9, ADR-0070): its steps in run order, each with its resolved ports. Gate B builds its graph from this, never from the manifests. Carries only what Gate B reads today.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "pipeline_version_id",
+        "steps"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.execution_plan/v1"
+          ]
+        },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExecutionStep"
+          },
+          "description": "At least one, in run order."
+        }
+      }
+    },
+    "ExecutionStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_id",
+        "operator",
+        "inputs",
+        "outputs"
+      ],
+      "properties": {
+        "node_id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "operator": {
+          "$ref": "#/$defs/OperatorRef"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExecutionInput"
+          },
+          "description": "Each connected input, by port name."
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExecutionOutput"
+          },
+          "description": "Every output port, a code step's named ones included (ADR-0031)."
+        }
+      }
+    },
+    "ExecutionInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "port",
+        "from"
+      ],
+      "properties": {
+        "port": {
+          "$ref": "#/$defs/PortName"
+        },
+        "from": {
+          "$ref": "#/$defs/PortRef"
+        }
+      }
+    },
+    "ExecutionOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "rows_from"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/PortName"
+        },
+        "kind": {
+          "$ref": "#/$defs/PortKind"
+        },
+        "rows_from": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PortName"
+          },
+          "description": "The input ports whose rows this output holds: every input, except that a fits_on_train step's train outputs hold only its train input (ADR-0018)."
+        }
+      }
+    },
     "Method": {
       "title": "Method",
       "description": "A method's method.yaml (ADR-0063): the decision it owns, what it needs, its options and what each option promises. Its method.py holds decide() and one verify_<name>() per verification.",

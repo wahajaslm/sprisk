@@ -11,14 +11,15 @@ use sprisk_contracts::{
     Binding, ClassificationReport, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
     ConceptSet, CopilotChatReply, CopilotChatRequest, CopilotLedgerDraft, CopilotLedgerRequest,
     CreateDatasetVersion, CreateRun, CreateStudy, CreateWalk, DatasetProfile, DatasetVersion,
-    DecisionProposal, EvidenceSet, FigureSet, FlowDecisions, KeyMatches, LoadedTable, Method,
-    MethodAnswer, MethodFiles, MethodRequest, MethodologyCheck, MethodologyDecision,
-    MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest,
-    NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest,
-    NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator,
-    OperatorSource, PipelineVersion, Problem, ProfilePlan, QuestionVersion, Report, Run,
-    SelectionDecision, SourceProfileRequest, Study, StudyDetail, TablePage, TableShift, Trial,
-    VerificationRequest, Walk, WalkDetail, WalkStep, WorkerMessage, parse,
+    DecisionProposal, EvidenceSet, ExecutionPlan, FigureSet, FlowDecisions, KeyMatches,
+    LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest, MethodologyCheck,
+    MethodologyDecision, MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookCode,
+    NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
+    NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
+    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, ProfilePlan,
+    QuestionVersion, Report, Run, SelectionDecision, SourceProfileRequest, Study, StudyDetail,
+    TablePage, TableShift, Trial, VerificationRequest, Walk, WalkDetail, WalkStep, WorkerMessage,
+    parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -85,6 +86,7 @@ const ENTITIES: &[&str] = &[
     "dataset_version",
     "decision_proposal",
     "evidence_set",
+    "execution_plan",
     "figure_set",
     "flow_decisions",
     "key_matches",
@@ -259,6 +261,11 @@ fn dataset_profile() {
 #[test]
 fn dataset_version() {
     check::<DatasetVersion>("dataset_version");
+}
+
+#[test]
+fn execution_plan() {
+    check::<ExecutionPlan>("execution_plan");
 }
 
 #[test]

@@ -1,0 +1,75 @@
+{
+  "schema_version": "sprisk.execution_plan/v2",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "steps": [
+    {
+      "node_id": "load",
+      "operator": "sprisk.io.file_source@1.0.0",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "data",
+          "kind": "table",
+          "rows_from": []
+        }
+      ]
+    },
+    {
+      "node_id": "split",
+      "operator": "sprisk.validation.random_split@1.0.0",
+      "inputs": [
+        {
+          "port": "data",
+          "from": "load.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "test",
+          "kind": "table",
+          "rows_from": [
+            "data"
+          ]
+        },
+        {
+          "name": "train",
+          "kind": "table",
+          "rows_from": [
+            "data"
+          ]
+        }
+      ]
+    },
+    {
+      "node_id": "impute",
+      "operator": "sprisk.clean.impute@1.0.0",
+      "inputs": [
+        {
+          "port": "test",
+          "from": "split.test"
+        },
+        {
+          "port": "train",
+          "from": "split.train"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "train",
+          "kind": "table",
+          "rows_from": [
+            "train"
+          ]
+        },
+        {
+          "name": "test",
+          "kind": "table",
+          "rows_from": [
+            "test",
+            "train"
+          ]
+        }
+      ]
+    }
+  ]
+}

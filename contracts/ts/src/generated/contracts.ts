@@ -189,6 +189,20 @@ export type DatasetVersionId = string;
  */
 export type DataFormat = "csv" | "parquet";
 /**
+ * `<node_id>.<port_name>`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PortRef".
+ */
+export type PortRef = string;
+/**
+ * What a port carries. A table is Parquet; a matrix is rows by named number columns, stored sparse (SciPy CSR in .npz, ADR-0058): row i is row i of the table it was made from.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PortKind".
+ */
+export type PortKind = "table" | "matrix" | "model" | "metrics" | "diagnostics" | "report" | "figure";
+/**
  * methodology.<pack>.<method>@<semver>
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -392,7 +406,7 @@ export type GraphEffect =
       params: Params;
       before: NodeId;
       /**
-       * A step that joins: the output feeding its `other` input, a source table no step read before (ADR-0059). Absent for a step with one input.
+       * `<node_id>.<port_name>`.
        */
       other?: string;
     }
@@ -411,13 +425,6 @@ export type GraphEffect =
       port: PortName;
       from: PortRef;
     };
-/**
- * `<node_id>.<port_name>`.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "PortRef".
- */
-export type PortRef = string;
 /**
  * Immutable record of one decision made through Apply: a rule's alternative, or a method's option (ADR-0064).
  *
@@ -492,13 +499,6 @@ export type CapabilityClass =
   | "decision_evaluator"
   | "sink"
   | "custom_code";
-/**
- * What a port carries. A table is Parquet; a matrix is rows by named number columns, stored sparse (SciPy CSR in .npz, ADR-0058): row i is row i of the table it was made from.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "PortKind".
- */
-export type PortKind = "table" | "matrix" | "model" | "metrics" | "diagnostics" | "report" | "figure";
 /**
  * pure: same inputs give same outputs, cacheable. nondeterministic: not replayable. side_effecting: changes the outside world; never auto-retried.
  *
@@ -2100,6 +2100,56 @@ export interface SourceProfileRequest {
    * At least one, in order: resolved local paths, or object-store URIs (s3://, gs://, az://) read with the credentials in the environment.
    */
   files: string[];
+}
+/**
+ * A pipeline version as Rust compiled it (arch doc §9, ADR-0070): its steps in run order, each with its resolved ports. Gate B builds its graph from this, never from the manifests. Carries only what Gate B reads today.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionPlan".
+ */
+export interface ExecutionPlan {
+  schema_version: "sprisk.execution_plan/v1";
+  pipeline_version_id: PipelineVersionId;
+  /**
+   * At least one, in run order.
+   */
+  steps: ExecutionStep[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionStep".
+ */
+export interface ExecutionStep {
+  node_id: NodeId;
+  operator: OperatorRef;
+  /**
+   * Each connected input, by port name.
+   */
+  inputs: ExecutionInput[];
+  /**
+   * Every output port, a code step's named ones included (ADR-0031).
+   */
+  outputs: ExecutionOutput[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionInput".
+ */
+export interface ExecutionInput {
+  port: PortName;
+  from: PortRef;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionOutput".
+ */
+export interface ExecutionOutput {
+  name: PortName;
+  kind: PortKind;
+  /**
+   * The input ports whose rows this output holds: every input, except that a fits_on_train step's train outputs hold only its train input (ADR-0018).
+   */
+  rows_from: PortName[];
 }
 /**
  * A method's method.yaml (ADR-0063): the decision it owns, what it needs, its options and what each option promises. Its method.py holds decide() and one verify_<name>() per verification.
