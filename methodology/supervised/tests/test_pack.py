@@ -70,7 +70,7 @@ def test_returns_every_rule_result(evaluators: int, verdict: str) -> None:
     assert leakage.verdict == verdict
     assert code.check.root == "supervised.code_leakage@1.0.0"
     assert code.verdict == "not_assessed"
-    assert design.check.root == "methodology.supervised.data_split@1.0.0"
+    assert design.check.root == "methodology.supervised.split_design@1.0.0"
     assert design.verdict == "not_assessed", "no question is linked"
     assert leakage.id.root.startswith("mck_")
     assert len({leakage.id.root, code.id.root, design.id.root}) == 3
@@ -133,11 +133,10 @@ def test_an_invalid_decision_is_an_operator_error() -> None:
 
 def test_the_split_check_names_the_decision_that_chose_the_split() -> None:
     inputs = answering_the_question(inputs_for(1))
-    decision = fixture("methodology_decision", "applied.json")
-    decision["rule"] = "methodology.supervised.data_split@1.0.0"
+    decision = fixture("methodology_decision", "by-method-changes-steps.json")
     inputs["pipeline"]["nodes"][1]["methodology_decision_id"] = decision["id"]
     inputs["decisions"] = [decision]
-    (design,) = [c for c in run(**inputs) if c["check"].endswith("data_split@1.0.0")]
+    (design,) = [c for c in run(**inputs) if c["check"].endswith("split_design@1.0.0")]
     assert design["methodology_decision_id"] == decision["id"]
 
 

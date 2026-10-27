@@ -37,7 +37,7 @@ def check(
 
 def test_is_the_runtime_half_of_the_split_rule() -> None:
     result = check(rows([1], ["a"]), rows([2], ["b"]), question(**TIME))
-    assert result.check.root == CHECK == "methodology.supervised.data_split@1.0.0"
+    assert result.check.root == CHECK == "methodology.supervised.split_design@1.0.0"
     assert result.phase is not None and result.phase.value == "runtime"
     assert [n.root for n in result.cited_nodes] == ["split"]
     assert result.pipeline_version_id.root == PV

@@ -584,7 +584,7 @@ describe("inspector failures and checks", () => {
     const design = {
       ...JSON.parse(checksJson)[0],
       id: "mck_01JABCDEFGHJKMNPQRSTVWXYZ9",
-      check: "methodology.supervised.data_split@1.0.0",
+      check: "methodology.supervised.split_design@1.0.0",
       phase: "plan",
       coverage: "partial",
       methodology_decision_id: "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0",
@@ -678,7 +678,7 @@ describe("inspector failures and checks", () => {
     const failing = {
       ...JSON.parse(checksJson)[0],
       id: "mck_01JABCDEFGHJKMNPQRSTVWXZZ1",
-      check: "methodology.supervised.data_split@1.0.0",
+      check: "methodology.supervised.split_design@1.0.0",
       phase: "runtime",
       coverage: "complete",
       verdict: "fail",

@@ -1,8 +1,7 @@
 """Does each split step split the way the question's confirmed facts or bindings require? (ADR-0042)
 
-It began as the verification half of the data split rule and keeps that rule's check id, so
-stored checks stay comparable. The split is now decided by the split_method method, whose
-promises replace this check when the old rules go (ADR-0063 slice 6).
+It began as the verification half of the retired data split rule. The split_method method now
+decides the split, and this check stays as the gate that catches a split built wrong by any route.
 It reads settings, not rows: a pass is partial coverage until a run checks the rows.
 """
 
@@ -33,14 +32,7 @@ from sprisk_supervised.question_columns import (
 )
 from sprisk_supervised.split_leakage import CheckInputError, is_split, operators_by_node
 
-CHECK = "methodology.supervised.data_split@1.0.0"
-# How each alternative of the retired data_split rule folded rows, for the decisions it made.
-ALTERNATIVE_FOLDS = {
-    "temporal": SplitFolds.time,
-    "entity_group": SplitFolds.group,
-    "stratified_random": SplitFolds.plain,
-    "simple_random": SplitFolds.plain,
-}
+CHECK = "methodology.supervised.split_design@1.0.0"
 LIMITATIONS = (
     "Compares the split's settings with the question's facts. It does not read rows, so it "
     "cannot show that test rows come later or share no entity with train rows, and it does "
@@ -66,43 +58,28 @@ def split_design(
     sent = {d.root.id.root: d.root for d in decisions}
     results = []
     for node in splits:
-        decision = _own_decision(node, sent)
-        by_method = _method_decision(node, sent)
-        verdict, rationale = _judge(node, folds_of[node.id.root], question, by_method)
-        if decision is not None and verdict != Verdict.not_assessed:
-            drift = _drift(node, folds_of[node.id.root], decision)
-            if drift:
-                verdict, rationale = Verdict.fail, drift
+        decision = _method_decision(node, sent)
+        verdict, rationale = _judge(node, folds_of[node.id.root], question, decision)
         results.append(_result(pipeline, new_id(), now, verdict, rationale, node, decision))
     return results
-
-
-def _own_decision(
-    node: Node, sent: Mapping[str, MethodologyDecisionByRule | MethodologyDecisionByMethod]
-) -> MethodologyDecisionByRule | None:
-    """The split decision `node` cites. Citing one that was not sent, or that decided
-    something else, is bad input: the check would credit the split to the wrong choice. A
-    method's decision is not this rule's: the walk checks the method's own promises."""
-    cited = node.methodology_decision_id
-    if cited is None:
-        return None
-    decision = sent.get(cited.root)
-    if isinstance(decision, MethodologyDecisionByMethod):
-        return None
-    if decision is None or decision.rule.root != CHECK or decision.subject_node_id != node.id:
-        raise CheckInputError(
-            f"split {node.id.root} cites decision {cited.root}, which was not sent or is not "
-            f"a {CHECK} decision about this step"
-        )
-    return decision
 
 
 def _method_decision(
     node: Node, sent: Mapping[str, MethodologyDecisionByRule | MethodologyDecisionByMethod]
 ) -> MethodologyDecisionByMethod | None:
+    """The method decision `node` cites. No rule decides a split any more (ADR-0063 slice 6),
+    so citing a rule's decision, or one that was not sent, is bad input: the check would credit
+    the split to the wrong choice."""
     cited = node.methodology_decision_id
-    decision = None if cited is None else sent.get(cited.root)
-    return decision if isinstance(decision, MethodologyDecisionByMethod) else None
+    if cited is None:
+        return None
+    decision = sent.get(cited.root)
+    if not isinstance(decision, MethodologyDecisionByMethod):
+        raise CheckInputError(
+            f"split {node.id.root} cites decision {cited.root}, which was not sent or is not "
+            "a method's decision"
+        )
+    return decision
 
 
 def _left_to_promises(node: Node, decision: MethodologyDecisionByMethod) -> str:
@@ -113,17 +90,6 @@ def _left_to_promises(node: Node, decision: MethodologyDecisionByMethod) -> str:
         f"Step {node.id.root} splits as decision {decision.id.root} chose ({decision.option.root} "
         f"of {decision.method.root}). The question names no time or item column to compare it "
         f"with; the method's promises check the rows: {promises}."
-    )
-
-
-def _drift(node: Node, folds: SplitFolds | None, decision: MethodologyDecisionByRule) -> str | None:
-    """Why the step no longer folds rows as the alternative its decision chose, or None."""
-    chose = decision.alternative_id
-    if ALTERNATIVE_FOLDS.get(chose) == folds:
-        return None
-    return (
-        f"Step {node.id.root} cites decision {decision.id.root}, which chose {chose}, but the "
-        "step was changed since. Apply the decision again or make a new one."
     )
 
 
@@ -199,7 +165,7 @@ def _result(
     verdict: Verdict,
     rationale: str,
     node: Node | None,
-    decision: MethodologyDecisionByRule | None = None,
+    decision: MethodologyDecisionByMethod | None = None,
 ) -> MethodologyCheck:
     coverage = {
         Verdict.pass_: MethodologyCoverage.partial,
