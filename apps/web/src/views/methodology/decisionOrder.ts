@@ -33,14 +33,15 @@ export function numbered(methods: Method[]): OrderedMethod[] {
   return out.map((method, at) => ({ method, order: at + 1 }));
 }
 
-/** What a choice does to the flow, in a few words. */
-export function effect(option: Method["options"][number]): string {
+/** What a choice does to the flow, in a few words. A choice that changes no step is still a
+ * recorded decision: `readers` are the later decisions that read it. */
+export function effect(option: Method["options"][number], readers: string[]): string {
   const action = option.action;
   if (action?.insert) return `adds ${short(action.insert.operator)} before ${action.insert.before}`;
   if (action?.replace) return `uses ${short(action.replace.operator)} as the ${action.replace.role}`;
   if (action?.set) return `sets the ${action.set.role}'s settings`;
   if (action?.bind) return `names ${action.bind.concept}`;
-  return "changes nothing";
+  return readers.length > 0 ? `no pipeline change · read by ${readers.join(", ")}` : "no pipeline change";
 }
 
 /** `sprisk.clean.impute@1.0.0` → `impute`. */

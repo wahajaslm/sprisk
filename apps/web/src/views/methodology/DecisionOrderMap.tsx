@@ -2,12 +2,15 @@ import "@xyflow/react/dist/style.css";
 
 import { Background, BackgroundVariant, Controls, type Edge, Handle, MarkerType, type Node, type NodeProps, Position, ReactFlow } from "@xyflow/react";
 import type { Method, Operator } from "@sprisk/contracts";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import { FLOW, type FlowNode, decisionFlow } from "./decisionFlow.ts";
 import { effect, numbered, type OrderedMethod } from "./decisionOrder.ts";
 
-type Data<K extends FlowNode["kind"]> = Node<{ node: Extract<FlowNode, { kind: K }> }, K>;
+/** `readers`: the numbers of the later decisions that read a choice's decision. */
+type Data<K extends FlowNode["kind"]> = Node<{ node: Extract<FlowNode, { kind: K }>; readers: string[] }, K>;
+
+const MIN_OPEN_ZOOM = 0.8;
 
 /** Where the decisions lead once all are made: the steps still decided by old-format rules. */
 const END = "Model comparison";
@@ -17,18 +20,20 @@ const END = "Model comparison";
  * decision's details are in a column beside the canvas, never over it. */
 export function DecisionOrderMap({ methods, operators, picked, onPick }: { methods: Method[]; operators: Operator[]; picked: string | undefined; onPick: (id: string) => void }) {
   const flow = useMemo(() => decisionFlow(methods, END), [methods]);
+  const box = useRef<HTMLDivElement>(null);
   const ordered = useMemo(() => numbered(methods), [methods]);
   const current = ordered.find((m) => m.method.id === picked) ?? ordered[0];
+  const readersOf = (method: Method) => ordered.filter((m) => m.method.needs.decisions.includes(method.decides));
   const nodes = flow.nodes.map((node): Node => {
     const size = node.kind === "choice" ? { width: FLOW.choice.width, height: FLOW.choice.height } : node.kind === "stage" ? { width: node.width, height: node.height } : { width: FLOW.diamond, height: FLOW.diamond };
     const selected = node.kind === "decision" && node.ordered.method.id === current?.method.id;
     // A stage box sits behind the decisions and lines it holds.
-    return { id: node.id, type: node.kind, position: { x: node.x, y: node.y }, ...size, data: { node }, selected, selectable: node.kind === "decision" || node.kind === "choice", ...(node.kind === "stage" ? { zIndex: -1 } : {}) };
+    return { id: node.id, type: node.kind, position: { x: node.x, y: node.y }, ...size, data: { node, readers: node.kind === "choice" ? readersOf(node.method).map((m) => String(m.order)) : [] }, selected, selectable: node.kind === "decision" || node.kind === "choice", ...(node.kind === "stage" ? { zIndex: -1 } : {}) };
   });
   const edges: Edge[] = flow.links.map((l) => ({ id: l.id, source: l.from, target: l.to, type: "default", markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 }, className: "mth-order-edge" }));
   return (
     <div className="mth-order-wrap">
-      <div className="mth-map mth-order" role="region" aria-label="Decision order">
+      <div ref={box} className="mth-map mth-order" role="region" aria-label="Decision order">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -38,9 +43,12 @@ export function DecisionOrderMap({ methods, operators, picked, onPick }: { metho
             if (n.kind === "decision") onPick(n.ordered.method.id);
             if (n.kind === "choice") onPick(n.method.id);
           }}
-          // Open at full size on the first decision: text drawn scaled down blurs, so the canvas never
-          // shrinks to fit. A wide row of choices or the next stage is a pan or scroll away.
-          onInit={(canvas) => void canvas.setCenter(0, FLOW.stage + 220, { zoom: 1 })}
+          // Open on the top left of the first stage, as wide as the canvas allows but never below
+          // 80%: text drawn much smaller blurs. The rest is a pan or scroll away.
+          onInit={(canvas) => {
+            const zoom = Math.min(1, Math.max(MIN_OPEN_ZOOM, ((box.current?.clientWidth ?? 0) - 48) / flow.width));
+            void canvas.setViewport({ x: 24 - flow.left * zoom, y: 24 + (FLOW.toNext / 2) * zoom, zoom });
+          }}
           panOnScroll
           nodesDraggable={false}
           nodesConnectable={false}
@@ -92,7 +100,7 @@ function MethodDetail({ current, all, operators, onPick }: { current: OrderedMet
                 <b>If</b> {option.when}
               </span>
               <strong>{option.label}</strong>
-              <span className="mth-order-does">→ {effect(option)}</span>
+              <span className="mth-order-does">→ {effect(option, readBy.map((m) => `${m.order}. ${m.method.name}`))}</span>
               <span className="mth-order-why">{option.rationale}</span>
             </li>
           ))}
@@ -166,12 +174,13 @@ function DecisionDiamond({ data, selected }: NodeProps<Data<"decision">>) {
 
 function ChoiceCircle({ data }: NodeProps<Data<"choice">>) {
   const { option } = data.node;
+  const does = effect(option, data.readers);
   return (
-    <button type="button" className="mth-flow-node step mth-order-choice nopan" aria-label={option.label} title={`If ${option.when}: ${option.label}, ${effect(option)}`}>
+    <button type="button" className="mth-flow-node step mth-order-choice nopan" aria-label={option.label} title={`If ${option.when}: ${option.label}, ${does}`}>
       <span className="mth-flow-circle" style={{ width: FLOW.choice.circle, height: FLOW.choice.circle }} />
       <span className="mth-order-cond">{option.condition}</span>
       <span className="mth-flow-name">{option.label}</span>
-      <span className="mth-order-does">{effect(option)}</span>
+      <span className="mth-order-does">{does}</span>
       <Ports />
     </button>
   );
