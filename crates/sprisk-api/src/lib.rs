@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 mod bounded;
 mod copilot;
+mod datasets;
 mod decisions;
 mod engine;
 mod figures;
@@ -23,7 +24,7 @@ pub use kernel::{KernelError, KernelLimits, Kernels};
 pub use method_session::{MethodRunner, MethodSession};
 pub use notebook_code::CodeWriter;
 use profile::Profiles;
-pub use profile::{KeyMatcher, Profiler, Shifter};
+pub use profile::{KeyMatcher, Profiler, Shifter, SourceProfiler};
 pub use rules::{RuleRunner, RuleSession};
 pub use split::{SplitError, Splitter};
 
@@ -79,6 +80,8 @@ pub struct AppState {
     pub splitter: Splitter,
     /// Profiles one table for the Datasets view (ADR-0038).
     pub profiler: Profiler,
+    /// Profiles a registered data source in place, on its first rows (ADR-0067).
+    pub source_profiler: SourceProfiler,
     /// Matches the rows a step reads to another table, to decide a join (ADR-0059).
     pub key_matcher: KeyMatcher,
     /// Compares a table's numeric columns with another's, such as train with test (ADR-0065).
@@ -168,6 +171,15 @@ pub fn router(state: AppState) -> Router {
         .route("/artifacts/{id}/profile", get(get_artifact_profile))
         .route("/artifacts/{id}/shift", get(get_artifact_shift))
         .route("/loaded_tables", get(list_loaded_tables))
+        .route(
+            "/dataset_versions",
+            post(datasets::create_dataset_version).get(datasets::list_dataset_versions),
+        )
+        .route("/dataset_versions/{id}", get(datasets::get_dataset_version))
+        .route(
+            "/dataset_versions/{id}/profile",
+            get(datasets::get_dataset_version_profile),
+        )
         .route("/notebook_versions", post(create_notebook_version))
         .route("/notebook_versions/{id}", get(get_notebook_version))
         .route("/notebooks", get(list_notebooks))
@@ -288,6 +300,10 @@ enum ApiError {
     Code(ProcessError),
     #[error("AI is off on this server")]
     AiOff,
+    #[error(transparent)]
+    Source(sprisk_artifacts::StoreError),
+    #[error("the data at {0} changed since it was registered; register it again")]
+    SourceChanged(String),
     #[error("asking the local model {0}")]
     Copilot(ProcessError),
     #[error("{0}")]
@@ -332,6 +348,11 @@ impl ApiError {
                 vec![("code_busy", self.to_string())],
             ),
             ApiError::AiOff => (StatusCode::FORBIDDEN, vec![("ai_off", self.to_string())]),
+            ApiError::Source(e) => source_problem(e),
+            ApiError::SourceChanged(_) => (
+                StatusCode::CONFLICT,
+                vec![("source_changed", self.to_string())],
+            ),
             ApiError::Copilot(ProcessError::Timeout(_)) => (
                 StatusCode::GATEWAY_TIMEOUT,
                 vec![("copilot_timeout", self.to_string())],
@@ -405,6 +426,23 @@ impl ApiError {
         let body = json!({"errors": errors.iter().map(|(code, message)| json!({"code": code, "message": message})).collect::<Vec<_>>()});
         (status, body)
     }
+}
+
+/// A data source that cannot be registered or read (ADR-0067): the location's fault is 422,
+/// the object store's is 502 or 504.
+fn source_problem(e: &sprisk_artifacts::StoreError) -> (StatusCode, Vec<(&'static str, String)>) {
+    use sprisk_artifacts::StoreError as E;
+    let (status, code) = match e {
+        E::InvalidLocation(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid_location"),
+        E::UnsupportedScheme(_) => (StatusCode::UNPROCESSABLE_ENTITY, "unsupported_scheme"),
+        E::SourceNotFound(_) => (StatusCode::UNPROCESSABLE_ENTITY, "path_not_found"),
+        E::TooManyFiles { .. } => (StatusCode::UNPROCESSABLE_ENTITY, "too_many_files"),
+        E::UnsupportedFormat(_) => (StatusCode::UNPROCESSABLE_ENTITY, "unsupported_format"),
+        E::MixedFormats(_) => (StatusCode::UNPROCESSABLE_ENTITY, "mixed_formats"),
+        E::ListTimeout(_) => (StatusCode::GATEWAY_TIMEOUT, "list_timeout"),
+        _ => (StatusCode::BAD_GATEWAY, "source_unreachable"),
+    };
+    (status, vec![(code, e.to_string())])
 }
 
 impl IntoResponse for ApiError {

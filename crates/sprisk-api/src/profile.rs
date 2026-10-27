@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-use sprisk_contracts::{DatasetProfile, KeyMatches, TableShift, parse};
+use sprisk_contracts::{DataFormat, DatasetProfile, KeyMatches, TableShift, parse};
 
 use crate::bounded::{BoundedProcess, ProcessError};
 
@@ -39,6 +39,35 @@ impl Profiler {
     ) -> Result<DatasetProfile, ProcessError> {
         let input = format!("{}\n{}", path.display(), target.unwrap_or(""));
         let text = self.process.run(input.into_bytes()).await?;
+        parse(&text).map_err(|e| ProcessError::Failed(format!("invalid profile: {e}")))
+    }
+}
+
+/// The command that profiles a registered data source in place
+/// (`python -m sprisk_profile.source`, ADR-0067), how long it may take, and how many at once.
+#[derive(Clone, Debug)]
+pub struct SourceProfiler(BoundedProcess);
+
+impl SourceProfiler {
+    pub fn new(command: Vec<String>, timeout: Duration, at_once: usize) -> Self {
+        Self(BoundedProcess::new(
+            "source profiler",
+            command,
+            timeout,
+            at_once,
+        ))
+    }
+
+    /// The profile of the first rows of `files`, checked against the contract. The files were
+    /// listed by Rust and hold no line breaks.
+    pub async fn profile(
+        &self,
+        format: DataFormat,
+        files: &[String],
+        target: Option<&str>,
+    ) -> Result<DatasetProfile, ProcessError> {
+        let input = format!("{format}\n{}\n{}\n", target.unwrap_or(""), files.join("\n"));
+        let text = self.0.run(input.into_bytes()).await?;
         parse(&text).map_err(|e| ProcessError::Failed(format!("invalid profile: {e}")))
     }
 }

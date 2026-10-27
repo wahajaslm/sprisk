@@ -1,0 +1,172 @@
+//! `/dataset_versions` (ADR-0067): data registered by reference. The API lists the files where
+//! they live and keeps a fingerprint of their metadata; it never copies or reads the data to
+//! register it. A local location stays inside the data roots, file by file.
+
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use axum::Json;
+use axum::extract::{Path as UrlPath, State};
+use axum::http::StatusCode;
+use serde_json::json;
+use sprisk_artifacts::source::{
+    ListLimits, Location, SourceFiles, list_local, list_remote, parse_location,
+};
+use sprisk_contracts::{CreateDatasetVersion, DatasetProfile, DatasetVersion, parse};
+
+use crate::{ApiError, AppState, Query, body, id, limit, optional_id};
+
+/// A petabyte source can hold millions of files; more than this is refused, never cut.
+const LIMITS: ListLimits = ListLimits {
+    max_files: 10_000,
+    timeout: Duration::from_secs(30),
+};
+
+/// `POST /dataset_versions`: 201 with a new version, or 200 with the one already registered
+/// for the same location and fingerprint.
+pub(crate) async fn create_dataset_version(
+    State(state): State<AppState>,
+    text: String,
+) -> Result<(StatusCode, Json<DatasetVersion>), ApiError> {
+    let request: CreateDatasetVersion = body(&text)?;
+    let location = parse_location(&request.location).map_err(ApiError::Source)?;
+    let (uri, name, listed) = list(&state, &location).await?;
+    let doc = json!({
+        "schema_version": "sprisk.dataset_version/v1",
+        "id": format!("dsv_{}", ulid::Ulid::new()),
+        "name": name.chars().take(256).collect::<String>(),
+        "location": uri.as_str(),
+        "format": listed.format,
+        "file_count": listed.files.len(),
+        "size_bytes": listed.size_bytes,
+        "fingerprint": listed.fingerprint,
+        "created_at": sprisk_core::time::now(),
+    });
+    let version: DatasetVersion =
+        parse(&doc.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let kept = state.store.insert_dataset_version(&version).await?;
+    let status = if kept.id == version.id {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(kept)))
+}
+
+/// `GET /dataset_versions`: newest first, a page at a time (`?before=`, `?limit=`).
+pub(crate) async fn list_dataset_versions(
+    State(state): State<AppState>,
+    query: Query,
+) -> Result<Json<Vec<DatasetVersion>>, ApiError> {
+    let before = optional_id(&query, "before")?;
+    Ok(Json(
+        state
+            .store
+            .list_dataset_versions(before.as_ref(), limit(&query)?)
+            .await?,
+    ))
+}
+
+pub(crate) async fn get_dataset_version(
+    State(state): State<AppState>,
+    UrlPath(raw): UrlPath<String>,
+) -> Result<Json<DatasetVersion>, ApiError> {
+    Ok(Json(state.store.get_dataset_version(&id(&raw)?).await?))
+}
+
+/// `GET /dataset_versions/{id}/profile`: the first rows profiled in place, made once per
+/// fingerprint and profiler code. The files are listed again first: data that changed since
+/// it was registered is a different version, so it is refused, not profiled.
+pub(crate) async fn get_dataset_version_profile(
+    State(state): State<AppState>,
+    UrlPath(raw): UrlPath<String>,
+    query: Query,
+) -> Result<Json<DatasetProfile>, ApiError> {
+    let version = state.store.get_dataset_version(&id(&raw)?).await?;
+    let location = parse_location(&version.location).map_err(ApiError::Source)?;
+    if let Location::Remote(_) = location {
+        return Err(ApiError::BadRequest {
+            code: "profile_not_local",
+            message: format!(
+                "{} is in an object store; only local sources can be profiled yet",
+                version.location.as_str()
+            ),
+        });
+    }
+    let fingerprint = version.fingerprint.as_str();
+    let code = state.profiler.code();
+    let target = query.get("target").map(String::as_str);
+    if let Some(kept) = state
+        .store
+        .stored_profile(fingerprint, code, target)
+        .await?
+    {
+        return Ok(Json(kept));
+    }
+    let (_, _, listed) = list(&state, &location).await?;
+    if listed.fingerprint != fingerprint {
+        return Err(ApiError::SourceChanged(version.location.to_string()));
+    }
+    let files: Vec<String> = listed.files.into_iter().map(|f| f.path).collect();
+    let made = state
+        .source_profiler
+        .profile(listed.format, &files, target)
+        .await?;
+    state
+        .store
+        .save_profile(fingerprint, code, target, &made)
+        .await?;
+    Ok(Json(made))
+}
+
+/// The location as kept (a local path as its canonical `file://` URI), its name and its files. A local
+/// path, and each file under it after following symlinks, must be inside a data root.
+async fn list(
+    state: &AppState,
+    location: &Location,
+) -> Result<(url::Url, String, SourceFiles), ApiError> {
+    match location {
+        Location::Local(path) => {
+            let path = inside_roots(path, &state.data_roots)?;
+            let listed = list_local(&path, LIMITS).await.map_err(ApiError::Source)?;
+            for file in &listed.files {
+                inside_roots(Path::new(&file.path), &state.data_roots)?;
+            }
+            let uri = url::Url::from_file_path(&path)
+                .map_err(|()| ApiError::Internal(format!("{} is not absolute", path.display())))?;
+            let name = path.file_name().map_or_else(
+                || path.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            );
+            Ok((uri, name, listed))
+        }
+        Location::Remote(url) => {
+            let listed = list_remote(url, LIMITS).await.map_err(ApiError::Source)?;
+            Ok((url.clone(), last_segment(url), listed))
+        }
+    }
+}
+
+/// `path` resolved through symlinks, if it is inside one of the data roots. The roots are the
+/// server's policy: registering never adds to them.
+fn inside_roots(path: &Path, roots: &[PathBuf]) -> Result<PathBuf, ApiError> {
+    let resolved = path.canonicalize().map_err(|e| {
+        ApiError::Policy(vec![("path_not_found", format!("{}: {e}", path.display()))])
+    })?;
+    if !roots.iter().any(|r| resolved.starts_with(r)) {
+        return Err(ApiError::Policy(vec![(
+            "path_outside_data_roots",
+            format!("{} is outside the data roots", resolved.display()),
+        )]));
+    }
+    Ok(resolved)
+}
+
+/// The last part of an object-store URI: the object or folder, else the bucket.
+fn last_segment(url: &url::Url) -> String {
+    url.path_segments()
+        .and_then(|mut s| s.rfind(|s| !s.is_empty()))
+        .or(url.host_str())
+        .unwrap_or_default()
+        .to_owned()
+}

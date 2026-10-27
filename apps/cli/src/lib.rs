@@ -194,6 +194,16 @@ pub async fn serve_on(
             2,
             sprisk_registry::source_digest(&config.plugins.join("profile/src"))?,
         ),
+        // Reads only the first rows where the data lives (ADR-0067).
+        source_profiler: sprisk_api::SourceProfiler::new(
+            vec![
+                config.python.display().to_string(),
+                "-m".into(),
+                "sprisk_profile.source".into(),
+            ],
+            std::time::Duration::from_secs(60),
+            2,
+        ),
         key_matcher: sprisk_api::KeyMatcher::new(
             vec![
                 config.python.display().to_string(),
