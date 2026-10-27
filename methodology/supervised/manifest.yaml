@@ -9,6 +9,7 @@ inputs:
   - { name: operators, kind: report }
   - { name: question, kind: report }
   - { name: decisions, kind: report }
+  - { name: plan, kind: report }
 outputs: [{ name: checks, kind: report }]
 params_schema: { type: object, additionalProperties: false }
 effects: pure

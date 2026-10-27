@@ -830,7 +830,7 @@ async fn evidence_that_breaks_its_manifest_fails_the_step_and_saves_nothing() {
 }
 
 #[tokio::test]
-async fn gate_b_runs_first_with_the_pipeline_its_operators_question_and_decisions_as_inputs() {
+async fn gate_b_runs_first_with_the_pipeline_its_plan_operators_question_and_decisions_as_inputs() {
     let (env, status) = setup(Case {
         gate: true,
         ..Case::default()
@@ -846,9 +846,16 @@ async fn gate_b_runs_first_with_the_pipeline_its_operators_question_and_decision
         .iter()
         .map(|i| i.port.as_str().to_owned())
         .collect();
-    assert_eq!(ports, ["decisions", "operators", "pipeline", "question"]);
+    assert_eq!(
+        ports,
+        ["decisions", "operators", "pipeline", "plan", "question"]
+    );
     let sent: PipelineVersion = parse(&gate_input(gate, "pipeline").to_string()).unwrap();
     assert_eq!(sent, pipeline());
+    let plan: sprisk_contracts::ExecutionPlan =
+        parse(&gate_input(gate, "plan").to_string()).unwrap();
+    assert_eq!(plan.pipeline_version_id, sent.id);
+    assert_eq!(plan.steps.len(), sent.nodes.len());
     assert_eq!(
         gate_input(gate, "question"),
         json!(null),

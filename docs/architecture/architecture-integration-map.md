@@ -105,9 +105,9 @@ Most important first.
 3. **Encoding:** no standalone one-hot step, and the `categorical_encoding` rule is a draft (SCI-03, SCI-05).
 4. **Data contracts:** no column-type contract finding or point-in-time check (DATA-01, DATA-02).
 5. **Reopen and trace:** nothing tests reopening the workbench and following question → decision → version → run → check → comparison.
-6. **Gate B graph walk:** the Python checks rebuild the graph with networkx. They should read port facts the compiler provides, so port rules live in one place.
-   - `split_leakage` treats clustering steps (kmeans, gmm, dbscan) as plain transforms, so one fit on unsplit rows upstream of a model is not caught.
+6. **Gate B graph walk:** `split_leakage` builds its graph from the `ExecutionPlan` Rust compiled (ADR-0070), and catches a clustering step fit on unsplit rows upstream of a model. Open:
    - With evaluators present, its pass does not look at other steps that read the test rows.
+   - `code_leakage` still reads fitting steps from the manifests, not the plan.
 7. **Run events:** clients poll; there is no outbox or event stream.
 8. **Certification:** fit scope is proven by tests only; no runtime scope evidence (SCI-02, SCI-08).
 9. **In-app help:** operators and rules carry one-line descriptions only. Help pages for each step and rule can draw on the course in `knowledge/`, written in our own words.
