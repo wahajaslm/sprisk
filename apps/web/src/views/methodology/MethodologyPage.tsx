@@ -165,8 +165,10 @@ export function MethodologyPage() {
 function DecisionOrderTab({ picked, onPick }: { picked: string | undefined; onPick: (id: string) => void }) {
   const methods = useMethods();
   const operators = useOperators();
-  // Its own pick: a method the rules list leaves out can still be read here.
-  const [mine, setMine] = useState(picked);
+  // The page's pick when it is a method, so the sidebar and the canvas show the same one;
+  // else the last method picked here.
+  const [mine, setMine] = useState<string>();
+  const shown = methods.data?.some((m) => m.id === picked) ? picked : mine;
   if (methods.isError) return <p role="alert" className="error pad">{methods.error.message}</p>;
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
   if (methods.isPending || operators.isPending) return <Loading text="Loading the methods…" />;
@@ -175,7 +177,7 @@ function DecisionOrderTab({ picked, onPick }: { picked: string | undefined; onPi
       <DecisionOrderMap
         methods={methods.data}
         operators={operators.data}
-        picked={mine}
+        picked={shown}
         onPick={(id) => {
           setMine(id);
           onPick(id);

@@ -14,19 +14,20 @@ const END = "Model comparison";
 
 /** The decisions as a flowchart, top to bottom: a diamond per decision, a circle per choice
  * with when it is taken, and every choice leading on to the next decision. The picked
- * decision's details are in the card beside the canvas. */
+ * decision's details are in a column beside the canvas, never over it. */
 export function DecisionOrderMap({ methods, operators, picked, onPick }: { methods: Method[]; operators: Operator[]; picked: string | undefined; onPick: (id: string) => void }) {
   const flow = useMemo(() => decisionFlow(methods, END), [methods]);
   const ordered = useMemo(() => numbered(methods), [methods]);
   const current = ordered.find((m) => m.method.id === picked) ?? ordered[0];
   const nodes = flow.nodes.map((node): Node => {
-    const size = node.kind === "choice" ? { width: FLOW.choice.width, height: FLOW.choice.height } : node.kind === "stage" ? { width: 400, height: 24 } : { width: FLOW.diamond, height: FLOW.diamond };
+    const size = node.kind === "choice" ? { width: FLOW.choice.width, height: FLOW.choice.height } : node.kind === "stage" ? { width: node.width, height: node.height } : { width: FLOW.diamond, height: FLOW.diamond };
     const selected = node.kind === "decision" && node.ordered.method.id === current?.method.id;
-    return { id: node.id, type: node.kind, position: { x: node.x, y: node.y }, ...size, data: { node }, selected, selectable: node.kind === "decision" || node.kind === "choice" };
+    // A stage box sits behind the decisions and lines it holds.
+    return { id: node.id, type: node.kind, position: { x: node.x, y: node.y }, ...size, data: { node }, selected, selectable: node.kind === "decision" || node.kind === "choice", ...(node.kind === "stage" ? { zIndex: -1 } : {}) };
   });
   const edges: Edge[] = flow.links.map((l) => ({ id: l.id, source: l.from, target: l.to, type: "default", markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 }, className: "mth-order-edge" }));
   return (
-    <>
+    <div className="mth-order-wrap">
       <div className="mth-map mth-order" role="region" aria-label="Decision order">
         <ReactFlow
           nodes={nodes}
@@ -37,9 +38,9 @@ export function DecisionOrderMap({ methods, operators, picked, onPick }: { metho
             if (n.kind === "decision") onPick(n.ordered.method.id);
             if (n.kind === "choice") onPick(n.method.id);
           }}
-          // Open readable, on the first decisions and clear of the card; the rest is a scroll down.
-          fitView
-          fitViewOptions={{ nodes: flow.nodes.slice(0, 6).map((n) => ({ id: n.id })), maxZoom: 1, padding: { top: "40px", bottom: "40px", left: "40px", right: "400px" } }}
+          // Open at full size on the first decision: text drawn scaled down blurs, so the canvas never
+          // shrinks to fit. A wide row of choices or the next stage is a pan or scroll away.
+          onInit={(canvas) => void canvas.setCenter(0, FLOW.stage + 220, { zoom: 1 })}
           panOnScroll
           nodesDraggable={false}
           nodesConnectable={false}
@@ -53,11 +54,11 @@ export function DecisionOrderMap({ methods, operators, picked, onPick }: { metho
         </ReactFlow>
       </div>
       {current && (
-        <aside className="mth-card">
+        <aside className="mth-order-card">
           <MethodDetail key={current.method.id} current={current} all={ordered} operators={operators} onPick={onPick} />
         </aside>
       )}
-    </>
+    </div>
   );
 }
 
@@ -139,7 +140,11 @@ function Ports() {
 }
 
 function StageLabel({ data }: NodeProps<Data<"stage">>) {
-  return <div className="mth-order-stage-title">{data.node.title}</div>;
+  return (
+    <div className="mth-order-stage">
+      <span className="mth-order-stage-title">{data.node.title}</span>
+    </div>
+  );
 }
 
 function DecisionDiamond({ data, selected }: NodeProps<Data<"decision">>) {
@@ -164,9 +169,7 @@ function ChoiceCircle({ data }: NodeProps<Data<"choice">>) {
   return (
     <button type="button" className="mth-flow-node step mth-order-choice nopan" aria-label={option.label} title={`If ${option.when}: ${option.label}, ${effect(option)}`}>
       <span className="mth-flow-circle" style={{ width: FLOW.choice.circle, height: FLOW.choice.circle }} />
-      <span className="mth-order-if">
-        <b>If</b> {option.when}
-      </span>
+      <span className="mth-order-cond">{option.condition}</span>
       <span className="mth-flow-name">{option.label}</span>
       <span className="mth-order-does">{effect(option)}</span>
       <Ports />

@@ -2458,11 +2458,17 @@ p { margin: 0; }
 .mth-map .react-flow__handle { opacity: 0; pointer-events: none; }
 /* Decision order: a flowchart read top to bottom (decisionFlow.ts): the flow view's diamonds
    for decisions and circles for choices, a stage title over each stage's first decision. */
-.mth-order-stage-title { width: 100%; padding-bottom: 6px; border-bottom: 1px solid var(--border-panel); font: var(--fw-medium) var(--fs-12) var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-label); }
-.mth-order-question { font-size: var(--text-xs); line-height: 15px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mth-order-stage { width: 100%; height: 100%; border: 1px solid var(--border-panel); border-radius: var(--radius-lg); background: var(--alpha-05); pointer-events: none; }
+.mth-order-stage-title { display: block; padding: 12px 16px; font: var(--fw-medium) var(--fs-12) var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-label); }
+.mth-order-question { font-size: var(--text-xs); line-height: 15px; color: var(--muted); }
 .mth-order-choice { gap: 3px; }
-.mth-order-choice .mth-order-if, .mth-order-choice .mth-order-does { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); line-height: 15px; }
-.mth-order-choice .mth-flow-name { font-weight: 600; }
+.mth-order-cond { max-width: 100%; padding: 1px 6px; border: 1px solid var(--border-panel); border-radius: var(--radius-sm); font: 11px/16px var(--mono); color: var(--text-primary); white-space: normal; }
+/* Nothing is cut: a condition or label wraps (decisionFlow.ts leaves room for two lines each). */
+.mth-order-choice .mth-order-if, .mth-order-choice .mth-order-does { max-width: 100%; font-size: var(--text-xs); line-height: 15px; white-space: normal; }
+.mth-flow-node.step.mth-order-choice .mth-flow-name { font-weight: 600; white-space: normal; overflow: visible; }
+.mth-order-wrap { position: absolute; inset: 0; display: flex; }
+.mth-order-wrap .mth-map { position: relative; flex: 1; min-width: 0; }
+.mth-order-card { flex: none; width: 340px; overflow: auto; padding: 16px; border-left: 1px solid var(--border-panel); background: var(--bg-surface); }
 .mth-order-choice:hover .mth-flow-circle { border-color: var(--white); }
 .mth-order .mth-order-edge path { stroke: var(--alpha-35); stroke-width: 1.25; }
 .mth-order-choices { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }

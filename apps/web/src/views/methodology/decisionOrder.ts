@@ -1,13 +1,9 @@
 import type { Method } from "@sprisk/contracts";
 
+import { stageName } from "./ruleTree.ts";
+
 /** Stages in decision order (ADR-0059): the area of a decision key names its stage. */
-export const STAGES = [
-  ["question", "Problem definition"],
-  ["data", "Data preparation"],
-  ["split", "Data splitting"],
-  ["features", "Feature engineering"],
-  ["evaluation", "Evaluation"],
-] as const;
+export const STAGES = (["question", "data", "split", "features", "evaluation"] as const).map((key) => [key, stageName(key)] as const);
 
 /** Missing values are filled with the other feature steps, so they share the stage. */
 export const stageOf = (decides: string) => {

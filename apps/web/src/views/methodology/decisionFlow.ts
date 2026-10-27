@@ -3,15 +3,16 @@ import type { Method } from "@sprisk/contracts";
 import { type OrderedMethod, numbered, stageOf, STAGES } from "./decisionOrder.ts";
 
 /** The flowchart's sizes: a diamond per decision, a circle per choice under it. */
-export const FLOW = { diamond: 34, choice: { width: 210, height: 78, circle: 18 }, gap: 24, toChoices: 70, toNext: 70, stage: 56 } as const;
+export const FLOW = { diamond: 34, choice: { width: 196, height: 96, circle: 18 }, gap: 12, toChoices: 70, toNext: 70, stage: 56, pad: 24, stageGap: 8 } as const;
 
 export type FlowNode =
-  | { kind: "stage"; id: string; title: string; x: number; y: number }
+  | { kind: "stage"; id: string; title: string; x: number; y: number; width: number; height: number }
   | { kind: "decision"; id: string; ordered: OrderedMethod; x: number; y: number }
   | { kind: "choice"; id: string; method: Method; option: Method["options"][number]; x: number; y: number }
   | { kind: "end"; id: string; label: string; x: number; y: number };
 export type FlowLink = { id: string; from: string; to: string };
-export type DecisionFlow = { nodes: FlowNode[]; links: FlowLink[] };
+/** `width`: the widest row, so the canvas can open with every choice in view. */
+export type DecisionFlow = { nodes: FlowNode[]; links: FlowLink[]; left: number; width: number };
 
 /** The decisions as one flowchart, read top to bottom: each decision is a diamond, its
  * choices sit under it, and every choice leads on to the next decision, since the engine
@@ -24,13 +25,20 @@ export function decisionFlow(methods: Method[], end: string): DecisionFlow {
   let stage: string | undefined;
   let before: string[] = [];
   const widest = Math.max(1, ...methods.map((m) => m.options.length));
-  const left = -(widest * FLOW.choice.width + (widest - 1) * FLOW.gap) / 2;
+  const width = widest * FLOW.choice.width + (widest - 1) * FLOW.gap + FLOW.pad * 2;
+  const left = -width / 2;
+  // Each stage is a box behind its decisions, from its title to just above the next stage.
+  const close = (bottom: number) => {
+    const open = nodes.findLast((n) => n.kind === "stage");
+    if (open?.kind === "stage") open.height = bottom - open.y;
+  };
   for (const ordered of numbered(methods)) {
     const { method } = ordered;
     const key = stageOf(method.decides);
     if (key !== stage) {
+      close(y - FLOW.toNext / 2);
       stage = key;
-      nodes.push({ kind: "stage", id: `stage:${key}`, title: STAGES.find(([k]) => k === key)?.[1] ?? key, x: left, y });
+      nodes.push({ kind: "stage", id: `stage:${key}`, title: STAGES.find(([k]) => k === key)?.[1] ?? key, x: left, y: y - FLOW.toNext / 2 + FLOW.stageGap, width, height: 0 });
       y += FLOW.stage;
     }
     const decision = `decision:${method.id}`;
@@ -47,8 +55,9 @@ export function decisionFlow(methods: Method[], end: string): DecisionFlow {
     });
     y += FLOW.choice.height + FLOW.toNext;
   }
+  close(y - FLOW.toNext / 2);
   const last = "end";
   nodes.push({ kind: "end", id: last, label: end, x: -FLOW.diamond / 2, y });
   links.push(...before.map((from) => ({ id: `${from}>${last}`, from, to: last })));
-  return { nodes, links };
+  return { nodes, links, left, width };
 }

@@ -152,9 +152,9 @@ describe("methodology page", () => {
     await userEvent.click(await screen.findByRole("radio", { name: "Flow" }));
 
     const stages = screen.getByRole("navigation", { name: "Stages" });
-    expect(within(stages).getAllByRole("button").map((b) => b.textContent)).toEqual(["3 Split1", "4 Features1"]);
-    await userEvent.click(within(stages).getByRole("button", { name: /Features/ }));
-    expect(within(stages).getByRole("button", { name: /Features/ })).toHaveAttribute("aria-current", "step");
+    expect(within(stages).getAllByRole("button").map((b) => b.textContent)).toEqual(["3 Data splitting1", "4 Feature engineering1"]);
+    await userEvent.click(within(stages).getByRole("button", { name: /Feature engineering/ }));
+    expect(within(stages).getByRole("button", { name: /Feature engineering/ })).toHaveAttribute("aria-current", "step");
     const flow = screen.getByRole("region", { name: "Methodology flow" });
     expect(within(flow).getByRole("button", { name: featuring.name })).toBeInTheDocument();
     expect(within(flow).queryByRole("button", { name: splitting.name })).not.toBeInTheDocument();
@@ -189,7 +189,7 @@ describe("methodology page", () => {
     serve([features, splitting]);
     renderWithApi(<MethodologyPage />);
     const map = await screen.findByRole("region", { name: "Rule map" });
-    expect(within(map).getByText("Split")).toBeInTheDocument();
+    expect(within(map).getByText("Data splitting")).toBeInTheDocument();
     const rule = within(map).getByRole("button", { name: new RegExp(splitting.name) });
     expect(within(map).queryByRole("button", { name: new RegExp(features.name) })).not.toBeInTheDocument();
     await userEvent.click(rule);
@@ -225,7 +225,7 @@ describe("methodology page", () => {
 
     const map = await screen.findByRole("region", { name: "Methodology map" });
     const stages = (await within(map).findAllByRole("heading")).map((h) => h.textContent);
-    expect(stages).toEqual(["Question", "Data", "Supervised", "Split", "Features"]);
+    expect(stages).toEqual(["Problem definition", "Data preparation", "Supervised", "Data splitting", "Feature engineering"]);
     expect(within(map).getByRole("button", { name: /Data Splitting/ })).toBeInTheDocument();
   });
 
@@ -341,7 +341,7 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
     await showTree();
     const side = await screen.findByRole("complementary", { name: "Rules" });
-    expect(within(side).getByText("Split")).toBeInTheDocument();
+    expect(within(side).getByText("Data splitting")).toBeInTheDocument();
     expect(await within(side).findByRole("button", { name: new RegExp(`${split.name}.*Proposal`) })).toBeInTheDocument();
     useSelection.setState({ pipelineVersionId: undefined });
   });
@@ -420,6 +420,7 @@ describe("decision order", () => {
     const choices = within(card).getByRole("list", { name: "Choices of Train/test split" });
     expect(within(choices).getAllByRole("listitem")).toHaveLength(splitMethod.options.length);
     expect(choices).toHaveTextContent(`If ${splitMethod.options[0]!.when}`);
+    expect(within(canvas).getByRole("button", { name: splitMethod.options[0]!.label })).toHaveTextContent(splitMethod.options[0]!.condition);
     expect(choices).toHaveTextContent("→ uses group_split as the split");
     expect(within(card).getByRole("button", { name: "1. Duplicate analysis" })).toBeInTheDocument();
     expect(card).toHaveTextContent("No measurement: only the earlier decisions it waits for.");

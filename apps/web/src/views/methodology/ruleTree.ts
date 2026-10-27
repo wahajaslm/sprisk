@@ -3,7 +3,17 @@ import type { Edge, Node } from "@xyflow/react";
 
 /** Decision order (ADR-0059): the split comes before cleaning, since cleaning measures train rows. */
 export const STAGES: MethodologyStage[] = ["question", "data", "split", "cleaning", "features", "models", "evaluation", "reporting"];
-export const stageName = (stage: MethodologyStage) => stage[0]!.toUpperCase() + stage.slice(1);
+const STAGE_NAME: Record<MethodologyStage, string> = {
+  question: "Problem definition",
+  data: "Data preparation",
+  split: "Data splitting",
+  cleaning: "Data cleaning",
+  features: "Feature engineering",
+  models: "Modelling",
+  evaluation: "Evaluation",
+  reporting: "Reporting",
+};
+export const stageName = (stage: MethodologyStage) => STAGE_NAME[stage];
 
 /** Sizes given up front: a tree has no need to measure its nodes before placing them. A route
  * grows to fit its reason, wrapped onto up to three lines; every other node has one height. */
