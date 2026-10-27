@@ -26,6 +26,7 @@
       "id": "item_groups",
       "label": "Keep each item's rows on one side",
       "description": "Applies: keep each item's rows on one side.",
+      "condition": "evidence calls for it",
       "when": "the evidence calls for it",
       "rationale": "It is the choice the evidence supports.",
       "action": {
@@ -49,6 +50,7 @@
       "id": "simple_random",
       "label": "Random rows",
       "description": "Applies: random rows.",
+      "condition": "evidence calls for it",
       "when": "the evidence calls for it",
       "rationale": "It is the choice the evidence supports."
     }

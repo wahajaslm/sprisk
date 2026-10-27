@@ -17,6 +17,7 @@ options:
   - id: cost_optimal_threshold
     label: Cheapest threshold
     description: Gives the model the stated costs, so it predicts at the threshold that costs least on its training rows.
+    condition: classes = 2 ∧ costs ∧ random
     when: two classes, costs stated, and a random split
     rationale: The cheapest threshold reflects what each mistake costs, and models are compared by expected cost.
     action:
@@ -26,6 +27,7 @@ options:
   - id: default_half
     label: Likelier class
     description: Leaves the flow as it is. The model predicts the likelier class.
+    condition: classes ≠ 2 ∨ ¬ costs ∨ ¬ random
     when: not two classes, no costs, or a time or item split
     rationale: With no stated costs both mistakes count the same, and shuffled inner folds are not fair on a time or item split.
     verify: []

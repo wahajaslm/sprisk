@@ -14,12 +14,14 @@ options:
   - id: balanced
     label: Balanced enough
     description: Records that every class has enough rows. Leaves the flow as it is.
+    condition: rarest ≥ 20% of even share
     when: the rarest class holds at least a fifth of an even class's share
     rationale: Each class has enough train rows for plain metrics and splits to work.
     verify: []
   - id: unbalanced
     label: Unbalanced
     description: Records that one class is rare. Leaves the flow as it is.
+    condition: rarest < 20% of even share
     when: the rarest class holds under a fifth of an even class's share
     rationale: A class that rare lets a model score well while missing it.
     verify: []

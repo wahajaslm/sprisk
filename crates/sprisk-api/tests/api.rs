@@ -6060,6 +6060,7 @@ options:
   - id: shuffled
     label: Shuffled rows
     description: "Chooses: shuffled rows."
+    condition: evidence calls for it
     when: the evidence calls for it
     rationale: It is the choice the evidence supports.
     action:

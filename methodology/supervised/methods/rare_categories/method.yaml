@@ -15,6 +15,7 @@ options:
   - id: group_rare
     label: Group rare categories
     description: Turns categories under 1% of the train rows into "other", keeping at most 15, in a step before the model.
+    condition: categories > 15
     when: a category column has more than 15 categories
     rationale: Grouping keeps few enough categories for one-hot encoding, counted on the train rows only.
     action:
@@ -30,6 +31,7 @@ options:
   - id: keep_categories
     label: Keep the categories
     description: Leaves the flow as it is.
+    condition: categories ≤ 15
     when: no category column has more than 15 categories
     rationale: Every category column is already small enough for one-hot encoding.
     verify: []

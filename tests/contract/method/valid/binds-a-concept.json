@@ -20,6 +20,7 @@
       "id": "group_by_title",
       "label": "Treat rows with matching titles as one item",
       "description": "Applies: treat rows with matching titles as one item.",
+      "condition": "evidence calls for it",
       "when": "the evidence calls for it",
       "rationale": "It is the choice the evidence supports.",
       "action": {
@@ -35,6 +36,7 @@
       "id": "independent_rows",
       "label": "Treat every row as its own item",
       "description": "Applies: treat every row as its own item.",
+      "condition": "evidence calls for it",
       "when": "the evidence calls for it",
       "rationale": "It is the choice the evidence supports.",
       "verify": []

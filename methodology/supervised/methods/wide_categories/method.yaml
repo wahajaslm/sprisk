@@ -15,6 +15,7 @@ options:
   - id: leave_out
     label: Leave them out
     description: Leaves these columns out of the model, in a step before it.
+    condition: categories > 15
     when: a category column has more than 15 categories
     rationale: Too many categories for one 0/1 column each, and no step turns them into numbers yet.
     action:
@@ -27,6 +28,7 @@ options:
   - id: keep
     label: Keep every column
     description: Leaves the flow as it is.
+    condition: categories ≤ 15
     when: no category column has more than 15 categories
     rationale: Every category column is narrow enough for one-hot encoding.
     verify: []

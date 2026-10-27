@@ -4240,6 +4240,13 @@ class MethodOption(StrictModel):
             min_length=1,
         ),
     ]
+    condition: Annotated[
+        str,
+        Field(
+            description="When the method picks this option, as a short formula for a flowchart branch, e.g. |skew| > 1 or classes = 2 ∧ costs stated. `when` says it in words.",
+            min_length=1,
+        ),
+    ]
     when: Annotated[
         str,
         Field(

@@ -13,12 +13,14 @@ options:
   - id: single_source
     label: One source
     description: Leaves the flow as it is. No table is joined.
+    condition: no lone table ∨ key unclear
     when: no lone unread table, or the key is unclear (asks)
     rationale: No join, no risk; a join that would copy rows or leave gaps goes to a person first.
     verify: []
   - id: join_on_key
     label: Join on the shared key
     description: Joins the unread table on the key column, in a step added before the split.
+    condition: 1 match per row on key
     when: every row finds exactly one match on the key
     rationale: A clean many-to-one join keeps the row count and the unit.
     action:

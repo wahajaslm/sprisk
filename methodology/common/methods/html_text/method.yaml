@@ -13,6 +13,7 @@ options:
   - id: strip
     label: Strip HTML
     description: Strips tags and decodes entities in the HTML columns, in a step added before the split.
+    condition: HTML in a feature
     when: a feature column holds HTML tags or entities
     rationale: Markup is not words, and one spelling per word gives a model one signal.
     action:
@@ -26,6 +27,7 @@ options:
   - id: keep
     label: Keep the markup
     description: Leaves the flow as it is. Text stays as typed.
+    condition: ¬ HTML in features
     when: no feature column holds HTML
     rationale: There is no markup to remove.
     verify: []

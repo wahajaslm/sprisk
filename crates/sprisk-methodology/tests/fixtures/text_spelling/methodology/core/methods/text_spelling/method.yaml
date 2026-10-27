@@ -13,6 +13,7 @@ options:
   - id: normalise
     label: Trim and lowercase
     description: "Chooses: trim and lowercase."
+    condition: evidence calls for it
     when: the evidence calls for it
     rationale: It is the choice the evidence supports.
     action:
@@ -27,6 +28,7 @@ options:
   - id: keep
     label: Keep the spelling
     description: "Chooses: keep the spelling."
+    condition: evidence calls for it
     when: the evidence calls for it
     rationale: It is the choice the evidence supports.
     verify: []

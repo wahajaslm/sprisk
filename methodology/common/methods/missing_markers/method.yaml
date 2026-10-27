@@ -13,6 +13,7 @@ options:
   - id: mark
     label: Mark as missing
     description: Turns known placeholder values into gaps in those columns, in a step added before the split.
+    condition: placeholder in numeric col
     when: a mostly numeric column holds a known placeholder
     rationale: The values stand for a gap, so missing is their true meaning.
     action:
@@ -26,6 +27,7 @@ options:
   - id: keep
     label: No markers
     description: Leaves the flow as it is. Values stay as typed.
+    condition: ¬ placeholder in numeric col
     when: no mostly numeric column holds a known placeholder
     rationale: There is no placeholder to mark, and a value that may be real, like 'NA', stays.
     verify: []

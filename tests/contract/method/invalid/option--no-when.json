@@ -18,6 +18,7 @@
       "id": "normalise",
       "label": "Trim and lowercase",
       "description": "Applies: trim and lowercase.",
+      "condition": "evidence calls for it",
       "when": "the evidence calls for it",
       "rationale": "It is the choice the evidence supports.",
       "action": {

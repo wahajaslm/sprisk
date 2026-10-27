@@ -2165,6 +2165,10 @@ export interface MethodOption {
    */
   description: string;
   /**
+   * When the method picks this option, as a short formula for a flowchart branch, e.g. |skew| > 1 or classes = 2 ∧ costs stated. `when` says it in words.
+   */
+  condition: string;
+  /**
    * In a few words, when the method picks this option, e.g. the column is skewed.
    */
   when: string;

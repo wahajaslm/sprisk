@@ -14,6 +14,7 @@ options:
   - id: vectorize_words
     label: TF-IDF on words
     description: Turns each free-text column into word weights learnt from the train rows, in a step before the model.
+    condition: many values, mostly multi-word
     when: a text column has many values, most of several words
     rationale: Word weights are a strong, cheap baseline for text such as product titles.
     action:
@@ -30,6 +31,7 @@ options:
   - id: no_free_text
     label: No free text
     description: Leaves the flow as it is.
+    condition: no free text to model
     when: no text reaching the model is free text
     rationale: Category text goes to rare categories and encoding instead.
     verify: []

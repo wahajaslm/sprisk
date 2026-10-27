@@ -15,6 +15,7 @@ options:
   - id: cast
     label: Read as numbers
     description: Casts text columns whose every value reads as a number to numbers, in a step added before the split.
+    condition: text column all numbers
     when: every value in a text column reads as a number
     rationale: The values are numbers stored as text, and as text a model treats each one as a category.
     action:
@@ -27,6 +28,7 @@ options:
   - id: cast_marked
     label: Read as numbers, placeholders as gaps
     description: Casts text columns to numbers, including those that read as numbers once placeholders are gaps, in a step added before the split.
+    condition: numeric only after marking
     when: placeholders were marked, and a column reads as numbers only after that
     rationale: The placeholders are gaps now, so the rest of the column is numbers stored as text.
     action:
@@ -39,6 +41,7 @@ options:
   - id: keep
     label: Types are right
     description: Leaves the flow as it is. Types stay as read.
+    condition: ¬ text column all numbers
     when: no text column reads fully as numbers
     rationale: No text column is numbers stored as text, and codes with leading zeros stay text.
     verify: []

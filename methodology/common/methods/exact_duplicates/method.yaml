@@ -15,6 +15,7 @@ options:
   - id: drop
     label: Drop exact duplicates
     description: Keeps the first copy of each row, comparing every column, in a step added before the split.
+    condition: 0 < copies ≤ 5%
     when: some rows copy an earlier row, at most 5% of rows
     rationale: So no row is in train and test at once.
     action:
@@ -28,6 +29,7 @@ options:
   - id: keep
     label: Keep every row
     description: Leaves the flow as it is. Every row stays.
+    condition: copies = 0 ∨ copies > 5% (ask)
     when: no row repeats, or over 5% do and a person is asked
     rationale: With no copies there is nothing to drop, and many repeats may be real observations.
     verify: []

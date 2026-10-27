@@ -13,6 +13,7 @@ options:
   - id: normalise
     label: Trim and lowercase
     description: Trims and lowercases the text in those columns, in a step added before the split. The target's labels stay as typed.
+    condition: space/case variants ∧ ¬ ID
     when: a column, not an ID, has values differing only in spaces or case
     rationale: These differences are typing, not meaning, and one value per category gives a model one signal.
     action:
@@ -29,6 +30,7 @@ options:
   - id: keep
     label: Keep the spelling
     description: Leaves the flow as it is. Text stays as typed.
+    condition: ¬ space/case variants
     when: no category text differs only in spaces or case
     rationale: No category is typed several ways, and accents stay, since they can carry meaning.
     verify: []

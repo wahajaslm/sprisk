@@ -15,6 +15,7 @@ options:
   - id: yeo_johnson
     label: Yeo-Johnson transform
     description: Applies a Yeo-Johnson power transform to the skewed numbers, fit on the train rows, in a step before the model.
+    condition: "|skew| > 1"
     when: a number, not 0/1, has skewness past 1.0
     rationale: It reduces the skew and handles zero and negative values. It keeps order, so trees lose nothing.
     action:
@@ -28,6 +29,7 @@ options:
   - id: no_transform
     label: No transform
     description: Leaves the flow as it is.
+    condition: "|skew| ≤ 1"
     when: no number, other than 0/1, has a long tail
     rationale: No number the model reads has a long tail.
     verify: []

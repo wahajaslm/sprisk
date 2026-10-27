@@ -14,6 +14,7 @@ options:
   - id: drop_identifiers
     label: Leave identifiers out
     description: Drops the identifier columns in a step added before the split.
+    condition: unique per row ∧ rows ≥ 100
     when: a column differs in every one of at least 100 rows
     rationale: A unique code per row carries no pattern, only identity.
     action:
@@ -28,6 +29,7 @@ options:
   - id: keep_all
     label: No identifiers
     description: Leaves the flow as it is. Every column stays.
+    condition: no ID ∨ rows < 100 ∨ none left
     when: no identifier, under 100 rows, or no column would be left
     rationale: A value unique by chance, or a table with nothing left to learn from, is not worth the loss.
     verify: []

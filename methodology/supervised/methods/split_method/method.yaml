@@ -14,6 +14,7 @@ options:
   - id: temporal
     label: Train on earlier rows, test on later ones
     description: Holds out the latest fifth of rows, by the time column, as the test set.
+    condition: time column named
     when: a time column is named
     rationale: Training only on the past keeps later rows from leaking into what the model learns.
     action:
@@ -26,6 +27,7 @@ options:
   - id: item_groups
     label: Keep each item's rows on one side
     description: Holds out about a fifth for test, keeping all rows of each item on one side.
+    condition: item column ∧ ¬ time column
     when: an item column is named, and no time column
     rationale: No item is scored on rows the model saw.
     action:
@@ -38,6 +40,7 @@ options:
   - id: stratified_random
     label: Random rows, with class shares kept
     description: Holds out a random fifth of rows for test, keeping each class's share on both sides.
+    condition: class target ∧ ¬ time ∧ ¬ item
     when: a class target, with no time or item column
     rationale: Rows are independent, and each class keeps its share in train and test.
     action:
@@ -51,6 +54,7 @@ options:
   - id: simple_random
     label: Random rows
     description: Holds out a random fifth of rows for test, with a fixed seed.
+    condition: ¬ time ∧ ¬ item ∧ ¬ class target
     when: no time or item column, and no class target
     rationale: Rows are independent, so a random draw gives a fair test.
     action:

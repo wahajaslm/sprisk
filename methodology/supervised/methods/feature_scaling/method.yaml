@@ -15,6 +15,7 @@ options:
   - id: robust_scaling
     label: Robust scaling (median and IQR)
     description: Centres each number on the train rows' median and divides by the IQR, in a step before the model.
+    condition: heavy tails ∨ many outliers
     when: a number to scale has heavy tails or many outliers
     rationale: The median and IQR resist outliers that pull the mean and SD.
     action:
@@ -29,6 +30,7 @@ options:
   - id: z_score_scaling
     label: Z-score scaling (mean and SD)
     description: Centres each number on the train rows' mean and divides by the SD, in a step before the model.
+    condition: all tails light
     when: every number to scale has light tails
     rationale: With light tails, the mean and SD describe the spread.
     action:
@@ -42,6 +44,7 @@ options:
   - id: no_scaling
     label: No scaling
     description: Leaves the flow as it is.
+    condition: no non-0/1 number varies
     when: no number, other than 0/1, varies enough to scale
     rationale: There is nothing to put on one scale.
     verify: []

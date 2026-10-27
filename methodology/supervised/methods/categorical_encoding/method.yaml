@@ -15,6 +15,7 @@ options:
   - id: one_hot_encoding
     label: One-hot encoding
     description: Adds one 0/1 column per category, learnt from the train rows, in a step before the model.
+    condition: categories ≤ 15
     when: a category column has at most 15 categories
     rationale: Few categories make few columns, and one-hot invents no order. A category seen only in test rows gets zeros.
     action:
@@ -29,6 +30,7 @@ options:
   - id: no_encoding
     label: No encoding
     description: Leaves the flow as it is.
+    condition: all features numeric
     when: every column the model reads is a number
     rationale: Numbers need no encoding.
     verify: []

@@ -13,6 +13,7 @@ options:
   - id: group_by_title
     label: Treat rows with matching titles as one item
     description: Takes rows with matching titles as one item, which later steps such as the split use.
+    condition: titles match ∧ person confirms
     when: rows share a title, and a person confirms
     rationale: Keeping one item's rows together stops it landing on both sides of the split.
     action:
@@ -21,12 +22,14 @@ options:
   - id: independent_rows
     label: Treat every row as its own item
     description: Leaves the flow as it is. Each row counts as its own item.
+    condition: no title column ∨ matches = 0
     when: no title column is named, or no two titles match
     rationale: With no sign of repeated items, each row stands alone.
     verify: []
   - id: stated_items
     label: Use the item column the question names, when it names one
     description: Leaves the flow as it is. The item column the question names stays the item.
+    condition: item column named
     when: the question names an item column
     rationale: Title groups would replace the stated item, and its rows could then land on both sides of the split.
     verify: []

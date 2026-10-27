@@ -14,6 +14,7 @@ options:
   - id: temporal
     label: Train on earlier rows, test on later ones
     description: "Chooses: train on earlier rows, test on later ones."
+    condition: evidence calls for it
     when: the evidence calls for it
     rationale: It is the choice the evidence supports.
     action:
@@ -26,6 +27,7 @@ options:
   - id: item_groups
     label: Keep each item's rows on one side
     description: "Chooses: keep each item's rows on one side."
+    condition: evidence calls for it
     when: the evidence calls for it
     rationale: It is the choice the evidence supports.
     action:
@@ -38,6 +40,7 @@ options:
   - id: stratified_random
     label: Random rows, with class shares kept
     description: "Chooses: random rows, with class shares kept."
+    condition: evidence calls for it
     when: the evidence calls for it
     rationale: It is the choice the evidence supports.
     action:
@@ -51,6 +54,7 @@ options:
   - id: simple_random
     label: Random rows
     description: "Chooses: random rows."
+    condition: evidence calls for it
     when: the evidence calls for it
     rationale: It is the choice the evidence supports.
     action:

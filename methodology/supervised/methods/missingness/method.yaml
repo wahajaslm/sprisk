@@ -15,6 +15,7 @@ options:
   - id: fill_before_model
     label: Fill from the train rows
     description: Fills number gaps with the train rows' median or mean, and gives text gaps their own value, in a step before the model.
+    condition: gaps in number/text feature
     when: a number or text column the model reads has gaps
     rationale: A model refuses gaps, so a gap reaching it must be filled first.
     action:
@@ -30,12 +31,14 @@ options:
   - id: no_gaps
     label: No gaps
     description: Leaves the flow as it is.
+    condition: gaps = 0
     when: no column the model reads has gaps
     rationale: There is no gap to fill.
     verify: []
   - id: gaps_left
     label: Gaps no step can fill
     description: Leaves the flow as it is. The gaps are reported, not filled.
+    condition: gaps only ≥ 60% empty ∨ non-text
     when: every gap is in a mostly empty or non-text column
     rationale: The impute step fills numbers and text only, and a mostly empty column is not filled. Reporting it beats guessing a fill.
     verify: []
