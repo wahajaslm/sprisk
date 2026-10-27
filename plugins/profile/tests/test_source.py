@@ -80,15 +80,22 @@ def test_command_profiles_a_folder_of_parquet_files_with_their_total(tmp_path: P
     for f in files:
         table(4).write_parquet(f)
 
-    done = run("parquet\n\n" + "\n".join(str(f) for f in files) + "\n")
+    done = run(json.dumps({"format": "parquet", "files": [str(f) for f in files]}))
 
     assert done.returncode == 0, done.stderr
     made = DatasetProfile.model_validate_json(done.stdout)
     assert (made.total_rows, made.profiled_rows) == (8, 8)
 
 
-@pytest.mark.parametrize("stdin", ["json\n\n/x.json\n", "csv\n\n"])
-def test_command_refuses_an_unknown_format_or_no_files(stdin: str) -> None:
+@pytest.mark.parametrize(
+    "stdin",
+    [
+        '{"format": "json", "files": ["/x.json"]}',
+        '{"format": "csv", "files": []}',
+        "csv\n\n/x.csv\n",
+    ],
+)
+def test_command_refuses_a_request_outside_the_contract(stdin: str) -> None:
     done = run(stdin)
 
     assert done.returncode != 0
@@ -96,7 +103,16 @@ def test_command_refuses_an_unknown_format_or_no_files(stdin: str) -> None:
 
 
 def test_command_fails_loudly_on_a_file_it_cannot_read(tmp_path: Path) -> None:
-    done = run(f"parquet\n\n{tmp_path / 'missing.parquet'}\n")
+    done = run(json.dumps({"format": "parquet", "files": [str(tmp_path / "missing.parquet")]}))
 
     assert done.returncode != 0
     assert done.stdout == ""
+
+
+def test_a_path_is_read_as_named_never_as_a_pattern(tmp_path: Path) -> None:
+    table(2).write_csv(tmp_path / "_hidden.csv")
+    (tmp_path / "*.csv").write_text("x\n1\n")
+
+    data, rows, _ = read_source("csv", [str(tmp_path / "*.csv")])
+
+    assert (data.columns, rows) == (["x"], 1)

@@ -1,0 +1,1 @@
+{ "format": "parquet", "target": "label", "files": ["/data/t.parquet"] }

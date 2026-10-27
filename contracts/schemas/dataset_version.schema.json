@@ -9,14 +9,19 @@
       "title": "DataFormat",
       "description": "How the files of a dataset are written, read from their extensions.",
       "type": "string",
-      "enum": ["csv", "parquet"]
+      "enum": [
+        "csv",
+        "parquet"
+      ]
     },
     "CreateDatasetVersion": {
       "title": "CreateDatasetVersion",
       "description": "Request body for POST /dataset_versions (ADR-0067): register data where it lives. Never a copy, never credentials.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["location"],
+      "required": [
+        "location"
+      ],
       "properties": {
         "location": {
           "type": "string",
@@ -43,8 +48,15 @@
         "created_at"
       ],
       "properties": {
-        "schema_version": { "type": "string", "enum": ["sprisk.dataset_version/v1"] },
-        "id": { "$ref": "#/$defs/DatasetVersionId" },
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.dataset_version/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/DatasetVersionId"
+        },
         "name": {
           "type": "string",
           "minLength": 1,
@@ -58,8 +70,13 @@
           "pattern": "^(file|s3|gs|az)://",
           "description": "Where the data lives. A local path is kept as its canonical file:// URI."
         },
-        "format": { "$ref": "#/$defs/DataFormat" },
-        "file_count": { "type": "integer", "minimum": 0 },
+        "format": {
+          "$ref": "#/$defs/DataFormat"
+        },
+        "file_count": {
+          "type": "integer",
+          "minimum": 0
+        },
         "size_bytes": {
           "type": "integer",
           "minimum": 0,
@@ -69,7 +86,39 @@
           "$ref": "#/$defs/ContentHash",
           "description": "sha256 over each file's path, size, and e-tag or modified time, sorted by path. Metadata, not content: the bytes are never read to register."
         },
-        "created_at": { "$ref": "#/$defs/Timestamp" }
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "SourceProfileRequest": {
+      "title": "SourceProfileRequest",
+      "description": "What Rust sends the source profiler (python -m sprisk_profile.source, ADR-0067) on stdin: the files it listed and checked against the data roots, resolved through symlinks. Python reads only these, never a pattern.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "files"
+      ],
+      "properties": {
+        "format": {
+          "$ref": "#/$defs/DataFormat"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "The label column to relate the others to. Dataset text (untrusted, rule 7). Absent: no label."
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "description": "At least one. Local paths, in order."
+        }
       }
     }
   }
