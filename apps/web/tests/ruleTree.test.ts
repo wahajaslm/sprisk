@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activation, decidedOnFlow, lookedAt, type OnFlow, ROUTE_LINE, routeReason, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
+import { decidedOnFlow, lookedAt, type OnFlow, ROUTE_LINE, routeReason, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
 
 const rule = (id: string, stage: string, routes: string[], status = "active") =>
   ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r, rationale: "r" })) }) as never;
@@ -149,19 +149,14 @@ describe("the flow's decisions", () => {
   });
 });
 
-describe("activation conditions", () => {
+describe("when a route is taken", () => {
   const split = {
     id: "split",
-    applies_to: ["sprisk.validation.random_split", "sprisk.clean.drop_missing"],
     alternatives: [
       { id: "temporal", label: "Temporal", rationale: "r" },
       { id: "stratified", label: "Stratified", rationale: "r" },
       { id: "group", label: "Group", condition: "an entity column is confirmed" },
       { id: "manual", label: "Manual", rationale: "r" },
-    ],
-    examples: [
-      { given: { "question.target": "churned", "question.task": "classification", "question.time_column": "signup_date" }, picks: "temporal" },
-      { given: { "question.target": "churned", "question.task": { value: "classification", origin: "confirmed" }, "column.age.missing_share": 0.1 }, picks: "stratified" },
     ],
   } as never;
 
@@ -169,26 +164,8 @@ describe("activation conditions", () => {
     expect(routeWhen(split, "group")).toBe("an entity column is confirmed");
   });
 
-  it("gives an active rule's route the tested example that picks it, in plain words, leaving out the target's name", () => {
-    expect(routeWhen(split, "temporal")).toBe("task = classification · time column = signup_date");
-    expect(routeWhen(split, "stratified")).toBe("task = classification · age missing share = 0.1");
-  });
-
-  it("reads a list of dataset values and a fact measured before the split in plain words", () => {
-    const markers = {
-      alternatives: [{ id: "mark", label: "Mark", rationale: "r" }],
-      examples: [{ given: { "input.column.age.numeric_share": 0.98, "input.column.age.unconverted": ["?", "n/a"] }, picks: "mark" }],
-    } as never;
-    expect(routeWhen(markers, "mark")).toBe("age numeric share = 0.98 · age unconverted = ?, n/a");
-  });
-
   it("gives nothing for a route with neither", () => {
     expect(routeWhen(split, "manual")).toBeUndefined();
-  });
-
-  it("says which steps a decision activates on", () => {
-    expect(activation(split)).toBe("on random split or drop missing steps");
-    expect(activation({ applies_to: [] } as never)).toBeUndefined();
   });
 
   it("says when a route is taken in the rule's own words, with its settings' values filled in", () => {
@@ -198,7 +175,6 @@ describe("activation conditions", () => {
       status: "active",
       policy_thresholds: { high_cardinality_threshold: 15 },
       alternatives: [{ id: "leave_out", label: "Leave out", rationale: "r", when: "more than {high_cardinality_threshold} categories", condition: "old note" }],
-      examples: [{ given: { "column.title.distinct": 8000 }, picks: "leave_out" }],
     } as never;
     expect(routeReason(worded, (worded as { alternatives: never[] }).alternatives[0]!, undefined)).toEqual({ kind: "when", text: "more than 15 categories" });
   });

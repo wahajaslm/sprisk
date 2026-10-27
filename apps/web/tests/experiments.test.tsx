@@ -518,7 +518,7 @@ describe("model comparison", () => {
       expect(applied[0]).toMatchObject({ alternative_id: "impute_mean", reason: "Means are reported." });
     });
 
-    const missingness = { ...shortlistRule, id: "methodology.supervised.missingness@1.1.0", selection: undefined, applies_to: ["sprisk.clean.impute"] };
+    const missingness = { ...shortlistRule, id: "methodology.supervised.missingness@1.1.0" };
 
     it("shows what each choice ran in every fold, how it differs from the flow, and each step's code", async () => {
       prepared();

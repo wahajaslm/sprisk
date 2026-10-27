@@ -129,23 +129,8 @@
     "invariant": "Linear model design matrices must have condition number kappa(X) < 1000 before solver estimation."
   },
   "status": "active",
-  "applies_to": [
-    "sprisk.clean.select_columns"
-  ],
   "reads": [
     "question.target",
     "column.*.kurtosis"
-  ],
-  "examples": [
-    {
-      "given": {
-        "question.target": {
-          "value": "churned",
-          "origin": "inferred"
-        },
-        "column.age.kurtosis": 1.5
-      },
-      "picks": "correlation_pruning"
-    }
   ]
 }

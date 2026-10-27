@@ -5,11 +5,6 @@
   "stage": "data",
   "decides": "data.missing_markers",
   "status": "active",
-  "applies_to": [
-    "sprisk.validation.random_split",
-    "sprisk.validation.group_split",
-    "sprisk.validation.temporal_split"
-  ],
   "reads": [
     "input.column.*.data_type",
     "input.column.*.numeric_share",
@@ -73,50 +68,5 @@
   "verification": {
     "check_id": "none",
     "invariant": "No Gate B check exists yet. Planned: the marked values are fixed strings from the known list or named by a person, never learned from the target."
-  },
-  "examples": [
-    {
-      "given": {
-        "input.column.age.data_type": "String",
-        "input.column.age.numeric_share": 0.9,
-        "input.column.age.unconverted": [
-          "?",
-          "n/a"
-        ],
-        "input.column.city.data_type": "String",
-        "input.column.city.numeric_share": 0.0
-      },
-      "picks": "mark"
-    },
-    {
-      "given": {
-        "input.column.age.data_type": "Int64",
-        "input.column.city.data_type": "String",
-        "input.column.city.numeric_share": 0.0
-      },
-      "picks": "keep"
-    },
-    {
-      "given": {
-        "input.column.code.data_type": "String",
-        "input.column.code.numeric_share": 0.97,
-        "input.column.code.unconverted": [
-          "NA"
-        ]
-      },
-      "picks": "keep"
-    },
-    {
-      "given": {
-        "input.column.notes.data_type": "String",
-        "input.column.notes.numeric_share": 0.3,
-        "input.column.notes.unconverted": [
-          "?",
-          "late",
-          "ok"
-        ]
-      },
-      "picks": "keep"
-    }
-  ]
+  }
 }

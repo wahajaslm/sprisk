@@ -7,9 +7,9 @@ import { LANE_NOTE, type OnFlow } from "./ruleTree.ts";
  * the middle, the supervised branch above and the unsupervised branch below. */
 export const MAP = { left: 150, step: 200, stageGap: 48, trunk: 520, above: 290, below: 800, height: 960, routeDy: 36, forkDy: 90, label: 16 } as const;
 
-/** How a decision is settled, from its rule: a shortlist is tried on the same folds; a decision
- * on the question that reads only what a person states is asked; any other the data settles. */
-export type Level = "rule" | "try" | "ask";
+/** How a decision is settled, from its rule: a decision on the question that reads only what a
+ * person states is asked; any other the data settles. */
+export type Level = "rule" | "ask";
 
 export type MapNode =
   | { kind: "decision"; id: string; rule: MethodologyRule; level: Level; x: number; y: number; lines: string[]; lift: number; decided: OnFlow | undefined; onPath: boolean }
@@ -31,7 +31,6 @@ const LIFT = 40;
 const MEASURED = /^(column|input|target|rows|flow|step|candidate|cv|join)\b/;
 
 export function levelOf(rule: MethodologyRule): Level {
-  if (rule.selection === "shortlist") return "try";
   const asked = rule.decides.startsWith("question.") && (rule.reads ?? []).every((r) => !MEASURED.test(r));
   return asked ? "ask" : "rule";
 }

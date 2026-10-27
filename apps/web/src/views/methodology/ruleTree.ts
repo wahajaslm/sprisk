@@ -227,37 +227,7 @@ export function decidedOnFlow(decisions: FlowDecision[]): Map<string, OnFlow> {
   return new Map(decisions.map((d) => [d.method, { option: d.option, reason: d.reason, step: d.steps[0] }]));
 }
 
-/** A fact's name as people read it: `question.time_column` → "time column",
- * `column.age.missing_share` → "age missing share". */
-const factName = (name: string) =>
-  name
-    .replace(/^(question|flow|step|candidate)\./, "")
-    .replace(/^(input\.)?column\./, "")
-    .replace(/[._]/g, " ");
-
-type Given = NonNullable<MethodologyRule["examples"]>[number]["given"][string];
-
-/** An example's fact value as text: a list of dataset values joined, a fact with its origin
- * shown as its value only. */
-export const givenText = (value: Given): string =>
-  Array.isArray(value) ? value.join(", ") : typeof value === "object" ? value.value : String(value);
-
-/** When a route is taken. A draft's route has its written condition. An active rule's logic is
- * its decide() alone (ADR-0045), so its route shows the first tested example that picks it, in
- * plain words, leaving out the target's name, which never decides a route. */
+/** When a route is taken, as its condition says. */
 export function routeWhen(rule: MethodologyRule, routeId: string): string | undefined {
-  const route = rule.alternatives.find((a) => a.id === routeId);
-  if (route?.condition) return route.condition;
-  const example = (rule.examples ?? []).find((e) => e.picks === routeId);
-  if (!example) return undefined;
-  return Object.entries(example.given)
-    .filter(([name]) => name !== "question.target")
-    .map(([name, value]) => `${factName(name)} = ${givenText(value)}`)
-    .join(" · ");
-}
-
-/** Which steps a decision activates on: the operators it decides, without pack and version. */
-export function activation(rule: MethodologyRule): string | undefined {
-  const steps = (rule.applies_to ?? []).map((op) => op.split(".").slice(2).join(" ").replace(/_/g, " "));
-  return steps.length ? `on ${steps.join(" or ")} steps` : undefined;
+  return rule.alternatives.find((a) => a.id === routeId)?.condition;
 }

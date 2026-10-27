@@ -242,17 +242,14 @@ impl RuleCatalog {
     }
 }
 
-/// A rule is a draft: words for the map, with no code, never routed. An active decision is a
-/// method (ADR-0063 slice 6). Returns what is wrong.
+/// A rule is a draft: words for the map, with no code. An active decision is a method
+/// (ADR-0063 slice 6). Returns what is wrong.
 fn check_draft(rule: &MethodologyRule, has_module: bool) -> Result<(), String> {
     if rule.status != MethodologyRuleStatus::Draft {
         return Err("a rule is a draft; an active decision is a method (method.yaml)".into());
     }
     if has_module {
         return Err("a draft rule has no rule.py".into());
-    }
-    if !rule.applies_to.is_empty() {
-        return Err("a draft rule is never routed, so it has no applies_to".into());
     }
     Ok(())
 }

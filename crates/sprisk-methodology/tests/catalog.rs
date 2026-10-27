@@ -67,12 +67,13 @@ fn an_unknown_rule_has_no_source() {
 }
 
 #[test]
-fn a_draft_rule_is_never_routed() {
+fn a_rule_naming_operators_to_route_to_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     write_rule(dir.path(), "a", "methodology.pack.a@1.0.0", "cleaning.a");
     let path = dir.path().join("pack/rules/a/rule.yaml");
     let manifest = fs::read_to_string(&path).unwrap().replace(
         "status: draft\n",
+        // Routing went with the old format (ADR-0063 slice 6): the manifest refuses the field.
         "status: draft\napplies_to: [sprisk.clean.scale]\n",
     );
     fs::write(&path, manifest).unwrap();

@@ -1019,53 +1019,6 @@ class BindingByMethod(StrictModel):
     method: MethodRef
 
 
-class ProfileItem(RootModel[str]):
-    root: Annotated[str, Field(max_length=60)]
-
-
-class Profile(RootModel[list[ProfileItem]]):
-    root: Annotated[list[ProfileItem], Field(max_length=10)]
-
-
-class ShortlistItem(RootModel[str]):
-    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
-
-
-class Applicability(StrEnum):
-    applicable = "applicable"
-    needs_fact = "needs_fact"
-    not_applicable = "not_applicable"
-
-
-class Alternative(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
-    applicability: Applicability
-    reason: Annotated[str, Field(min_length=1)]
-    params: Annotated[
-        Params | None,
-        Field(
-            description="Concrete params for the manifest action's operator; present when applicable."
-        ),
-    ] = None
-
-
-class RuleRefused(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    answer: Literal["refused"]
-    error: Annotated[
-        str,
-        Field(
-            description="The rule's own error (a broken observation, a module with no decide). It may name local paths, so it goes to the log, not to a client.",
-            min_length=1,
-        ),
-    ]
-
-
 class MethodologyRuleRef(RootModel[str]):
     root: Annotated[
         str,
@@ -1087,18 +1040,9 @@ class MethodologyStage(StrEnum):
     reporting = "reporting"
 
 
-class Selection(StrEnum):
-    recommend = "recommend"
-    shortlist = "shortlist"
-
-
 class Status(StrEnum):
     draft = "draft"
     active = "active"
-
-
-class AppliesToItem(RootModel[str]):
-    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$")]
 
 
 class Read(RootModel[str]):
@@ -1176,14 +1120,6 @@ class Kind2(StrEnum):
     user_reason = "user_reason"
 
 
-class GivenItem(RootModel[str]):
-    root: Annotated[str, Field(max_length=60)]
-
-
-class Given(RootModel[list[GivenItem]]):
-    root: Annotated[list[GivenItem], Field(max_length=10)]
-
-
 class RuleActionType(StrEnum):
     replace_node = "replace_node"
     remove_node = "remove_node"
@@ -1217,19 +1153,14 @@ class GraphEffect2(StrictModel):
     node_id: NodeId
 
 
-class NextItem(RootModel[int]):
-    root: Annotated[int, Field(ge=0)]
-
-
-class MethodologyReviewStatus(StrEnum):
-    settled = "settled"
-    proposal = "proposal"
+class Applicability(StrEnum):
+    applicable = "applicable"
     needs_fact = "needs_fact"
-    needs_run = "needs_run"
-    waiting = "waiting"
-    no_subject = "no_subject"
     not_applicable = "not_applicable"
-    reopen = "reopen"
+
+
+class ShortlistItem(RootModel[str]):
+    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
 
 
 class ApplyMethodologyDecision(StrictModel):
@@ -2537,45 +2468,6 @@ class BindingSetBy(RootModel[BindingStated | BindingByMethod]):
     ]
 
 
-class RuleObservation(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    schema_version: Literal["sprisk.rule_observation/v1"]
-    rule: MethodologyRuleRef
-    facts: Annotated[
-        dict[str, Fact],
-        Field(
-            description="Facts by name: question facts (question.time_column), facts read from the flow (flow.model_families), and the step's own text settings (step.method). A fact that lists several values joins them, sorted, with ', '."
-        ),
-    ]
-    profile: Annotated[
-        dict[str, float | str | bool | Profile],
-        Field(
-            description="Measured profile values by name. A list holds dataset text, such as the values of a column that do not read as numbers."
-        ),
-    ]
-    settings: Annotated[
-        dict[str, Any],
-        Field(description="The rule's settings: policy thresholds with any overrides."),
-    ]
-
-
-class RuleRequest(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    schema_version: Literal["sprisk.rule_request/v1"]
-    module: Annotated[
-        str,
-        Field(
-            description="Path of the rule's rule.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the rule process on the same machine, never stored.",
-            min_length=1,
-        ),
-    ]
-    observation: RuleObservation
-
-
 class Action(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2604,7 +2496,7 @@ class Action(StrictModel):
     ] = None
 
 
-class Alternative1(StrictModel):
+class Alternative(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -2612,15 +2504,12 @@ class Alternative1(StrictModel):
     label: Annotated[str, Field(min_length=1)]
     description: Annotated[str, Field(min_length=1)]
     condition: Annotated[
-        str | None,
-        Field(
-            description="A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045)."
-        ),
+        str | None, Field(description="A draft rule's design note on when this applies.")
     ] = None
     when: Annotated[
         str | None,
         Field(
-            description="In a few words, when the rule takes this route, e.g. the column is skewed. Shown beside the example that picks it; nothing that decides reads it. Required on an active rule's alternatives (ADR-0045 amendment).",
+            description="In a few words, when the rule takes this route, e.g. the column is skewed. For people; nothing that decides reads it (ADR-0045 amendment).",
             min_length=1,
         ),
     ] = None
@@ -2629,6 +2518,56 @@ class Alternative1(StrictModel):
         dict[str, Any] | None, Field(description="JSON Schema for this alternative's settings.")
     ] = None
     action: Action
+
+
+class MethodologyRule(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.methodology_rule/v1"]
+    id: MethodologyRuleRef
+    name: Annotated[str, Field(min_length=1)]
+    stage: MethodologyStage
+    status: Annotated[
+        Status,
+        Field(
+            description="draft: a decision not built yet, never run; its condition and observes are notes. active: a method shown on the map in its own words (ADR-0063 slice 6); a rule.yaml is always a draft."
+        ),
+    ]
+    reads: Annotated[
+        list[Read] | None,
+        Field(
+            description="Facts this active rule may read, by name from the fact catalog, e.g. question.target or column.*.kurtosis; * stands for a column or setting name. Rust sends only these (ADR-0045)."
+        ),
+    ] = None
+    question: Annotated[
+        str | None,
+        Field(
+            description="The decision as a person asks it, e.g. How should missing values be filled? Shown on the Methodology page; nothing that decides reads it. Required on an active rule (ADR-0045 amendment).",
+            min_length=1,
+        ),
+    ] = None
+    decides: Annotated[
+        str,
+        Field(
+            description="The one decision this rule owns; unique across loaded packs.",
+            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+        ),
+    ]
+    provenance: Provenance
+    observes: Annotated[
+        list[Observes | Observes1] | None,
+        Field(
+            description="Design notes on a draft rule's inputs; an active rule declares reads instead."
+        ),
+    ] = None
+    policy_thresholds: Annotated[
+        dict[str, Any], Field(description="Default thresholds the rule decides with.")
+    ]
+    alternatives: Annotated[
+        list[Alternative], Field(description="The options, as people read them.")
+    ]
+    verification: Verification
 
 
 class MethodologyEvidence(StrictModel):
@@ -2640,33 +2579,6 @@ class MethodologyEvidence(StrictModel):
     value: Annotated[str, Field(min_length=1)]
     origin: Origin
     artifact_id: ArtifactId | None = None
-
-
-class Given1(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    value: Annotated[str, Field(min_length=1)]
-    origin: Origin
-
-
-class RuleExample(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    given: Annotated[
-        dict[str, str | float | Given | Given1],
-        Field(
-            description="Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }. A measured fact may also be a list of dataset text."
-        ),
-    ]
-    picks: Annotated[
-        str | None,
-        Field(description="What a recommend rule picks.", pattern="^[a-z][a-z0-9_]{0,62}$"),
-    ] = None
-    shortlist: Annotated[
-        list[ShortlistItem] | None, Field(description="What a shortlist rule puts forward.")
-    ] = None
 
 
 class GraphEffect3(StrictModel):
@@ -2739,7 +2651,7 @@ class DecisionProposal(StrictModel):
     rule: Annotated[
         CheckRef,
         Field(
-            description="The rule whose decide() made it, or the compared method whose options it offers a person (ADR-0063 D3)."
+            description="The compared method whose options it offers a person (ADR-0063 D3); a rule's id in proposals made before slice 6."
         ),
     ]
     question_version_id: QuestionVersionId
@@ -2752,31 +2664,12 @@ class DecisionProposal(StrictModel):
     )
     shortlist: Annotated[
         list[ShortlistItem] | None,
-        Field(description="The alternatives a shortlist rule puts forward to compare (ADR-0044)."),
+        Field(
+            description="The options worth comparing, as the compared method shortlisted them (ADR-0044, ADR-0063 D3)."
+        ),
     ] = None
     fingerprint: ContentHash
     created_at: Timestamp
-
-
-class MethodologyReviewItem(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    rule: CheckRef
-    decides: Annotated[str, Field(pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$")]
-    stage: MethodologyStage
-    subject_node_id: NodeId | None = None
-    status: MethodologyReviewStatus
-    reason: Annotated[str, Field(min_length=1)]
-    recommended_alternative_id: Annotated[str | None, Field(pattern="^[a-z][a-z0-9_]{0,62}$")] = (
-        None
-    )
-    reopens: Annotated[
-        MethodologyStage | None,
-        Field(
-            description="With status reopen: the stage the results send the flow back to. Absent otherwise."
-        ),
-    ] = None
 
 
 class MethodologyDecisionByRule(StrictModel):
@@ -3739,121 +3632,6 @@ class EvidenceSet(
     ]
 
 
-class RuleDecision(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    schema_version: Literal["sprisk.rule_decision/v1"]
-    rule: MethodologyRuleRef
-    recommended_alternative_id: Annotated[
-        str | None,
-        Field(
-            description="The one alternative a recommend rule picks; absent for a shortlist rule.",
-            pattern="^[a-z][a-z0-9_]{0,62}$",
-        ),
-    ] = None
-    shortlist: Annotated[
-        list[ShortlistItem] | None,
-        Field(
-            description="The alternatives a shortlist rule puts forward to compare; absent for a recommend rule (ADR-0044)."
-        ),
-    ] = None
-    alternatives: Annotated[list[Alternative], Field(min_length=1)]
-    evidence: list[MethodologyEvidence]
-
-
-class RuleDecided(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    answer: Literal["decided"]
-    decision: RuleDecision
-
-
-class MethodologyRule(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    schema_version: Literal["sprisk.methodology_rule/v1"]
-    id: MethodologyRuleRef
-    name: Annotated[str, Field(min_length=1)]
-    stage: MethodologyStage
-    selection: Annotated[
-        Selection | None,
-        Field(
-            description="recommend (the default): decide() picks one alternative. shortlist: it puts forward the registry's models worth comparing (ADR-0044)."
-        ),
-    ] = None
-    status: Annotated[
-        Status,
-        Field(
-            description="draft: a design with no rule.py, never run; its condition and observes are notes. active: has rule.py, applies_to, reads and examples, and no notes (ADR-0045)."
-        ),
-    ]
-    applies_to: Annotated[
-        list[AppliesToItem] | None,
-        Field(
-            description="Operators, without version, whose steps this active rule decides. Rust routes from it (ADR-0045)."
-        ),
-    ] = None
-    reads: Annotated[
-        list[Read] | None,
-        Field(
-            description="Facts this active rule may read, by name from the fact catalog, e.g. question.target or column.*.kurtosis; * stands for a column or setting name. Rust sends only these (ADR-0045)."
-        ),
-    ] = None
-    examples: Annotated[
-        list[RuleExample] | None,
-        Field(
-            description="Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045)."
-        ),
-    ] = None
-    question: Annotated[
-        str | None,
-        Field(
-            description="The decision as a person asks it, e.g. How should missing values be filled? Shown on the Methodology page; nothing that decides reads it. Required on an active rule (ADR-0045 amendment).",
-            min_length=1,
-        ),
-    ] = None
-    decides: Annotated[
-        str,
-        Field(
-            description="The one decision this rule owns; unique across loaded packs.",
-            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
-        ),
-    ]
-    provenance: Provenance
-    observes: Annotated[
-        list[Observes | Observes1] | None,
-        Field(
-            description="Design notes on a draft rule's inputs; an active rule declares reads instead."
-        ),
-    ] = None
-    policy_thresholds: Annotated[
-        dict[str, Any], Field(description="Default thresholds the rule decides with.")
-    ]
-    alternatives: Annotated[
-        list[Alternative1],
-        Field(
-            description="A recommend rule's menu. A shortlist rule has none: its candidates come from the registry (ADR-0044)."
-        ),
-    ]
-    verification: Verification
-
-
-class MethodologyReview(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    schema_version: Literal["sprisk.methodology_review/v1"]
-    pipeline_version_id: PipelineVersionId
-    items: list[MethodologyReviewItem]
-    next: Annotated[
-        list[NextItem],
-        Field(description="Indexes into items of the open items with nothing open before them."),
-    ]
-
-
 class MethodologyDecisionByMethod(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -4416,16 +4194,6 @@ class MethodRequest(StrictModel):
     limits: Annotated[
         MethodLimits | None, Field(description="The method's limits. Absent: it has none.")
     ] = None
-
-
-class RuleAnswer(RootModel[RuleDecided | RuleRefused]):
-    root: Annotated[
-        RuleDecided | RuleRefused,
-        Field(
-            description="The rule session's one JSON line per RuleRequest, tagged by `answer`: the rule's decision, or why the rule refused its observation. Any other failure ends the session.",
-            title="RuleAnswer",
-        ),
-    ]
 
 
 class MethodologyDecision(RootModel[MethodologyDecisionByRule | MethodologyDecisionByMethod]):

@@ -13,11 +13,10 @@ use sprisk_contracts::{
     CreateDatasetVersion, CreateRun, CreateStudy, CreateWalk, DatasetProfile, DatasetVersion,
     DecisionProposal, EvidenceSet, FigureSet, FlowDecisions, KeyMatches, LoadedTable, Method,
     MethodAnswer, MethodFiles, MethodRequest, MethodologyCheck, MethodologyDecision,
-    MethodologyReview, MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookCode,
-    NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
-    NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
-    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, ProfilePlan,
-    QuestionVersion, Report, RuleAnswer, RuleDecision, RuleObservation, RuleRequest, Run,
+    MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest,
+    NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest,
+    NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator,
+    OperatorSource, PipelineVersion, Problem, ProfilePlan, QuestionVersion, Report, Run,
     SelectionDecision, SourceProfileRequest, Study, StudyDetail, TablePage, TableShift, Trial,
     VerificationRequest, Walk, WalkDetail, WalkStep, WorkerMessage, parse,
 };
@@ -96,7 +95,6 @@ const ENTITIES: &[&str] = &[
     "method_request",
     "methodology_check",
     "methodology_decision",
-    "methodology_review",
     "methodology_rule",
     "methodology_rule_source",
     "model_selection",
@@ -117,10 +115,6 @@ const ENTITIES: &[&str] = &[
     "profile_plan",
     "question_version",
     "report",
-    "rule_answer",
-    "rule_decision",
-    "rule_observation",
-    "rule_request",
     "run",
     "selection_decision",
     "source_profile_request",
@@ -195,11 +189,6 @@ fn methodology_check() {
 #[test]
 fn decision_proposal() {
     check::<DecisionProposal>("decision_proposal");
-}
-
-#[test]
-fn methodology_review() {
-    check::<MethodologyReview>("methodology_review");
 }
 
 #[test]
@@ -310,26 +299,6 @@ fn methodology_rule() {
 #[test]
 fn methodology_rule_source() {
     check::<MethodologyRuleSource>("methodology_rule_source");
-}
-
-#[test]
-fn rule_observation() {
-    check::<RuleObservation>("rule_observation");
-}
-
-#[test]
-fn rule_decision() {
-    check::<RuleDecision>("rule_decision");
-}
-
-#[test]
-fn rule_request() {
-    check::<RuleRequest>("rule_request");
-}
-
-#[test]
-fn rule_answer() {
-    check::<RuleAnswer>("rule_answer");
 }
 
 #[test]

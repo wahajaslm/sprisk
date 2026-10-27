@@ -256,53 +256,6 @@ describe("methodology page", () => {
     expect(within(detail).getByText("Pairwise Correlation Pruning")).toBeInTheDocument();
   });
 
-  it("shows an active rule's inputs and examples, and explains its routes by its examples, not design notes", async () => {
-    const plain = ({ condition: _, ...a }: MethodologyRule["alternatives"][number]) => a;
-    const { observes: _notes, ...withoutNotes } = split;
-    const active: MethodologyRule = {
-      ...withoutNotes,
-      status: "active",
-      applies_to: ["sprisk.validation.random_split"],
-      reads: ["question.target", "question.time_column"],
-      examples: [{ given: { "question.time_column": "signup_date" }, picks: "correlation_pruning" }],
-      alternatives: features.alternatives.map(plain),
-    };
-    serve([active]);
-    renderWithApi(<MethodologyPage />);
-    await showTree();
-
-    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
-    const detail = await screen.findByRole("region", { name: active.name });
-    expect(within(detail).getByText("question.time_column", { selector: "code" })).toBeInTheDocument();
-    const example = within(detail).getByRole("listitem", { name: "Example 1" });
-    expect(example).toHaveTextContent("question.time_column = signup_date");
-    expect(example).toHaveTextContent("Pairwise Correlation Pruning");
-    // An active rule's route is explained by the tested example that picks it, not a design note.
-    expect(within(detail).getByText(/^When: .*time column = signup_date/)).toBeInTheDocument();
-  });
-
-  it("says a shortlist rule's candidates are the registered models, and shows its examples' shortlists", async () => {
-    const { observes: _notes, ...withoutNotes } = split;
-    const shortlist: MethodologyRule = {
-      ...withoutNotes,
-      status: "active",
-      selection: "shortlist",
-      applies_to: ["sprisk.ml.linear_model"],
-      reads: ["rows", "candidate.*.family"],
-      alternatives: [],
-      examples: [{ given: { rows: 40 }, shortlist: ["ml_dummy_baseline", "ml_linear_model"] }],
-    };
-    serve([shortlist]);
-    renderWithApi(<MethodologyPage />);
-    await showTree();
-
-    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
-    const detail = await screen.findByRole("region", { name: shortlist.name });
-    expect(within(detail).getByText(/every registered model that fits the task/i)).toBeInTheDocument();
-    expect(within(detail).getByRole("listitem", { name: "Example 1" })).toHaveTextContent("shortlist: ml_dummy_baseline, ml_linear_model");
-    expect(within(detail).queryByRole("heading", { name: "Alternatives" })).not.toBeInTheDocument();
-  });
-
   it("marks a draft rule and shows its design notes", async () => {
     serve([features]);
     renderWithApi(<MethodologyPage />);

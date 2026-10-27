@@ -4,7 +4,7 @@ import { Background, BackgroundVariant, Handle, type NodeProps, Position, ReactF
 import type { MethodologyRule } from "@sprisk/contracts";
 import { useMemo } from "react";
 
-import { activation, DECIDED, LANE_NOTE, type OnFlow, ROUTE_LINE, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
+import { DECIDED, LANE_NOTE, type OnFlow, ROUTE_LINE, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
 
 type Props = {
   rules: MethodologyRule[];
@@ -104,7 +104,7 @@ function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule"
           <span className="mth-node-code">{data.code}</span> {rule.question ?? rule.name}
         </span>
         <span className="mth-rule-meta" title={rule.decides}>
-          {activation(rule) ?? rule.decides}
+          {rule.decides}
           {rule.status === "draft" && " · draft"}
           {decided && (
             <span className="mth-rule-status settled" title={decided.reason}>

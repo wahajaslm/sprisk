@@ -22,7 +22,7 @@ import { FlowMap } from "./FlowMap.tsx";
 import { MethodologyCanvas } from "./MethodologyCanvas.tsx";
 import { MethodologyMap } from "./MethodologyMap.tsx";
 import { RuleTree } from "./RuleTree.tsx";
-import { activation, DECIDED, decidedOnFlow, givenText, lookedAt, type OnFlow, routeWhen, stageName, withSettings } from "./ruleTree.ts";
+import { DECIDED, decidedOnFlow, lookedAt, type OnFlow, routeWhen, stageName, withSettings } from "./ruleTree.ts";
 
 const ignore = () => undefined;
 
@@ -301,7 +301,7 @@ function RuleDetail({ rule, decided, route }: { rule: MethodologyRule; decided: 
         <h2>{rule.name}</h2>
         <p className="muted">
           {stageName(rule.stage)} · decides <code>{rule.decides}</code>
-          {activation(rule) && ` · ${activation(rule)}`} · <span className="tech">{rule.id}</span>
+          {" "}· <span className="tech">{rule.id}</span>
         </p>
         {source.data && <p className="mth-tag">{python ? "Python decide() in rule.py" : "No rule.py yet: manifest only"}</p>}
       </header>
@@ -369,27 +369,6 @@ function Overview({ rule, route }: { rule: MethodologyRule; route: string | unde
               ))}
             </ul>
           </section>
-          <section>
-            <h2 className="dsx-h">Examples</h2>
-            <p className="muted">Run as tests on every change, so they always hold.</p>
-            <ol className="mth-rows">
-              {(rule.examples ?? []).map((example, i) => (
-                <li key={i} aria-label={`Example ${i + 1}`}>
-                  <span>
-                    {Object.entries(example.given).map(([name, value]) => (
-                      <code key={name}>
-                        {name} = {typeof value === "object" && !Array.isArray(value) ? `${value.value} (${value.origin})` : givenText(value)}
-                      </code>
-                    ))}
-                    {Object.keys(example.given).length === 0 && <span className="muted">nothing known</span>}
-                  </span>
-                  <span className="mth-tag">
-                    → {example.shortlist ? `shortlist: ${example.shortlist.join(", ")}` : (rule.alternatives.find((a) => a.id === example.picks)?.label ?? example.picks)}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </section>
         </>
       ) : (
         <section>
@@ -413,12 +392,6 @@ function Overview({ rule, route }: { rule: MethodologyRule; route: string | unde
         </section>
       )}
 
-      {rule.selection === "shortlist" && (
-        <section>
-          <h2 className="dsx-h">Where the candidates come from</h2>
-          <p>Every registered model that fits the task. The rule puts forward the ones worth comparing; cross-validation picks the winner (ADR-0044).</p>
-        </section>
-      )}
 
       {rule.alternatives.length > 0 && (
         <section>

@@ -13,7 +13,7 @@ const RULES = [
   rule(C("dupes"), "data", ["drop", "keep"]),
   rule(S("split"), "split", ["random", "time"]),
   rule(S("fill"), "cleaning", ["median", "mean", "drop"]),
-  rule(S("pick"), "models", [], { selection: "shortlist" }),
+  rule(S("pick"), "models", []),
   rule(S("loop"), "evaluation", ["finish", "again"]),
   rule(U("algo"), "models", ["kmeans", "dbscan"]),
 ];
@@ -35,9 +35,8 @@ describe("methodology map canvas", () => {
     expect(xs).toEqual([...xs].sort((a, b) => a - b));
   });
 
-  it("marks a decision by its level: the data settles it, a shortlist is tried, a person is asked", () => {
+  it("marks a decision by its level: the data settles it, or a person is asked", () => {
     expect(levelOf(RULES[1]!)).toBe("rule");
-    expect(levelOf(RULES[4]!)).toBe("try");
     expect(levelOf(RULES[0]!)).toBe("ask");
   });
 

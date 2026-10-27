@@ -3562,214 +3562,6 @@
         }
       }
     },
-    "RuleObservation": {
-      "title": "RuleObservation",
-      "description": "What a rule's decide() reads (ADR-0042): confirmed question facts and measured profile values, never raw rows, plus its settings. Sent by Rust to the Python rule runner.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema_version",
-        "rule",
-        "facts",
-        "profile",
-        "settings"
-      ],
-      "properties": {
-        "schema_version": {
-          "const": "sprisk.rule_observation/v1"
-        },
-        "rule": {
-          "$ref": "#/$defs/MethodologyRuleRef"
-        },
-        "facts": {
-          "type": "object",
-          "description": "Facts by name: question facts (question.time_column), facts read from the flow (flow.model_families), and the step's own text settings (step.method). A fact that lists several values joins them, sorted, with ', '.",
-          "additionalProperties": {
-            "$ref": "#/$defs/Fact"
-          }
-        },
-        "profile": {
-          "type": "object",
-          "description": "Measured profile values by name. A list holds dataset text, such as the values of a column that do not read as numbers.",
-          "additionalProperties": {
-            "oneOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "array",
-                "maxItems": 10,
-                "items": {
-                  "type": "string",
-                  "maxLength": 60
-                }
-              }
-            ]
-          }
-        },
-        "settings": {
-          "type": "object",
-          "description": "The rule's settings: policy thresholds with any overrides.",
-          "additionalProperties": true
-        }
-      }
-    },
-    "RuleDecision": {
-      "title": "RuleDecision",
-      "description": "What a rule's decide() returns (ADR-0042). Rust builds graph effects from it with the manifest's actions; it never runs as code.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema_version",
-        "rule",
-        "alternatives",
-        "evidence"
-      ],
-      "properties": {
-        "schema_version": {
-          "const": "sprisk.rule_decision/v1"
-        },
-        "rule": {
-          "$ref": "#/$defs/MethodologyRuleRef"
-        },
-        "recommended_alternative_id": {
-          "type": "string",
-          "description": "The one alternative a recommend rule picks; absent for a shortlist rule.",
-          "pattern": "^[a-z][a-z0-9_]{0,62}$"
-        },
-        "shortlist": {
-          "type": "array",
-          "description": "The alternatives a shortlist rule puts forward to compare; absent for a recommend rule (ADR-0044).",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]{0,62}$"
-          }
-        },
-        "alternatives": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "id",
-              "applicability",
-              "reason"
-            ],
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9_]{0,62}$"
-              },
-              "applicability": {
-                "type": "string",
-                "enum": [
-                  "applicable",
-                  "needs_fact",
-                  "not_applicable"
-                ]
-              },
-              "reason": {
-                "type": "string",
-                "minLength": 1
-              },
-              "params": {
-                "$ref": "#/$defs/Params",
-                "description": "Concrete params for the manifest action's operator; present when applicable."
-              }
-            }
-          }
-        },
-        "evidence": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/MethodologyEvidence"
-          }
-        }
-      }
-    },
-    "RuleRequest": {
-      "title": "RuleRequest",
-      "description": "Rust to the rule session (`python -m sprisk_workers.rule`), one JSON line per decision (ADR-0059): the rule module Rust picked from the loaded catalog, and its observation. One session serves a whole review.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema_version",
-        "module",
-        "observation"
-      ],
-      "properties": {
-        "schema_version": {
-          "const": "sprisk.rule_request/v1"
-        },
-        "module": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Path of the rule's rule.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the rule process on the same machine, never stored."
-        },
-        "observation": {
-          "$ref": "#/$defs/RuleObservation"
-        }
-      }
-    },
-    "RuleAnswer": {
-      "title": "RuleAnswer",
-      "description": "The rule session's one JSON line per RuleRequest, tagged by `answer`: the rule's decision, or why the rule refused its observation. Any other failure ends the session.",
-      "oneOf": [
-        {
-          "$ref": "#/$defs/RuleDecided"
-        },
-        {
-          "$ref": "#/$defs/RuleRefused"
-        }
-      ]
-    },
-    "RuleDecided": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "answer",
-        "decision"
-      ],
-      "properties": {
-        "answer": {
-          "type": "string",
-          "enum": [
-            "decided"
-          ]
-        },
-        "decision": {
-          "$ref": "#/$defs/RuleDecision"
-        }
-      }
-    },
-    "RuleRefused": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "answer",
-        "error"
-      ],
-      "properties": {
-        "answer": {
-          "type": "string",
-          "enum": [
-            "refused"
-          ]
-        },
-        "error": {
-          "type": "string",
-          "minLength": 1,
-          "description": "The rule's own error (a broken observation, a module with no decide). It may name local paths, so it goes to the log, not to a client."
-        }
-      }
-    },
     "MethodologyRuleRef": {
       "type": "string",
       "description": "methodology.<pack>.<rule>@<semver>",
@@ -3820,29 +3612,13 @@
         "stage": {
           "$ref": "#/$defs/MethodologyStage"
         },
-        "selection": {
-          "type": "string",
-          "enum": [
-            "recommend",
-            "shortlist"
-          ],
-          "description": "recommend (the default): decide() picks one alternative. shortlist: it puts forward the registry's models worth comparing (ADR-0044)."
-        },
         "status": {
           "type": "string",
           "enum": [
             "draft",
             "active"
           ],
-          "description": "draft: a design with no rule.py, never run; its condition and observes are notes. active: has rule.py, applies_to, reads and examples, and no notes (ADR-0045)."
-        },
-        "applies_to": {
-          "type": "array",
-          "description": "Operators, without version, whose steps this active rule decides. Rust routes from it (ADR-0045).",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
-          }
+          "description": "draft: a decision not built yet, never run; its condition and observes are notes. active: a method shown on the map in its own words (ADR-0063 slice 6); a rule.yaml is always a draft."
         },
         "reads": {
           "type": "array",
@@ -3850,13 +3626,6 @@
           "items": {
             "type": "string",
             "minLength": 1
-          }
-        },
-        "examples": {
-          "type": "array",
-          "description": "Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045).",
-          "items": {
-            "$ref": "#/$defs/RuleExample"
           }
         },
         "question": {
@@ -3957,7 +3726,7 @@
         },
         "alternatives": {
           "type": "array",
-          "description": "A recommend rule's menu. A shortlist rule has none: its candidates come from the registry (ADR-0044).",
+          "description": "The options, as people read them.",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -3983,12 +3752,12 @@
               },
               "condition": {
                 "type": "string",
-                "description": "A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045)."
+                "description": "A draft rule's design note on when this applies."
               },
               "when": {
                 "type": "string",
                 "minLength": 1,
-                "description": "In a few words, when the rule takes this route, e.g. the column is skewed. Shown beside the example that picks it; nothing that decides reads it. Required on an active rule's alternatives (ADR-0045 amendment)."
+                "description": "In a few words, when the rule takes this route, e.g. the column is skewed. For people; nothing that decides reads it (ADR-0045 amendment)."
               },
               "rationale": {
                 "type": "string",
@@ -4060,7 +3829,7 @@
     },
     "MethodologyRuleSource": {
       "title": "MethodologyRuleSource",
-      "description": "Read-only files of one rule package: its manifest and, when present, its Python decide() module. Served by GET /methodology_rules/{id}/source; the API reads only files inside the rule's folder.",
+      "description": "Read-only files of one draft rule: its manifest. Served by GET /methodology_rules/{id}/source; the API reads only files inside the rule's folder.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -4139,70 +3908,9 @@
         }
       }
     },
-    "RuleExample": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "given"
-      ],
-      "properties": {
-        "given": {
-          "type": "object",
-          "description": "Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }. A measured fact may also be a list of dataset text.",
-          "additionalProperties": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "array",
-                "maxItems": 10,
-                "items": {
-                  "type": "string",
-                  "maxLength": 60
-                }
-              },
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "value",
-                  "origin"
-                ],
-                "properties": {
-                  "value": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "origin": {
-                    "$ref": "#/$defs/Origin"
-                  }
-                }
-              }
-            ]
-          }
-        },
-        "picks": {
-          "type": "string",
-          "description": "What a recommend rule picks.",
-          "pattern": "^[a-z][a-z0-9_]{0,62}$"
-        },
-        "shortlist": {
-          "type": "array",
-          "description": "What a shortlist rule puts forward.",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]{0,62}$"
-          }
-        }
-      }
-    },
     "RuleActionType": {
       "type": "string",
-      "description": "What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); reopen changes nothing in the flow: recommended, it makes the review item `reopen` for the stage its params name (ADR-0059). The others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.",
+      "description": "What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); reopen changes nothing in the flow: it names the stage its params give (ADR-0059). The others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.",
       "enum": [
         "replace_node",
         "remove_node",
@@ -4423,7 +4131,7 @@
         },
         "rule": {
           "$ref": "#/$defs/CheckRef",
-          "description": "The rule whose decide() made it, or the compared method whose options it offers a person (ADR-0063 D3)."
+          "description": "The compared method whose options it offers a person (ADR-0063 D3); a rule's id in proposals made before slice 6."
         },
         "question_version_id": {
           "$ref": "#/$defs/QuestionVersionId"
@@ -4453,7 +4161,7 @@
         },
         "shortlist": {
           "type": "array",
-          "description": "The alternatives a shortlist rule puts forward to compare (ADR-0044).",
+          "description": "The options worth comparing, as the compared method shortlisted them (ADR-0044, ADR-0063 D3).",
           "items": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]{0,62}$"
@@ -4466,95 +4174,6 @@
           "$ref": "#/$defs/Timestamp"
         }
       }
-    },
-    "MethodologyReview": {
-      "title": "MethodologyReview",
-      "description": "Every applicable rule's status on one pipeline version, in decision order (ADR-0059). Read-only: it stores nothing.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema_version",
-        "pipeline_version_id",
-        "items",
-        "next"
-      ],
-      "properties": {
-        "schema_version": {
-          "const": "sprisk.methodology_review/v1"
-        },
-        "pipeline_version_id": {
-          "$ref": "#/$defs/PipelineVersionId"
-        },
-        "items": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/MethodologyReviewItem"
-          }
-        },
-        "next": {
-          "type": "array",
-          "description": "Indexes into items of the open items with nothing open before them.",
-          "items": {
-            "type": "integer",
-            "minimum": 0
-          }
-        }
-      }
-    },
-    "MethodologyReviewItem": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "rule",
-        "decides",
-        "stage",
-        "status",
-        "reason"
-      ],
-      "properties": {
-        "rule": {
-          "$ref": "#/$defs/CheckRef"
-        },
-        "decides": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
-        },
-        "stage": {
-          "$ref": "#/$defs/MethodologyStage"
-        },
-        "subject_node_id": {
-          "$ref": "#/$defs/NodeId"
-        },
-        "status": {
-          "$ref": "#/$defs/MethodologyReviewStatus"
-        },
-        "reason": {
-          "type": "string",
-          "minLength": 1
-        },
-        "recommended_alternative_id": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_]{0,62}$"
-        },
-        "reopens": {
-          "$ref": "#/$defs/MethodologyStage",
-          "description": "With status reopen: the stage the results send the flow back to. Absent otherwise."
-        }
-      }
-    },
-    "MethodologyReviewStatus": {
-      "type": "string",
-      "description": "settled: the flow matches the rule's decision. proposal: the rule wants a change. needs_fact: a person must state a fact. needs_run: it measures train rows the flow has not produced. waiting: an earlier open item changes what it reads. no_subject: no step for it to decide yet. not_applicable: the rule does not apply to this step. reopen: cross-validation results say the stage in `reopens` must change; it stays open until the flow does (ADR-0059).",
-      "enum": [
-        "settled",
-        "proposal",
-        "needs_fact",
-        "needs_run",
-        "waiting",
-        "no_subject",
-        "not_applicable",
-        "reopen"
-      ]
     },
     "ApplyMethodologyDecision": {
       "title": "ApplyMethodologyDecision",

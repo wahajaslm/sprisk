@@ -41,7 +41,7 @@ describe("methodology on a step", () => {
   });
 
   it("is no longer in the Parameters tab, which holds only the step's settings", async () => {
-    server.use(http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])));
+    server.use(http.get("/api/methodology_rules", () => HttpResponse.json([shortlistRule])));
     renderWithApi(<ParametersTab pipeline={pipeline} nodeId="model" operator={model} found={{ status: "none", reason: "" }} />);
     await screen.findByLabelText(/target/);
     expect(screen.queryByRole("region", { name: shortlistRule.name })).not.toBeInTheDocument();

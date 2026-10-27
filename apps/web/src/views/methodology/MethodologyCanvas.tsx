@@ -150,12 +150,7 @@ function Node({ node, selected, onPick, keys }: { node: MapNode; selected: boole
     );
   }
   const mark =
-    node.level === "try" ? (
-      <>
-        <circle cx={x} cy={y} r={7} className="mark ring" />
-        <circle cx={x} cy={y} r={3} className="mark solid" />
-      </>
-    ) : node.level === "ask" ? (
+    node.level === "ask" ? (
       <polygon points={`${x},${y - 9} ${x + 9},${y} ${x},${y + 9} ${x - 9},${y}`} className="mark ring" />
     ) : (
       <circle cx={x} cy={y} r={7} className="mark solid" />
