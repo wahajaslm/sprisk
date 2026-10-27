@@ -517,11 +517,14 @@ async fn create_pipeline_version(
     text: String,
 ) -> Result<(StatusCode, Json<PipelineVersion>), ApiError> {
     let pipeline: PipelineVersion = body(&text)?;
-    if pipeline.compares.is_some() {
-        // Its steps must be the ones compare builds from the proposal (ADR-0046).
+    if pipeline.compares.is_some() || pipeline.compares_method.is_some() {
+        // Its steps must be the ones compare builds from the proposal (ADR-0046), or the walk
+        // from a compared method's shortlist (ADR-0063 D3).
         return Err(ApiError::BadRequest {
             code: "comparison_by_compare",
-            message: "a comparison is built by POST /methodology_proposals/{id}/compare".into(),
+            message:
+                "a comparison is built by POST /methodology_proposals/{id}/compare, or by a walk"
+                    .into(),
         });
     }
     let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
@@ -1551,7 +1554,7 @@ async fn propose(
                 message: "link a question revision to this flow before resolving methodology"
                     .into(),
             })?;
-    if pipeline.compares.is_some() {
+    if pipeline.compares.is_some() || pipeline.compares_method.is_some() {
         return Err(ApiError::BadRequest {
             code: "comparison_not_editable",
             message: "this version compares models; resolve methodology on the flow it compares"
@@ -1846,14 +1849,14 @@ async fn chosen_by(
         .store
         .methodology_decisions(std::slice::from_ref(id))
         .await?;
-    let Some(selection) = decisions
-        .into_iter()
-        .find_map(|d| match d {
-            MethodologyDecision::Rule(d) if d.pipeline_version_id == pipeline.id => Some(d),
-            _ => None,
-        })
-        .and_then(|d| d.selection_id)
-    else {
+    // A rule's swap, or a compared method's winner (ADR-0063 D3).
+    let Some(selection) = decisions.into_iter().find_map(|d| match d {
+        MethodologyDecision::Rule(d) if d.pipeline_version_id == pipeline.id => d.selection_id,
+        MethodologyDecision::Method(d) if d.pipeline_version_id.as_ref() == Some(&pipeline.id) => {
+            d.selection_id
+        }
+        _ => None,
+    }) else {
         return Ok(None);
     };
     let artifact = state.store.get_artifact(&selection).await?;
@@ -2280,7 +2283,32 @@ async fn comparison_version(
             )
         })
     }
-    .map_err(|e| match e {
+    .map_err(comparison_error)?;
+    side_version(state, &base, json!({ "compares": proposal.id }), built)
+}
+
+/// The comparison of a compared method's `candidates` on `base`, its flow (ADR-0063 D3),
+/// built and checked but not stored.
+pub(crate) fn method_comparison(
+    state: &AppState,
+    base: &PipelineVersion,
+    question: &QuestionVersion,
+    method: &sprisk_contracts::MethodRef,
+    candidates: &sprisk_methodology::Candidates,
+) -> Result<PipelineVersion, ApiError> {
+    let keeps_train = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
+    let scoring = sprisk_methodology::Scoring {
+        task: question.task.value,
+        stated: question.success_bar.as_ref().map(|bar| bar.value.metric),
+    };
+    let built =
+        sprisk_methodology::comparison(base, candidates, scoring, keeps_train, &state.registry)
+            .map_err(comparison_error)?;
+    side_version(state, base, json!({ "compares_method": method }), built)
+}
+
+fn comparison_error(e: sprisk_methodology::ResolveError) -> ApiError {
+    match e {
         sprisk_methodology::ResolveError::NothingToCompare(_) => ApiError::BadRequest {
             code: NOTHING_TO_COMPARE,
             message: e.to_string(),
@@ -2290,21 +2318,33 @@ async fn comparison_version(
             message: e.to_string(),
         },
         other => not_applicable(other.to_string()),
-    })?;
-    let pipeline: PipelineVersion = parse(
-        &json!({
-            "schema_version": "sprisk.pipeline_version/v1",
-            "id": format!("plv_{}", ulid::Ulid::new()),
-            "project_id": base.project_id,
-            "question_version_id": proposal.question_version_id,
-            "compares": proposal.id,
-            "nodes": built.nodes,
-            "edges": built.edges,
-            "created_at": now(),
-        })
-        .to_string(),
-    )
-    .map_err(|error| ApiError::Internal(error.to_string()))?;
+    }
+}
+
+/// `built` as a side version of `base` naming what it compares (`compares`), compiled and
+/// checked: it has no parent, so what it compares stays applicable (ADR-0046).
+fn side_version(
+    state: &AppState,
+    base: &PipelineVersion,
+    compares: serde_json::Value,
+    built: sprisk_methodology::Comparison,
+) -> Result<PipelineVersion, ApiError> {
+    let mut version = json!({
+        "schema_version": "sprisk.pipeline_version/v1",
+        "id": format!("plv_{}", ulid::Ulid::new()),
+        "project_id": base.project_id,
+        "question_version_id": base.question_version_id,
+        "nodes": built.nodes,
+        "edges": built.edges,
+        "created_at": now(),
+    });
+    if let (Some(version), serde_json::Value::Object(compares)) =
+        (version.as_object_mut(), compares)
+    {
+        version.extend(compares);
+    }
+    let pipeline: PipelineVersion =
+        parse(&version.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
     let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
     check_local_paths(&plan, &state.data_roots)?;
     Ok(pipeline)
@@ -2399,20 +2439,7 @@ async fn claim_selection(state: &AppState, raw: &str, node_id: &str) -> Result<C
             (comparison, None, built)
         }
     };
-    // A run that failed or was cancelled, say at a walk's deadline, gives way to a fresh one.
-    let ended_badly = |run: &Run| matches!(run.status, RunStatus::Failed | RunStatus::Cancelled);
-    let (run, claimed) = match run {
-        Some(run) if !ended_badly(&run) => (run, None),
-        _ => {
-            let (queued, plan) = queued_run(state, &comparison).await?;
-            let run = state
-                .store
-                .claim_selection_run(&pipeline_id, &step, &queued)
-                .await?;
-            let claimed = (run.id == queued.id).then_some(plan);
-            (run, claimed)
-        }
-    };
+    let (run, claimed) = claim_run(state, &pipeline_id, &step, &comparison, run).await?;
     let proposal_id = comparison.compares.clone().ok_or_else(|| {
         ApiError::Internal(format!("{} compares no proposal", comparison.id.as_str()))
     })?;
@@ -2427,6 +2454,31 @@ async fn claim_selection(state: &AppState, raw: &str, node_id: &str) -> Result<C
         plan: claimed,
         built,
     })
+}
+
+/// The run of step `step`'s model selection: the one claimed, or a fresh one queued when
+/// there is none or it failed or was cancelled, say at a walk's deadline. The plan comes back
+/// only when this call queued the run, for the caller to drive.
+pub(crate) async fn claim_run(
+    state: &AppState,
+    pipeline_id: &PipelineVersionId,
+    step: &sprisk_contracts::NodeId,
+    comparison: &PipelineVersion,
+    run: Option<Run>,
+) -> Result<(Run, Option<Plan>), ApiError> {
+    let ended_badly = |run: &Run| matches!(run.status, RunStatus::Failed | RunStatus::Cancelled);
+    match run {
+        Some(run) if !ended_badly(&run) => Ok((run, None)),
+        _ => {
+            let (queued, plan) = queued_run(state, comparison).await?;
+            let run = state
+                .store
+                .claim_selection_run(pipeline_id, step, &queued)
+                .await?;
+            let claimed = (run.id == queued.id).then_some(plan);
+            Ok((run, claimed))
+        }
+    }
 }
 
 /// Studies the model step `node_id` (ADR-0052): its own shortlist proposal, compared with

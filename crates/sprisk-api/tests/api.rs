@@ -2925,6 +2925,13 @@ async fn a_comparison_is_built_only_by_compare_and_never_edited_by_a_rule() {
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(forged)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "comparison_by_compare");
+    // Nor for a compared method: the walk builds those (ADR-0063 D3).
+    let mut forged = pipeline(&api.csv);
+    forged["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ6");
+    forged["compares_method"] = json!("methodology.supervised.model_shortlist@1.0.0");
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(forged)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "comparison_by_compare");
 
     let uri = format!(
         "/pipeline_versions/{}/methodology/proposals/split",
@@ -6995,4 +7002,96 @@ async fn an_object_store_source_is_not_profiled_yet() {
 
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "profile_not_local");
+}
+
+/// A compared method in the model shortlist rule's place (ADR-0063 D3): it lets the
+/// baseline and both learners through, and the engine picks the winner.
+const SHORTLIST_METHOD: &str = r#"schema_version: sprisk.method/v2
+id: methodology.supervised.model_shortlist@1.0.0
+decides: models.estimator_selection
+name: Model shortlist
+activity: Models
+question: Which models are worth comparing?
+pitfall: One complex model picked before measuring hides whether it beats a naive guess.
+compare: true
+needs: { concepts: [], evidence: [], decisions: [] }
+options:
+  - id: dummy_baseline
+    label: Baseline
+    description: Predicts without the features.
+    condition: always
+    when: always
+    rationale: The floor every model must beat.
+    action: { replace: { role: model, operator: sprisk.ml.dummy_baseline@3.0.0 } }
+    verify: []
+  - id: linear_model
+    label: Linear model
+    description: A linear model.
+    condition: always
+    when: always
+    rationale: The simplest learner.
+    action: { replace: { role: model, operator: sprisk.ml.linear_model@3.0.0 } }
+    verify: []
+  - id: random_forest
+    label: Random forest
+    description: A forest of trees.
+    condition: always
+    when: always
+    rationale: Catches interactions a linear model misses.
+    action: { replace: { role: model, operator: sprisk.ml.random_forest@3.0.0 } }
+    verify: []
+verifications: {}
+source: "Hastie, Tibshirani & Friedman (2009), ch. 7."
+"#;
+
+const SHORTLIST_MODULE: &str = "def decide(ctx):\n    \
+    return ctx.compare(['dummy_baseline', 'linear_model', 'random_forest'], 'All three.')\n";
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner() {
+    let mut api = api().await;
+    let packs = tempfile::tempdir().unwrap();
+    let methodology_root = packs.path().join("methodology");
+    copy_tree(&root().join("methodology"), &methodology_root);
+    let supervised = methodology_root.join("supervised");
+    std::fs::remove_dir_all(supervised.join("rules/model_baseline_selection")).unwrap();
+    let folder = supervised.join("methods/model_shortlist");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("method.yaml"), SHORTLIST_METHOD).unwrap();
+    std::fs::write(folder.join("method.py"), SHORTLIST_MODULE).unwrap();
+    api.state.rules = Arc::new(
+        sprisk_methodology::RuleCatalog::load_dir(
+            &methodology_root,
+            api.state.registry.operators(),
+        )
+        .unwrap(),
+    );
+    api.app = router(api.state.clone());
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-compared-method")).await;
+
+    let steps = detail["steps"].as_array().unwrap();
+    let method = "methodology.supervised.model_shortlist@1.0.0";
+    let compared = steps
+        .iter()
+        .find(|s| s["action"] == "compare")
+        .unwrap_or_else(|| panic!("no comparison: {detail}"));
+    assert_eq!(compared["method"], method, "{compared}");
+    assert_eq!(compared["subject_node_id"], "model", "{compared}");
+    let chosen = steps
+        .iter()
+        .find(|s| s["action"] == "decide" && s["decides"] == "models.estimator_selection")
+        .unwrap_or_else(|| panic!("no winner taken: {detail}"));
+    assert_eq!(chosen["assurance"], "rule", "{chosen}");
+    assert_ne!(chosen["option"], "dummy_baseline", "{chosen}");
+    let uri = format!(
+        "/methodology_decisions/{}",
+        chosen["methodology_decision_id"].as_str().unwrap()
+    );
+    let (_, decision) = call(&api.app, "GET", &uri, None).await;
+    assert!(decision["selection_id"].is_string(), "{decision}");
+    // Loop-back reads the comparison the method's decision won by, and the walk scores.
+    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
 }

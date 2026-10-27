@@ -8,11 +8,12 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use sprisk_contracts::{
-    AppliedMethodologyDecision, AttemptState, CreateWalk, DecisionProposal, Method,
-    MethodAssurance, MethodDecided, MethodDecidedOutcome, MethodRequest, MethodologyDecision,
-    MethodologyDecisionByRule, MethodologyReviewItem, Operator, PipelineVersion, PipelineVersionId,
-    QuestionVersion, QuestionVersionId, Report, RunId, RunStatus, Walk, WalkAction, WalkAsk,
-    WalkDetail, WalkId, WalkStatus, WalkStep, WalkStopReason, parse,
+    AppliedMethodologyDecision, ArtifactId, AttemptState, CreateWalk, DecisionProposal,
+    GraphEffect, Method, MethodAssurance, MethodDecided, MethodDecidedOutcome, MethodRequest,
+    MethodShortlisted, MethodologyDecision, MethodologyDecisionByRule, MethodologyReviewItem,
+    Operator, PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId, Report,
+    RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId, WalkStatus, WalkStep,
+    WalkStopReason, parse,
 };
 use sprisk_core::time::format;
 use sprisk_methodology::deciding::{
@@ -31,8 +32,8 @@ use crate::method_session::{Decision, MethodSession};
 use crate::report::{self, Scored};
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, Query, apply_methodology, body,
-    check_local_paths, cite_decision, claim_selection, compile, decision_of, drive_run, id, limit,
-    optional_id, propose, queued_run, review_methodology, run_plan,
+    check_local_paths, cite_decision, claim_run, claim_selection, compile, decision_of, drive_run,
+    id, limit, method_comparison, optional_id, propose, queued_run, review_methodology, run_plan,
 };
 
 /// What the loop-back rule decides; its `max_looks` caps the walk's comparisons too, so the
@@ -460,6 +461,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
                 reason: format!("A person answered: {label}."),
                 // What raised the question stays with the answer.
                 evidence: used_evidence(method, &measured),
+                selection: None,
             };
             return record_decide(state, walk, round, &read, taking).await;
         }
@@ -468,10 +470,24 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             .await
             .map_err(|e| ApiError::Internal(format!("method {}: {e}", method.id.as_str())))?
         {
+            Decision::Decided(_) if method.compare == Some(true) => {
+                return Err(ApiError::Internal(format!(
+                    "compared method {} chose an option: it shortlists, and the comparison chooses",
+                    method.id.as_str()
+                )));
+            }
             Decision::Decided(decided) => decided,
+            Decision::Shortlisted(listed) if method.compare == Some(true) => {
+                let comparing = MethodComparing {
+                    method,
+                    listed: &listed,
+                    evidence: used_evidence(method, &measured),
+                };
+                return compare_method(state, walk, round, &read, deadline, comparing).await;
+            }
             Decision::Shortlisted(_) => {
                 return Err(ApiError::Internal(format!(
-                    "method {} answered with a shortlist, and the walk compares no method's options yet",
+                    "method {} shortlisted options, but it is not a compared method",
                     method.id.as_str()
                 )));
             }
@@ -486,6 +502,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             assurance: MethodAssurance::Rule,
             reason: decided.reason.to_string(),
             evidence: used_evidence(method, &measured),
+            selection: None,
         };
         return record_decide(state, walk, round, &read, taking).await;
     }
@@ -717,6 +734,8 @@ struct Taking<'m> {
     reason: String,
     /// What the method read, which a person's answer rests on too.
     evidence: Vec<Value>,
+    /// The SelectionDecision a compared method's option won by.
+    selection: Option<ArtifactId>,
 }
 
 /// The evidence `method` needs, as its producers measured it, with the step of each.
@@ -783,6 +802,9 @@ async fn record_decide(
     }
     if !taking.evidence.is_empty() {
         decision["evidence"] = json!(taking.evidence);
+    }
+    if let Some(selection) = &taking.selection {
+        decision["selection_id"] = json!(selection);
     }
     let made = if applied.effects.is_empty() {
         None
@@ -1474,6 +1496,187 @@ async fn compare(
         reason: decision.reason.as_str(),
     };
     apply(state, walk, round, applying).await
+}
+
+/// A compared method's shortlist, and what the method read.
+struct MethodComparing<'m> {
+    method: &'m Method,
+    listed: &'m MethodShortlisted,
+    evidence: Vec<Value>,
+}
+
+/// Compares the options a compared method shortlisted (ADR-0063 D3) as a rule's shortlist is
+/// compared (ADR-0050): each option swaps the model step for its model, on fixed folds with a
+/// fixed seed. The round that starts the comparison drives its run; the next takes the winner
+/// as the method's decision, or stops when none beats the baseline.
+async fn compare_method(
+    state: &AppState,
+    walk: Walk,
+    round: usize,
+    read: &Read<'_>,
+    deadline: jiff::Timestamp,
+    MethodComparing {
+        method,
+        listed,
+        evidence,
+    }: MethodComparing<'_>,
+) -> Result<WalkStatus, ApiError> {
+    let head = read.head;
+    let basis = Basis {
+        bindings: &read.effective.bindings,
+        pipeline: head,
+        operators: read.operators,
+        measured: read.measured,
+        question: read.question,
+    };
+    let mut swaps = Vec::with_capacity(listed.shortlist.len());
+    for option in &listed.shortlist {
+        let applied = apply_option(method, option.as_str(), MethodAssurance::Rule, &basis)
+            .map_err(resolve_error)?;
+        swaps.push((option.as_str(), applied.effects));
+    }
+    let mut models = Vec::with_capacity(swaps.len());
+    for (option, effects) in &swaps {
+        let [
+            GraphEffect::ReplaceNode {
+                node_id,
+                operator,
+                params,
+            },
+        ] = effects.as_slice()
+        else {
+            return Err(ApiError::Internal(format!(
+                "option {option} of compared method {} does not swap exactly one step",
+                method.id.as_str()
+            )));
+        };
+        models.push((
+            node_id.as_str(),
+            sprisk_methodology::Candidate {
+                id: option,
+                operator: operator.as_str(),
+                params,
+            },
+        ));
+    }
+    let subject = models[0].0;
+    if let Some((other, _)) = models.iter().find(|(step, _)| *step != subject) {
+        return Err(ApiError::Internal(format!(
+            "compared method {} swaps steps {subject} and {other}: a comparison is of one step",
+            method.id.as_str()
+        )));
+    }
+    let left_out = method
+        .options
+        .iter()
+        .filter(|o| !listed.shortlist.contains(&o.id))
+        .map(|o| (o.id.to_string(), listed.reason.to_string()))
+        .collect();
+    let candidates = sprisk_methodology::Candidates {
+        subject,
+        models: models.into_iter().map(|(_, c)| c).collect(),
+        left_out,
+    };
+    let step_id = id(subject)?;
+    let saved = state.store.selection_for(&head.id, &step_id).await?;
+    // A new comparison is a new look at the folds; past the cap, more looks would fit them.
+    if saved.is_none() {
+        let looks = state.store.looks(&head.id).await?;
+        let most = max_looks(state)?;
+        if looks >= most {
+            let detail = format!(
+                "{} (step {subject}): the flow has looked at its folds {looks} times, the most \
+                 allowed ({most}); more comparisons would fit the folds.",
+                method.decides.as_str()
+            );
+            return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
+        }
+    }
+    let (comparison, run) = match saved {
+        Some((comparison, _)) if comparison.compares_method.as_ref() != Some(&method.id) => {
+            let detail = format!(
+                "{}: step {subject} is already compared for something else.",
+                method.decides.as_str()
+            );
+            return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail).await;
+        }
+        Some(saved) => saved,
+        None => {
+            let made = match method_comparison(state, head, read.question, &method.id, &candidates)
+            {
+                Ok(made) => made,
+                Err(ApiError::BadRequest { code, message }) if code == NOTHING_TO_COMPARE => {
+                    let detail = format!("{} ({code}: {message})", method.decides.as_str());
+                    return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail)
+                        .await;
+                }
+                Err(other) => return Err(other),
+            };
+            let (comparison, _) = state
+                .store
+                .insert_selection(&head.id, &step_id, &made)
+                .await?;
+            (comparison, None)
+        }
+    };
+    let (run, claimed) = claim_run(state, &head.id, &step_id, &comparison, run).await?;
+    if let Some(plan) = claimed {
+        let compared = json!({
+            "pipeline_version_id": head.id, "method": method.id, "decides": method.decides,
+            "subject_node_id": subject, "run_id": run.id,
+        });
+        let step = step(
+            state,
+            walk.id.as_str(),
+            round,
+            WalkAction::Compare,
+            listed.reason.as_str(),
+            compared,
+        )?;
+        state.store.record_walk_step(&walk, &step).await?;
+        drive_run(state, &run.id, &comparison, &plan, None, Some(deadline))
+            .await
+            .map_err(|e| ApiError::Internal(format!("run {}: {e}", run.id.as_str())))?;
+        return Ok(WalkStatus::Walking);
+    }
+    if matches!(run.status, RunStatus::Queued | RunStatus::Running) {
+        let detail = format!(
+            "The comparison for {} is still {} in run {}; walk again once it ends.",
+            method.decides.as_str(),
+            run.status,
+            run.id.as_str()
+        );
+        return record_stop(state, walk, round, WalkStopReason::Error, &detail).await;
+    }
+    if run.status != RunStatus::Succeeded {
+        let failed = failed_attempts(state, &run.id).await?;
+        let detail = format!(
+            "The comparison for {} ended {}. {failed}",
+            method.decides.as_str(),
+            run.status
+        );
+        return record_stop(state, walk, round, WalkStopReason::RunFailed, &detail).await;
+    }
+    let (decision, artifact) = decision_of(state, &comparison)
+        .await?
+        .ok_or_else(|| ApiError::Internal(format!("comparison of {subject} decided nothing")))?;
+    let Some(winner) = &decision.winner else {
+        let detail = format!(
+            "{} (step {subject}): no candidate beats the baseline on the same folds. {}",
+            method.decides.as_str(),
+            decision.reason.as_str()
+        );
+        return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
+    };
+    let taking = Taking {
+        method,
+        option: winner.to_string(),
+        assurance: MethodAssurance::Rule,
+        reason: decision.reason.to_string(),
+        evidence,
+        selection: Some(artifact),
+    };
+    record_decide(state, walk, round, read, taking).await
 }
 
 /// Applies `alternative` to step `subject` through the same Apply as a person, keyed by the
