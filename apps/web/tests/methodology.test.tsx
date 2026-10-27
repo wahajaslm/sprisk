@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import bundle from "../../../contracts/bundle.schema.json";
 import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
+import repeatedItems from "../../../tests/contract/method/valid/binds-a-concept.json";
+import splitMethod from "../../../tests/contract/method/valid/split-method.json";
 import { useSelection } from "../src/workbench/selection.ts";
 import { MethodologyPage } from "../src/views/methodology/MethodologyPage.tsx";
 import { ruleTree, STAGES } from "../src/views/methodology/ruleTree.ts";
@@ -397,5 +399,30 @@ describe("pipeline path switch", () => {
     expect(within(map).getByRole("button", { name: features.name })).toHaveClass("dimmed");
     expect(within(map).getByRole("button", { name: split.name })).not.toHaveClass("dimmed");
     useSelection.setState({ pipelineVersionId: undefined });
+  });
+});
+
+describe("decision order", () => {
+  it("shows every method in decision order, each with its choices and when it takes them", async () => {
+    serve([multicollinearity as MethodologyRule]);
+    server.use(http.get("/api/methods", () => HttpResponse.json([repeatedItems, splitMethod])));
+    renderWithApi(<MethodologyPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Decision order" }));
+
+    const split = await screen.findByRole("button", { name: "Train/test split" });
+    expect(within(split).getByText("2")).toBeInTheDocument();
+    const choices = within(split).getByRole("list", { name: "Choices of Train/test split" });
+    expect(within(choices).getAllByRole("listitem")).toHaveLength(splitMethod.options.length);
+    expect(choices).toHaveTextContent(`if ${splitMethod.options[0]!.when}`);
+    expect(choices).toHaveTextContent("→ uses group_split as the split");
+    expect(within(screen.getByRole("button", { name: "Duplicate analysis" })).getByText("1")).toBeInTheDocument();
+  });
+
+  it("says so when the methods cannot be read", async () => {
+    serve([multicollinearity as MethodologyRule]);
+    server.use(http.get("/api/methods", () => HttpResponse.json({ title: "packs failed" }, { status: 500 })));
+    renderWithApi(<MethodologyPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Decision order" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 });

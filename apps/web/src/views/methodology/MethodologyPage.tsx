@@ -1,7 +1,7 @@
 import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
-import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource } from "../../api/methodology.ts";
+import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource, useMethods } from "../../api/methodology.ts";
 import { ApiError } from "../../api/client.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
@@ -15,6 +15,7 @@ import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { type Chapter, chapters, chapterState, ends } from "./flowGraph.ts";
+import { DecisionOrderMap } from "./DecisionOrderMap.tsx";
 import { FlowMap } from "./FlowMap.tsx";
 import { MethodologyCanvas } from "./MethodologyCanvas.tsx";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
@@ -23,7 +24,7 @@ import { activation, givenText, isOpen, lookedAt, reviewByRule, routeWhen, stage
 
 const ignore = () => undefined;
 
-const TABS = ["Map", "Overview", "Code", "Used in"] as const;
+const TABS = ["Map", "Decision order", "Overview", "Code", "Used in"] as const;
 /** Map is the design's rule tree; Canvas, Tree and Flow are the ADR-0059 views of the same rules. */
 const VIEWS = ["map", "canvas", "tree", "flow"] as const;
 type View = (typeof VIEWS)[number];
@@ -65,7 +66,7 @@ export function MethodologyPage() {
   return (
     <PageFrame
       label="Methodology"
-      flush={tab === "Map"}
+      flush={tab === "Map" || tab === "Decision order"}
       sidebar={
         <Sidebar
           title="Rules"
@@ -151,10 +152,23 @@ export function MethodologyPage() {
           </div>
         </div>
       )}
+      {tab === "Decision order" && <DecisionOrderTab picked={current?.id} onPick={setPicked} />}
       {tab === "Overview" && current && <RuleDetail rule={current} review={onFlow} route={pickedRoute} />}
       {tab === "Code" && current && <RuleCode ruleRef={current.id} />}
       {tab === "Used in" && current && <UsedIn rule={current} versionId={versionId} items={review.data?.items} />}
     </PageFrame>
+  );
+}
+
+/** The methods as one tree, in the order the engine decides them. */
+function DecisionOrderTab({ picked, onPick }: { picked: string | undefined; onPick: (id: string) => void }) {
+  const methods = useMethods();
+  if (methods.isError) return <p role="alert" className="error pad">{methods.error.message}</p>;
+  if (methods.isPending) return <Loading text="Loading the methods…" />;
+  return (
+    <div className="mth-canvas">
+      <DecisionOrderMap methods={methods.data} picked={picked} onPick={onPick} />
+    </div>
   );
 }
 

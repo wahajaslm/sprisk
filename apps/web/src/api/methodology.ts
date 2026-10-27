@@ -58,6 +58,9 @@ export function useSelectModel() {
 export const useMethodologyRules = () =>
   useQuery({ queryKey: ["methodology_rules"], queryFn: () => getList("MethodologyRule", "/methodology_rules"), staleTime: Infinity });
 
+/** Every method, in the order the engine decides them; they change only with the packs. */
+export const useMethods = () => useQuery({ queryKey: ["methods"], queryFn: () => getList("Method", "/methods"), staleTime: Infinity });
+
 /** The meanings a question can bind to a column (ADR-0063); they change only with the packs. */
 export const useConcepts = () =>
   useQuery({ queryKey: ["concepts"], queryFn: () => getOne("ConceptSet", "/concepts"), staleTime: Infinity });
