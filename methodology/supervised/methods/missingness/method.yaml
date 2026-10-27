@@ -4,6 +4,7 @@ decides: cleaning.missingness_strategy
 name: Missing value imputation
 activity: Features
 question: How are the gaps the model would refuse filled?
+pitfall: Fitting a fill on all rows before the split leaks test statistics into the train rows. Filling a column that is mostly empty makes up most of its values.
 applies_when: { task: [classification, regression] }
 needs:
   concepts: []
@@ -13,6 +14,9 @@ needs:
 options:
   - id: fill_before_model
     label: Fill from the train rows
+    description: Fills number gaps with the train rows' median or mean, and gives text gaps their own value, in a step before the model.
+    when: a number or text column the model reads has gaps
+    rationale: A model refuses gaps, so a gap reaching it must be filled first.
     action:
       # Numbers get the train rows' median or mean; a text gap becomes a category of its own.
       # Fit on the train rows only.
@@ -25,9 +29,15 @@ options:
     verify: []
   - id: no_gaps
     label: No gaps
+    description: Leaves the flow as it is.
+    when: no column the model reads has gaps
+    rationale: There is no gap to fill.
     verify: []
   - id: gaps_left
     label: Gaps no step can fill
+    description: Leaves the flow as it is. The gaps are reported, not filled.
+    when: every gap is in a mostly empty or non-text column
+    rationale: The impute step fills numbers and text only, and a mostly empty column is not filled. Reporting it beats guessing a fill.
     verify: []
 verifications: {}
 source: "van Buuren (2018), Flexible Imputation of Missing Data, 2nd ed., §1.3: single imputation by the mean or median, learnt on training rows; the median when the distribution is skewed."

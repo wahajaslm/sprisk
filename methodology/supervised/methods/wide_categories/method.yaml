@@ -4,6 +4,7 @@ decides: features.wide_categories
 name: Wide category removal
 activity: Features
 question: Are category columns too wide for one 0/1 column each left out of the model?
+pitfall: One-hot encoding a column with many categories makes a huge, sparse table. Encoding it by its target without cross-fitting leaks the target.
 applies_when: { task: [classification, regression] }
 needs:
   concepts: []
@@ -13,6 +14,9 @@ needs:
 options:
   - id: leave_out
     label: Leave them out
+    description: Leaves these columns out of the model, in a step before it.
+    when: a category column has more than 15 categories
+    rationale: Too many categories for one 0/1 column each, and no step turns them into numbers yet.
     action:
       insert:
         before: model
@@ -22,6 +26,9 @@ options:
     verify: []
   - id: keep
     label: Keep every column
+    description: Leaves the flow as it is.
+    when: no category column has more than 15 categories
+    rationale: Every category column is narrow enough for one-hot encoding.
     verify: []
 verifications: {}
 source: "Micci-Barreca (2001), SIGKDD Explorations 3(1): high-cardinality categories need target encoding with cross-fitting; with no such step, the column is left out rather than one-hot encoded into a column per value."

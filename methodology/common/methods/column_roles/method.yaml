@@ -4,6 +4,7 @@ decides: data.column_roles
 name: Identifier removal
 activity: Column roles
 question: Which columns only name rows, and are left out?
+pitfall: An ID read as a feature lets the model memorise rows. When rows are stored in class order, a row index predicts the label.
 needs:
   concepts: []
   evidence: [data.identifiers]
@@ -12,6 +13,9 @@ needs:
 options:
   - id: drop_identifiers
     label: Leave identifiers out
+    description: Drops the identifier columns in a step added before the split.
+    when: a column differs in every one of at least 100 rows
+    rationale: A unique code per row carries no pattern, only identity.
     action:
       # Dropping by name fits nothing, so it runs before the split; a column a step adds,
       # such as an item group, stays.
@@ -23,6 +27,9 @@ options:
     verify: []
   - id: keep_all
     label: No identifiers
+    description: Leaves the flow as it is. Every column stays.
+    when: no identifier, under 100 rows, or no column would be left
+    rationale: A value unique by chance, or a table with nothing left to learn from, is not worth the loss.
     verify: []
 verifications: {}
 source: "Kaufman et al. (2012), Leakage in data mining, ACM TKDD 6(4): a row identifier carries no pattern, only identity, so a model memorises rows by it."

@@ -4233,6 +4233,23 @@ class MethodOption(StrictModel):
     )
     id: MethodOptionId
     label: Annotated[str, Field(min_length=1)]
+    description: Annotated[
+        str,
+        Field(
+            description="What choosing this option does to the data or the flow, for people.",
+            min_length=1,
+        ),
+    ]
+    when: Annotated[
+        str,
+        Field(
+            description="In a few words, when the method picks this option, e.g. the column is skewed.",
+            min_length=1,
+        ),
+    ]
+    rationale: Annotated[
+        str, Field(description="Why this option is right then, for people.", min_length=1)
+    ]
     action: MethodAction | None = None
     verify: Annotated[
         list[VerificationName],
@@ -4621,6 +4638,13 @@ class Method(StrictModel):
     ]
     question: Annotated[
         str, Field(description="The decision as a question for people.", min_length=1)
+    ]
+    pitfall: Annotated[
+        str,
+        Field(
+            description="What goes wrong for the analysis when this decision is made badly, for people.",
+            min_length=1,
+        ),
     ]
     applies_when: MethodAppliesWhen | None = None
     needs: MethodNeeds

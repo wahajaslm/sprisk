@@ -4,6 +4,7 @@ decides: features.encoding_strategy
 name: Categorical encoding
 activity: Features
 question: How do categories reaching the model become numbers?
+pitfall: One-hot encoding a column with many categories makes a huge, sparse table. Reading category codes as amounts invents an order and steps between them.
 applies_when: { task: [classification, regression] }
 needs:
   concepts: []
@@ -13,6 +14,9 @@ needs:
 options:
   - id: one_hot_encoding
     label: One-hot encoding
+    description: Adds one 0/1 column per category, learnt from the train rows, in a step before the model.
+    when: a category column has at most 15 categories
+    rationale: Few categories make few columns, and one-hot invents no order. A category seen only in test rows gets zeros.
     action:
       # One 0/1 column per category, learnt from the train rows; a category seen only in test
       # rows gets zeros.
@@ -24,6 +28,9 @@ options:
     verify: []
   - id: no_encoding
     label: No encoding
+    description: Leaves the flow as it is.
+    when: every column the model reads is a number
+    rationale: Numbers need no encoding.
     verify: []
 verifications: {}
 source: "Hastie, Tibshirani & Friedman (2009), Elements of Statistical Learning §9.2.4: a category is coded as one indicator per level, which invents no order."

@@ -5,6 +5,7 @@
   "name": "Train/test split",
   "activity": "Fair evaluation",
   "question": "How are rows divided into training and test so the score is fair?",
+  "pitfall": "A wrong choice here changes what the model learns from.",
   "applies_when": {
     "task": [
       "classification",
@@ -24,6 +25,9 @@
     {
       "id": "item_groups",
       "label": "Keep each item's rows on one side",
+      "description": "Applies: keep each item's rows on one side.",
+      "when": "the evidence calls for it",
+      "rationale": "It is the choice the evidence supports.",
       "action": {
         "replace": {
           "role": "split",
@@ -44,6 +48,9 @@
     {
       "id": "simple_random",
       "label": "Random rows",
+      "description": "Applies: random rows.",
+      "when": "the evidence calls for it",
+      "rationale": "It is the choice the evidence supports.",
       "verify": []
     }
   ],

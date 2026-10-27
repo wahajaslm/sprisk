@@ -4,6 +4,7 @@ decides: evaluation.split_method
 name: Train/test split
 activity: Fair evaluation
 question: How are rows divided into training and test so the score is fair?
+pitfall: A wrong choice here makes the score unfair.
 applies_when: { task: [classification, regression] }
 needs:
   concepts: [common.target, common.event_time, common.item_identity]
@@ -12,6 +13,9 @@ needs:
 options:
   - id: temporal
     label: Train on earlier rows, test on later ones
+    description: "Chooses: train on earlier rows, test on later ones."
+    when: the evidence calls for it
+    rationale: It is the choice the evidence supports.
     action:
       replace:
         role: split
@@ -21,6 +25,9 @@ options:
     verify: [test_after_train]
   - id: item_groups
     label: Keep each item's rows on one side
+    description: "Chooses: keep each item's rows on one side."
+    when: the evidence calls for it
+    rationale: It is the choice the evidence supports.
     action:
       replace:
         role: split
@@ -30,6 +37,9 @@ options:
     verify: [no_group_overlap]
   - id: stratified_random
     label: Random rows, with class shares kept
+    description: "Chooses: random rows, with class shares kept."
+    when: the evidence calls for it
+    rationale: It is the choice the evidence supports.
     action:
       replace:
         role: split
@@ -40,6 +50,9 @@ options:
     verify: [no_row_in_both]
   - id: simple_random
     label: Random rows
+    description: "Chooses: random rows."
+    when: the evidence calls for it
+    rationale: It is the choice the evidence supports.
     action:
       replace:
         role: split

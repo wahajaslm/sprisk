@@ -4,6 +4,7 @@ decides: data.exact_duplicates
 name: Exact duplicate removal
 activity: Repeated observations
 question: Are rows that copy an earlier row dropped before the split?
+pitfall: A row copied into both train and test is scored on a row the model has seen. The score goes up and means less.
 needs:
   concepts: []
   evidence: [data.duplicate_rows]
@@ -13,6 +14,9 @@ needs:
 options:
   - id: drop
     label: Drop exact duplicates
+    description: Keeps the first copy of each row, comparing every column, in a step added before the split.
+    when: some rows copy an earlier row, at most 5% of rows
+    rationale: So no row is in train and test at once.
     action:
       # A row match fits nothing, so it runs before the split. Every column is compared, the
       # target too: rows with the same features and different labels are not copies.
@@ -23,6 +27,9 @@ options:
     verify: []
   - id: keep
     label: Keep every row
+    description: Leaves the flow as it is. Every row stays.
+    when: no row repeats, or over 5% do and a person is asked
+    rationale: With no copies there is nothing to drop, and many repeats may be real observations.
     verify: []
 verifications: {}
 source: "Kapoor & Narayanan (2023), Patterns 4(9): a row copied into train and test is scored on a row the model has seen."

@@ -1,0 +1,52 @@
+{
+  "schema_version": "sprisk.method/v2",
+  "id": "methodology.common.text_spelling@2.0.0",
+  "decides": "data.text_spelling",
+  "name": "Text normalization",
+  "activity": "Text spelling",
+  "question": "Should category text that differs only in spaces or case be merged?",
+  "needs": {
+    "concepts": [],
+    "evidence": [
+      "data.spelling_variants"
+    ],
+    "decisions": []
+  },
+  "options": [
+    {
+      "id": "normalise",
+      "label": "Trim and lowercase",
+      "description": "Applies: trim and lowercase.",
+      "when": "the evidence calls for it",
+      "rationale": "It is the choice the evidence supports.",
+      "action": {
+        "insert": {
+          "before": "split",
+          "operator": "sprisk.clean.clean_text@1.0.0",
+          "node_id": "text_spelling",
+          "settings": {
+            "lowercase": true,
+            "empty_to_null": false
+          },
+          "from_evidence": {
+            "columns": "data.spelling_variants.columns"
+          },
+          "concepts": {
+            "exclude": "common.target"
+          }
+        }
+      },
+      "verify": []
+    },
+    {
+      "id": "keep",
+      "label": "Keep the spelling",
+      "description": "Applies: keep the spelling.",
+      "when": "the evidence calls for it",
+      "rationale": "It is the choice the evidence supports.",
+      "verify": []
+    }
+  ],
+  "verifications": {},
+  "source": "OpenRefine documentation, 'Clustering methods in-depth': key collision with the fingerprint keyer."
+}

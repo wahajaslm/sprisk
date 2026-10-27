@@ -4,6 +4,7 @@ decides: features.rare_categories
 name: Rare category grouping
 activity: Features
 question: Which categories are too rare for a model to learn from, and are grouped?
+pitfall: A category seen a handful of times gives a model almost nothing to learn from, and one 0/1 column each makes too many columns. Shares counted on all rows would let test rows decide what is rare.
 applies_when: { task: [classification, regression] }
 needs:
   concepts: []
@@ -13,6 +14,9 @@ needs:
 options:
   - id: group_rare
     label: Group rare categories
+    description: Turns categories under 1% of the train rows into "other", keeping at most 15, in a step before the model.
+    when: a category column has more than 15 categories
+    rationale: Grouping keeps few enough categories for one-hot encoding, counted on the train rows only.
     action:
       # A category under 1% of the train rows becomes "other", and at most 15 stay, counting
       # "other", so one-hot encoding can take the column. Counted on the train rows.
@@ -25,6 +29,9 @@ options:
     verify: []
   - id: keep_categories
     label: Keep the categories
+    description: Leaves the flow as it is.
+    when: no category column has more than 15 categories
+    rationale: Every category column is already small enough for one-hot encoding.
     verify: []
 verifications: {}
 source: "scikit-learn User Guide §7.3.5: OneHotEncoder(min_frequency, max_categories) groups infrequent categories, learnt from the training rows."

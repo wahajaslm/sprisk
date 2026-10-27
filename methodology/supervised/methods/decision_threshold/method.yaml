@@ -4,6 +4,7 @@ decides: evaluation.decision_threshold
 name: Decision threshold
 activity: Evaluation
 question: At which predicted chance does the model call the costly class?
+pitfall: A classifier that predicts a class at probability 0.5 treats both mistakes as equally costly. When one mistake costs far more, the most accurate model can be the most expensive one.
 applies_when: { task: [classification] }
 needs:
   concepts: [common.target]
@@ -15,12 +16,18 @@ needs:
 options:
   - id: cost_optimal_threshold
     label: Cheapest threshold
+    description: Gives the model the stated costs, so it predicts at the threshold that costs least on its training rows.
+    when: two classes, costs stated, and a random split
+    rationale: The cheapest threshold reflects what each mistake costs, and models are compared by expected cost.
     action:
       # The model predicts at the threshold that costs least on its training rows.
       set: { role: model, from_statements: { costs: costs } }
     verify: []
   - id: default_half
     label: Likelier class
+    description: Leaves the flow as it is. The model predicts the likelier class.
+    when: not two classes, no costs, or a time or item split
+    rationale: With no stated costs both mistakes count the same, and shuffled inner folds are not fair on a time or item split.
     verify: []
 verifications: {}
 source: "Elkan (2001), The Foundations of Cost-Sensitive Learning, IJCAI: the cost-optimal threshold is c_fp / (c_fp + c_fn) for calibrated probabilities."

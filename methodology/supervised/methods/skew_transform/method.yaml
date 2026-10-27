@@ -4,6 +4,7 @@ decides: features.skew_transform
 name: Skewed numbers
 activity: Features
 question: Are numbers with a long tail transformed before the model?
+pitfall: A long tail lets a few large values pull a linear model's fit. Transforming with settings fit on all rows lets test rows shape the train rows.
 applies_when: { task: [classification, regression] }
 needs:
   concepts: []
@@ -13,6 +14,9 @@ needs:
 options:
   - id: yeo_johnson
     label: Yeo-Johnson transform
+    description: Applies a Yeo-Johnson power transform to the skewed numbers, fit on the train rows, in a step before the model.
+    when: a number, not 0/1, has skewness past 1.0
+    rationale: It reduces the skew and handles zero and negative values. It keeps order, so trees lose nothing.
     action:
       # Fit on the train rows only. It keeps order, so a tree loses nothing.
       insert:
@@ -23,6 +27,9 @@ options:
     verify: []
   - id: no_transform
     label: No transform
+    description: Leaves the flow as it is.
+    when: no number, other than 0/1, has a long tail
+    rationale: No number the model reads has a long tail.
     verify: []
 verifications: {}
 source: "Yeo & Johnson (2000), Biometrika 87(4): a power transform for zero and negative values; Bulmer (1979), Principles of Statistics: |skewness| over 1 is highly skewed."

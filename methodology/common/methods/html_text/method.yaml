@@ -4,6 +4,7 @@ decides: data.html_text
 name: HTML removal
 activity: Text cleaning
 question: Which text columns have their HTML stripped?
+pitfall: Text scraped from web pages keeps its markup. A bag of words counts '<br />' as the word 'br' and splits 'caf&eacute;' from 'café', so the same word gets two features.
 needs:
   concepts: []
   evidence: [data.html_text]
@@ -11,6 +12,9 @@ needs:
 options:
   - id: strip
     label: Strip HTML
+    description: Strips tags and decodes entities in the HTML columns, in a step added before the split.
+    when: a feature column holds HTML tags or entities
+    rationale: Markup is not words, and one spelling per word gives a model one signal.
     action:
       # Stripping tags and decoding entities fits nothing, so it runs before the split.
       insert:
@@ -21,6 +25,9 @@ options:
     verify: []
   - id: keep
     label: Keep the markup
+    description: Leaves the flow as it is. Text stays as typed.
+    when: no feature column holds HTML
+    rationale: There is no markup to remove.
     verify: []
 verifications: {}
 source: "Manning, Raghavan & Schütze (2008), Introduction to Information Retrieval §2.1: markup is removed before tokenization, so 'br' and 'eacute' are not read as words."

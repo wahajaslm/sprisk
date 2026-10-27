@@ -4,6 +4,7 @@ decides: features.text_representation
 name: Text representation
 activity: Features
 question: Which text reaching the model is free text, and how does it become numbers?
+pitfall: Free text has a different value in almost every row, so one-hot makes a column per row. Fitting the words or their weights on all rows lets test words shape the features.
 applies_when: { task: [classification, regression] }
 needs:
   concepts: []
@@ -12,6 +13,9 @@ needs:
 options:
   - id: vectorize_words
     label: TF-IDF on words
+    description: Turns each free-text column into word weights learnt from the train rows, in a step before the model.
+    when: a text column has many values, most of several words
+    rationale: Word weights are a strong, cheap baseline for text such as product titles.
     action:
       # Words and their weights are learnt from the train rows, in a step before the model,
       # which reads them beside the table (ADR-0058). A word in fewer than 2 train rows mostly
@@ -25,6 +29,9 @@ options:
     verify: []
   - id: no_free_text
     label: No free text
+    description: Leaves the flow as it is.
+    when: no text reaching the model is free text
+    rationale: Category text goes to rare categories and encoding instead.
     verify: []
 verifications: {}
 source: "Manning, Raghavan & Schütze (2008), Introduction to Information Retrieval §6.2: tf-idf weighting; scikit-learn TfidfVectorizer, fit on training rows only."

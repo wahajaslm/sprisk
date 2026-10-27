@@ -5,6 +5,7 @@
   "name": "Text normalization",
   "activity": "Text spelling",
   "question": "Should category text that differs only in spaces or case be merged?",
+  "pitfall": "A wrong choice here changes what the model learns from.",
   "needs": {
     "concepts": [],
     "evidence": [
@@ -20,6 +21,9 @@
     {
       "id": "normalise",
       "label": "Trim and lowercase",
+      "description": "Applies: trim and lowercase.",
+      "when": "the evidence calls for it",
+      "rationale": "It is the choice the evidence supports.",
       "action": {
         "set": {
           "role": "model",
@@ -36,6 +40,9 @@
     {
       "id": "keep",
       "label": "Keep the spelling",
+      "description": "Applies: keep the spelling.",
+      "when": "the evidence calls for it",
+      "rationale": "It is the choice the evidence supports.",
       "verify": []
     }
   ],

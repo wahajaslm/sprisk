@@ -4,6 +4,7 @@ decides: data.type_repair
 name: Type correction
 activity: Data types
 question: Which text columns are numbers stored as text?
+pitfall: Numbers stored as text are treated as categories, one per distinct value.
 needs:
   concepts: []
   evidence: [data.number_text]
@@ -13,6 +14,9 @@ options:
   # value that does not read as a number, so a column is cast only when every value does.
   - id: cast
     label: Read as numbers
+    description: Casts text columns whose every value reads as a number to numbers, in a step added before the split.
+    when: every value in a text column reads as a number
+    rationale: The values are numbers stored as text, and as text a model treats each one as a category.
     action:
       insert:
         before: split
@@ -22,6 +26,9 @@ options:
     verify: []
   - id: cast_marked
     label: Read as numbers, placeholders as gaps
+    description: Casts text columns to numbers, including those that read as numbers once placeholders are gaps, in a step added before the split.
+    when: placeholders were marked, and a column reads as numbers only after that
+    rationale: The placeholders are gaps now, so the rest of the column is numbers stored as text.
     action:
       insert:
         before: split
@@ -31,6 +38,9 @@ options:
     verify: []
   - id: keep
     label: Types are right
+    description: Leaves the flow as it is. Types stay as read.
+    when: no text column reads fully as numbers
+    rationale: No text column is numbers stored as text, and codes with leading zeros stay text.
     verify: []
 verifications: {}
 source: "Breck et al. (2019), Data Validation for Machine Learning, SysML: as text, a model treats each number as its own category."

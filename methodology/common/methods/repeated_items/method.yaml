@@ -4,6 +4,7 @@ decides: data.repeated_items
 name: Duplicate analysis
 activity: Repeated observations
 question: Does the same item appear in more than one row?
+pitfall: When one item appears in several rows, a random split can put its rows in both train and test. The model is then scored on items it has already seen.
 needs:
   concepts: [common.item_title, common.item_identity]
   evidence: [data.near_duplicate_groups, data.identity_frequency]
@@ -11,14 +12,23 @@ needs:
 options:
   - id: group_by_title
     label: Treat rows with matching titles as one item
+    description: Takes rows with matching titles as one item, which later steps such as the split use.
+    when: rows share a title, and a person confirms
+    rationale: Keeping one item's rows together stops it landing on both sides of the split.
     action:
       bind: { concept: common.item_identity, evidence: data.near_duplicate_groups, column: item_group }
     verify: []
   - id: independent_rows
     label: Treat every row as its own item
+    description: Leaves the flow as it is. Each row counts as its own item.
+    when: no title column is named, or no two titles match
+    rationale: With no sign of repeated items, each row stands alone.
     verify: []
   - id: stated_items
     label: Use the item column the question names, when it names one
+    description: Leaves the flow as it is. The item column the question names stays the item.
+    when: the question names an item column
+    rationale: Title groups would replace the stated item, and its rows could then land on both sides of the split.
     verify: []
 verifications: {}
 source: "Kapoor & Narayanan (2023), Patterns 4(9): a row copied into train and test is scored on a row the model has seen."

@@ -2553,6 +2553,40 @@ async fn concepts_are_listed_from_the_packs_for_a_person_to_bind() {
     );
 }
 
+/// The methods in the order the engine decides them: a method comes after the decisions it reads.
+#[tokio::test]
+async fn methods_are_listed_in_decision_order() {
+    let api = api().await;
+    let (status, methods) = call(&api.app, "GET", "/methods", None).await;
+    assert_eq!(status, StatusCode::OK, "{methods}");
+    let methods = methods.as_array().unwrap();
+    assert_eq!(methods.len(), 21);
+    let at = |decides: &str| {
+        methods
+            .iter()
+            .position(|m| m["decides"] == decides)
+            .unwrap_or_else(|| panic!("no method decides {decides}"))
+    };
+    for method in methods {
+        for read in method["needs"]["decisions"].as_array().unwrap() {
+            assert!(
+                at(read.as_str().unwrap()) < at(method["decides"].as_str().unwrap()),
+                "{} reads {read}, which comes later",
+                method["decides"]
+            );
+        }
+    }
+    assert!(at("data.repeated_items") < at("split.method"));
+    // Each choice says when it is taken, so the order can be read as a tree of conditions.
+    assert!(methods.iter().all(|m| {
+        m["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|o| o["when"].as_str().is_some_and(|w| !w.is_empty()))
+    }));
+}
+
 #[tokio::test]
 async fn methodology_rules_are_listed_from_the_rule_packs() {
     let api = api().await;
@@ -2572,7 +2606,11 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     assert_eq!(split["alternatives"].as_array().unwrap().len(), 4);
     assert_eq!(
         split["alternatives"][1]["description"],
-        "Keep each item's rows on one side"
+        "Holds out about a fifth for test, keeping all rows of each item on one side."
+    );
+    assert_eq!(
+        split["provenance"]["pitfall"],
+        "Shuffling rows across time or across repeated items puts the future or the same item in both train and test. The score then looks better than the model will do on new data."
     );
     assert_eq!(
         split["verification"]["invariant"],
@@ -6012,6 +6050,7 @@ decides: split.method
 name: Train/test split
 activity: Fair evaluation
 question: How are rows divided into training and test so the score is fair?
+pitfall: A wrong choice here makes the score unfair.
 applies_when: { task: [classification, regression] }
 needs:
   concepts: [common.target]
@@ -6020,6 +6059,9 @@ needs:
 options:
   - id: shuffled
     label: Shuffled rows
+    description: "Chooses: shuffled rows."
+    when: the evidence calls for it
+    rationale: It is the choice the evidence supports.
     action:
       replace:
         role: split

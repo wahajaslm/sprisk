@@ -4,6 +4,7 @@ decides: data.text_spelling
 name: Text normalization
 activity: Text spelling
 question: Should category text that differs only in spaces or case be merged?
+pitfall: "'Paris', 'paris ' and 'PARIS' become three categories, splitting one signal three ways. Merging further, by accents or fuzzy matches, can join values that really differ."
 needs:
   concepts: []
   evidence: [data.spelling_variants]
@@ -11,6 +12,9 @@ needs:
 options:
   - id: normalise
     label: Trim and lowercase
+    description: Trims and lowercases the text in those columns, in a step added before the split. The target's labels stay as typed.
+    when: a column, not an ID, has values differing only in spaces or case
+    rationale: These differences are typing, not meaning, and one value per category gives a model one signal.
     action:
       # Trimming and lowercasing fit nothing, so they run before the split on all rows. The
       # target's labels stay as typed: 'Yes' and 'yes' as two classes is a person's question.
@@ -24,6 +28,9 @@ options:
     verify: []
   - id: keep
     label: Keep the spelling
+    description: Leaves the flow as it is. Text stays as typed.
+    when: no category text differs only in spaces or case
+    rationale: No category is typed several ways, and accents stay, since they can carry meaning.
     verify: []
 verifications: {}
 source: "OpenRefine documentation, 'Clustering methods in-depth': key collision with the fingerprint keyer. Punctuation is not dropped and words are not sorted; accents are not removed, since 'año' and 'ano' differ."

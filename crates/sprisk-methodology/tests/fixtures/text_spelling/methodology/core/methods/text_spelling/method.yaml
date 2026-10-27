@@ -4,6 +4,7 @@ decides: data.text_spelling
 name: Text normalization
 activity: Text spelling
 question: Should category text that differs only in spaces or case be merged?
+pitfall: A wrong choice here makes the score unfair.
 needs:
   concepts: []
   evidence: [data.spelling_variants]
@@ -11,6 +12,9 @@ needs:
 options:
   - id: normalise
     label: Trim and lowercase
+    description: "Chooses: trim and lowercase."
+    when: the evidence calls for it
+    rationale: It is the choice the evidence supports.
     action:
       insert:
         before: split
@@ -22,6 +26,9 @@ options:
     verify: []
   - id: keep
     label: Keep the spelling
+    description: "Chooses: keep the spelling."
+    when: the evidence calls for it
+    rationale: It is the choice the evidence supports.
     verify: []
 verifications: {}
 source: "OpenRefine documentation, 'Clustering methods in-depth': key collision with the fingerprint keyer."

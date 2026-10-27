@@ -4,6 +4,7 @@ decides: data.join_sources
 name: Source join
 activity: Sources
 question: Is a loaded table no step reads joined to the rows, and on which column?
+pitfall: A one-to-many join quietly copies rows. That changes the unit of prediction and can put copies of one entity in train and test.
 needs:
   concepts: [common.event_time]
   evidence: [data.join_keys]
@@ -11,9 +12,15 @@ needs:
 options:
   - id: single_source
     label: One source
+    description: Leaves the flow as it is. No table is joined.
+    when: no lone unread table, or the key is unclear (asks)
+    rationale: No join, no risk; a join that would copy rows or leave gaps goes to a person first.
     verify: []
   - id: join_on_key
     label: Join on the shared key
+    description: Joins the unread table on the key column, in a step added before the split.
+    when: every row finds exactly one match on the key
+    rationale: A clean many-to-one join keeps the row count and the unit.
     action:
       # A join fits nothing, so it runs before the split; its other table is the one loaded
       # table no step reads.

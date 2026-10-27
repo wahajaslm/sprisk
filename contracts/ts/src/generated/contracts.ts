@@ -2111,6 +2111,10 @@ export interface Method {
    * The decision as a question for people.
    */
   question: string;
+  /**
+   * What goes wrong for the analysis when this decision is made badly, for people.
+   */
+  pitfall: string;
   applies_when?: MethodAppliesWhen;
   needs: MethodNeeds;
   options: MethodOption[];
@@ -2156,6 +2160,18 @@ export interface MethodNeeds {
 export interface MethodOption {
   id: MethodOptionId;
   label: string;
+  /**
+   * What choosing this option does to the data or the flow, for people.
+   */
+  description: string;
+  /**
+   * In a few words, when the method picks this option, e.g. the column is skewed.
+   */
+  when: string;
+  /**
+   * Why this option is right then, for people.
+   */
+  rationale: string;
   action?: MethodAction;
   /**
    * The verifications this option promises, by name.

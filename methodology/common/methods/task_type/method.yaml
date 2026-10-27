@@ -4,6 +4,7 @@ decides: question.task_type
 name: Task type
 activity: Target
 question: Does the model predict a class or a number?
+pitfall: An integer target read as a number becomes regression when it is really ordered classes or counts. The metric and models then answer a different question.
 applies_when: { task: [classification, regression] }
 needs:
   concepts: [common.target]
@@ -12,9 +13,15 @@ needs:
 options:
   - id: classification
     label: Predict a class
+    description: Records that the model predicts a class, and checks the labels can be read as classes.
+    when: the question says classification
+    rationale: The task is the question's, and the check stops a target with one label or decimal values.
     verify: [labels_are_classes]
   - id: regression
     label: Predict a number
+    description: Records that the model predicts a number, and checks the target holds numbers.
+    when: the question says regression
+    rationale: The task is the question's, and the check stops a target that holds text.
     verify: [labels_are_numbers]
 verifications:
   labels_are_classes:

@@ -41,7 +41,7 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, BindingSourceKind,
     CapabilityClass, CodeSplit, CodeSplitRequest, ConceptSet, CopilotChatReply, CopilotChatRequest,
     CopilotLedgerDraft, CopilotLedgerRequest, CreateRun, DatasetProfile, DecisionProposal,
-    FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodFiles,
+    FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, Method, MethodFiles,
     MethodologyAlternativeApplicability, MethodologyDecision, MethodologyDecisionByRule,
     MethodologyDecisionId, MethodologyProposalId, MethodologyReview, MethodologyRule,
     MethodologyRuleSelection, MethodologyRuleSource, ModelSelection, NotebookCode,
@@ -149,6 +149,7 @@ pub fn router(state: AppState) -> Router {
             "/methodology_rules/{id}/source",
             get(get_methodology_rule_source),
         )
+        .route("/methods", get(list_methods))
         .route("/methods/{id}/files", get(get_method_files))
         .route("/operators", get(list_operators))
         .route("/operators/{id}/source", get(get_operator_source))
@@ -661,6 +662,11 @@ async fn get_methodology_rule_source(
     Path(rule_ref): Path<String>,
 ) -> Result<Json<MethodologyRuleSource>, ApiError> {
     Ok(Json(state.rules.source(&rule_ref)?.clone()))
+}
+
+/// Every method, in the order the engine decides them.
+async fn list_methods(State(state): State<AppState>) -> Json<Vec<Method>> {
+    Json(state.rules.methods().cloned().collect())
 }
 
 async fn get_method_files(

@@ -4,6 +4,7 @@ decides: split.method
 name: Train/test split
 activity: Fair evaluation
 question: How are rows divided into training and test so the score is fair?
+pitfall: Shuffling rows across time or across repeated items puts the future or the same item in both train and test. The score then looks better than the model will do on new data.
 applies_when: { task: [classification, regression] }
 needs:
   concepts: [common.target, common.event_time, common.item_identity]
@@ -12,6 +13,9 @@ needs:
 options:
   - id: temporal
     label: Train on earlier rows, test on later ones
+    description: Holds out the latest fifth of rows, by the time column, as the test set.
+    when: a time column is named
+    rationale: Training only on the past keeps later rows from leaking into what the model learns.
     action:
       replace:
         role: split
@@ -21,6 +25,9 @@ options:
     verify: [test_after_train]
   - id: item_groups
     label: Keep each item's rows on one side
+    description: Holds out about a fifth for test, keeping all rows of each item on one side.
+    when: an item column is named, and no time column
+    rationale: No item is scored on rows the model saw.
     action:
       replace:
         role: split
@@ -30,6 +37,9 @@ options:
     verify: [no_group_overlap]
   - id: stratified_random
     label: Random rows, with class shares kept
+    description: Holds out a random fifth of rows for test, keeping each class's share on both sides.
+    when: a class target, with no time or item column
+    rationale: Rows are independent, and each class keeps its share in train and test.
     action:
       replace:
         role: split
@@ -40,6 +50,9 @@ options:
     verify: [no_row_in_both]
   - id: simple_random
     label: Random rows
+    description: Holds out a random fifth of rows for test, with a fixed seed.
+    when: no time or item column, and no class target
+    rationale: Rows are independent, so a random draw gives a fair test.
     action:
       replace:
         role: split

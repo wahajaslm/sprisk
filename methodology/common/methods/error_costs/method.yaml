@@ -4,6 +4,7 @@ decides: question.error_costs
 name: Misclassification costs
 activity: Objective
 question: What does each mistake cost?
+pitfall: With unstated costs, the threshold defaults to 0.5. That is right only when a false alarm and a miss cost the same and the probabilities are calibrated.
 applies_when: { task: [classification] }
 needs:
   concepts: [common.target]
@@ -13,12 +14,21 @@ needs:
 options:
   - id: stated
     label: Stated costs
+    description: Records the stated costs of a miss and a false alarm. Leaves the flow as it is.
+    when: two classes, and the person states different costs
+    rationale: Stated costs let the threshold minimise expected cost.
     verify: []
   - id: equal
     label: Equal costs
+    description: Records that a miss and a false alarm cost the same. Leaves the flow as it is.
+    when: two classes, and the person states equal costs
+    rationale: Equal costs are a choice the person makes, not a default sprisk assumes.
     verify: []
   - id: not_two_classes
     label: Not a two-class question
+    description: Records that no costs apply. Leaves the flow as it is.
+    when: the target does not have two classes
+    rationale: A miss and a false alarm are defined only for a two-class target.
     verify: []
 verifications: {}
 source: "Elkan (2001), The Foundations of Cost-Sensitive Learning, IJCAI: unequal error costs move a two-class decision threshold; they are not class imbalance."

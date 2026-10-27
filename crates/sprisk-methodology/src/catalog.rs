@@ -465,20 +465,18 @@ fn stage_of(decides: &str) -> Result<MethodologyStage, CatalogError> {
         .map_err(|_| CatalogError::UnknownStage(decides.to_owned()))
 }
 
-/// A method shown as a rule, for the map. Every word is the method's own: a rule's
-/// description, rationale and when are the option's label, its invariant the promises.
+/// A method shown as a rule, for the map, in the method's own words.
 fn method_as_rule(m: &Method, path: &Path) -> Result<MethodologyRule, CatalogError> {
     let alternatives: Vec<serde_json::Value> = m
         .options
         .iter()
         .map(|option| {
-            let label = option.label.as_str();
             json!({
                 "id": option.id,
-                "label": label,
-                "description": label,
-                "rationale": label,
-                "when": label,
+                "label": option.label,
+                "description": option.description,
+                "rationale": option.rationale,
+                "when": option.when,
                 "action": method_action(option.action.as_ref()),
             })
         })
@@ -509,7 +507,7 @@ fn method_as_rule(m: &Method, path: &Path) -> Result<MethodologyRule, CatalogErr
         "provenance": {
             "standard": m.activity,
             "citation": m.source,
-            "pitfall": m.question,
+            "pitfall": m.pitfall,
             "corner_cases": [],
         },
         "policy_thresholds": {},

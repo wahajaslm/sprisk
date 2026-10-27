@@ -4,6 +4,7 @@ decides: data.repeated_items
 name: Duplicate analysis
 activity: Repeated observations
 question: Does the same item appear in more than one row?
+pitfall: A wrong choice here makes the score unfair.
 needs:
   concepts: [common.item_title, common.item_identity]
   evidence: [data.near_duplicate_groups]
@@ -11,14 +12,23 @@ needs:
 options:
   - id: group_by_title
     label: Treat rows with matching titles as one item
+    description: "Chooses: treat rows with matching titles as one item."
+    when: the evidence calls for it
+    rationale: It is the choice the evidence supports.
     action:
       bind: { concept: common.item_identity, evidence: data.near_duplicate_groups, column: item_group }
     verify: []
   - id: independent_rows
     label: Treat every row as its own item
+    description: "Chooses: treat every row as its own item."
+    when: the evidence calls for it
+    rationale: It is the choice the evidence supports.
     verify: []
   - id: stated_items
     label: Use the item column the question names, when it names one
+    description: "Chooses: use the item column the question names, when it names one."
+    when: the evidence calls for it
+    rationale: It is the choice the evidence supports.
     verify: []
 verifications: {}
 source: "Kapoor & Narayanan (2023), Patterns 4(9): a row copied into train and test is scored on a row the model has seen."

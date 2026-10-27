@@ -2455,7 +2455,8 @@
         "needs",
         "options",
         "verifications",
-        "source"
+        "source",
+        "pitfall"
       ],
       "properties": {
         "schema_version": {
@@ -2484,6 +2485,11 @@
           "type": "string",
           "minLength": 1,
           "description": "The decision as a question for people."
+        },
+        "pitfall": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What goes wrong for the analysis when this decision is made badly, for people."
         },
         "applies_when": {
           "$ref": "#/$defs/MethodAppliesWhen"
@@ -2618,6 +2624,9 @@
       "required": [
         "id",
         "label",
+        "description",
+        "when",
+        "rationale",
         "verify"
       ],
       "properties": {
@@ -2627,6 +2636,21 @@
         "label": {
           "type": "string",
           "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What choosing this option does to the data or the flow, for people."
+        },
+        "when": {
+          "type": "string",
+          "minLength": 1,
+          "description": "In a few words, when the method picks this option, e.g. the column is skewed."
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why this option is right then, for people."
         },
         "action": {
           "$ref": "#/$defs/MethodAction"
