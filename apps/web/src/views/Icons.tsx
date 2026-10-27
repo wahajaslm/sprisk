@@ -258,32 +258,14 @@ export function DeployIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-export function PanelToggleIcon({
-  size = 14,
-  style,
-  className,
-}: {
-  size?: number;
-  style?: React.CSSProperties;
-  className?: string;
-}) {
+/** The design's fold button for a side column: a panel with that column drawn in, the chevron
+ * pointing where the column goes. The left sidebar's is the mirror of Copilot's. */
+export function PaneFoldIcon({ side, open }: { side: "left" | "right"; open: boolean }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      style={style}
-      className={className}
-    >
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={side === "left" ? { transform: "scaleX(-1)" } : undefined}>
       <rect x="1.75" y="2.5" width="12.5" height="11" rx="1.5" />
       <path d="M10 2.5v11" />
-      <path d="M5 6.5L6.5 8 5 9.5" />
+      <path d={open ? "M5 6.5L6.5 8 5 9.5" : "M6.5 6.5L5 8l1.5 1.5"} />
     </svg>
   );
 }

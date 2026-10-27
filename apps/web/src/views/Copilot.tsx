@@ -8,20 +8,9 @@ import { hasOutputs, isGateNode, latestByNode } from "../flow/latest.ts";
 import { stepTitle } from "../flow/stages.ts";
 import { NAV_LABEL, useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
-import { SendIcon } from "./Icons.tsx";
+import { PaneFoldIcon, SendIcon } from "./Icons.tsx";
 import { QueryState } from "../components/ui/QueryState.tsx";
 import { CopilotMessage } from "../components/ui/CopilotMessage.tsx";
-
-/** The design's fold button: a panel with its right column, the chevron pointing where it goes. */
-function FoldIcon({ open }: { open: boolean }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="1.75" y="2.5" width="12.5" height="11" rx="1.5" />
-      <path d="M10 2.5v11" />
-      <path d={open ? "M5 6.5L6.5 8 5 9.5" : "M6.5 6.5L5 8l1.5 1.5"} />
-    </svg>
-  );
-}
 
 const FOLD_BUTTON = { width: "26px", height: "26px", borderRadius: "var(--r-sm,6px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--t-muted,#ababab)", flexShrink: "0" } as const;
 
@@ -40,7 +29,7 @@ export function Copilot() {
     return (
       <aside aria-label="Copilot Rail" style={{ background: "var(--bg-surface,#121212)", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", paddingTop: "10px", minHeight: "0" }}>
         <button type="button" className="dx-btn dx-h-06t" title="Expand Copilot" aria-label="Expand Copilot" onClick={toggleCopilot} style={FOLD_BUTTON}>
-          <FoldIcon open={false} />
+          <PaneFoldIcon side="right" open={false} />
         </button>
         <button type="button" className="dx-btn" onClick={toggleCopilot} style={{ writingMode: "vertical-rl", fontSize: "12.5px", color: "var(--t-muted,#ababab)", cursor: "pointer" }}>
           Copilot
@@ -101,7 +90,7 @@ export function Copilot() {
           {contextText}
         </span>
         <button type="button" className="dx-btn dx-h-06t" title="Fold Copilot" aria-label="Fold Copilot" onClick={toggleCopilot} style={FOLD_BUTTON}>
-          <FoldIcon open />
+          <PaneFoldIcon side="right" open />
         </button>
       </div>
       <div style={{ overflow: "auto", padding: "14px", display: "flex", flexDirection: "column", gap: "12px" }}>

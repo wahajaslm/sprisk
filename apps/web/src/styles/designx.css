@@ -28,6 +28,10 @@
 }
 .dx-input::placeholder { color: var(--t-faint); }
 
+/* A step's icon takes its row's state: white when the row is picked, red when it needs a look. */
+.dx-disc-on .kind-icon { color: var(--ink-0) !important; }
+.dx-disc-warn .kind-icon { color: var(--danger) !important; }
+
 /* The design's hover states. Inline styles set the resting value, so these win with !important. */
 .dx-h-text:hover { color: var(--t-primary) !important; }
 .dx-h-03:hover { background: rgba(var(--ink-rgb), 0.03) !important; }
