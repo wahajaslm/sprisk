@@ -95,10 +95,10 @@
   --size-control: 32px;
   --size-input: 34px;
   --size-tabbar: 48px;
-  --size-sidebar: 280px;
-  --size-copilot: 340px;
+  --size-sidebar: 264px;
+  --size-copilot: 280px;
   --size-copilot-rail: 44px;
-  --size-rail: 56px;
+  --size-rail: 48px;
   --side-width: var(--size-sidebar);
   --page-x: var(--space-6);
 
@@ -236,6 +236,32 @@
   --ease-standard: cubic-bezier(.2,0,0,1);
   --dur-fast: .15s;
   --dur-panel: .2s;
+
+  /* The names the designx markup reads, with the values its main screen renders (dark theme).
+     Components copy that markup and its inline styles as they are (ADR-0061, 27 Oct). */
+  --bg-surface2: #151515;
+  --bg-raised: #222222;
+  --t-strong: #ececec;
+  --t-primary: #e2e2e2;
+  --t-body: #e6e6e6;
+  --t-secondary: #c4c4c4;
+  --t-muted: #ababab;
+  --t-label: #959595;
+  --t-faint: #8c8c8c;
+  --t-idle: #5a5a5a;
+  --ink-rgb: 255, 255, 255;
+  --danger-rgb: 255, 92, 92;
+  --ic-source: #a8b8cf;
+  --ic-recipe: #bcb0d2;
+  --ic-chart: #cdbc9a;
+  --ic-decision: #d3ae9f;
+  --ic-audio: #9fc1c8;
+  --ic-custom: #cdaabd;
+  --r-lg: 10px;
+  --r-md: 8px;
+  --r-sm: 6px;
+  /* Shows through the 1px gaps between the joined panes. */
+  --pane-divider: #2c2c2c;
 }
 
 * { box-sizing: border-box; }
@@ -258,56 +284,6 @@ p { margin: 0; }
 .pad { padding: var(--space-4); }
 .spacer { flex: 1; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
-
-/* ADR-0061 §3: one continuous app frame, 8px from the window, 10px radius, 7% border. */
-.cockpit {
-  display: grid;
-  grid-template-rows: var(--size-tabbar) minmax(0, 1fr);
-  height: calc(100vh - 16px);
-  width: calc(100vw - 16px);
-  margin: 8px;
-  border: 1px solid var(--alpha-07);
-  border-radius: var(--radius-lg);
-  background: var(--bg-app);
-  color: var(--text-primary);
-  min-width: 0;
-  overflow: hidden;
-  font-family: var(--font-sans);
-}
-
-.cockpit-shell {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  gap: 0;
-  padding: 0;
-  background: var(--bg-app);
-  min-height: 0;
-  height: 100%;
-  transition: grid-template-columns var(--dur-panel) var(--ease-standard);
-}
-
-.cockpit-shell.with-copilot {
-  grid-template-columns: var(--size-rail) minmax(0, 1fr) min(var(--size-copilot), 36%);
-}
-
-.cockpit-shell.folded-copilot {
-  grid-template-columns: var(--size-rail) minmax(0, 1fr) var(--size-copilot-rail);
-}
-
-.cockpit-main {
-  grid-column: 2;
-  grid-row: 1;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  border-radius: 0;
-  border: 0;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-  display: flex;
-  flex: 1;
-}
 
 /* ── Layout Panels (Main Sidebar & Center Screen) ────────── */
 .single-panel-layout {
@@ -346,48 +322,6 @@ p { margin: 0; }
   overflow: hidden;
   position: relative;
   transition: all var(--dur-panel) var(--ease-standard);
-}
-
-/* The design's main screen is joined: rail, sidebar, centre and Copilot touch, split by hairlines. */
-.cockpit-shell .activity-bar {
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  height: 100%;
-}
-
-.cockpit-shell .main-sidebar,
-.cockpit-shell .sidebar-rail {
-  margin: 0;
-  border-radius: 0;
-  border: 0;
-  border-right: 1px solid var(--alpha-08);
-  box-shadow: none;
-  height: 100%;
-}
-
-.cockpit-shell .center-screen,
-.cockpit-shell .flow-center,
-.cockpit-shell .dsx-main,
-.cockpit-shell .single-center,
-.cockpit-shell .objective-screen,
-.cockpit-shell .objective-empty-screen {
-  margin: 0;
-  border-radius: 0;
-  border: 0;
-  box-shadow: none;
-  height: 100%;
-}
-
-.cockpit-shell .copilot-card,
-.cockpit-shell .copilot-rail {
-  margin: 0;
-  border-radius: 0;
-  border: 0;
-  border-left: 1px solid var(--alpha-08);
-  box-shadow: none;
-  height: 100%;
 }
 
 /* ── Sidebar Rail (Collapsed Left Sidebar) ──────────────── */
@@ -497,156 +431,7 @@ p { margin: 0; }
   font-size: var(--fs-13);
 }
 
-/* ── Activity bar (Flow Studio rail) ─────────────── */
-.activity-bar {
-  grid-column: 1;
-  grid-row: 1;
-  width: var(--size-rail);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 0;
-  background: var(--bg-app);
-  min-height: 0;
-  border: 0;
-  border-right: 1px solid var(--border-panel);
-}
-
-.activity-top, .activity-bottom {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-}
-
-.activity-btn {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  transition: color var(--dur-fast), background var(--dur-fast);
-}
-
-.activity-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-.activity-btn[aria-current="page"],
-.activity-btn.active {
-  color: var(--text-strong);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.activity-bar-indicator {
-  position: absolute;
-  left: -6px;
-  top: 9px;
-  bottom: 9px;
-  width: 2px;
-  border-radius: 1px;
-  background: transparent;
-}
-
-.activity-btn[aria-current="page"] .activity-bar-indicator,
-.activity-btn.active .activity-bar-indicator {
-  background: var(--text-strong);
-}
-
-/* ── Top bar (48px Flow Studio header) ─────────────────── */
-.topbar {
-  display: grid;
-  grid-template-columns: var(--size-rail) var(--size-sidebar) minmax(0, 1fr) auto;
-  align-items: center;
-  min-width: 0;
-  height: var(--size-tabbar);
-  background: var(--bg-app);
-  border-bottom: 1px solid var(--alpha-08);
-  padding: 0;
-}
-.cockpit.folded-sidebar .topbar { grid-template-columns: var(--size-rail) auto minmax(0, 1fr) auto; }
-.topbar .nav { padding: 0 10px; overflow-x: auto; scrollbar-width: none; }
-
-.logo-cell {
-  width: var(--size-rail);
-  height: var(--size-tabbar);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.logo-icon-box {
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--text-primary);
-  color: var(--bg-app);
-}
-
-/* The top bar's columns line up with the panes below: rail, sidebar, centre, then actions. */
-.topbar-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-left: 14px;
-  min-width: 0;
-  overflow: hidden;
-  height: 100%;
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 14px;
-  white-space: nowrap;
-}
-
-.product-name {
-  font-size: 14px;
-  font-weight: var(--fw-semibold);
-  letter-spacing: -0.01em;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-
-.switcher-wrap {
-  position: relative;
-}
-
-.switcher {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  height: 28px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--alpha-05);
-  font-size: var(--fs-13);
-  white-space: nowrap;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.switcher:hover { background: var(--alpha-08); }
-.switcher svg { flex-shrink: 0; color: var(--text-muted); }
-.switcher-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.switcher-wrap { min-width: 0; }
-
+/* ── Top bar: the pipeline switcher's menu ─────────────────── */
 .menu {
   position: absolute;
   top: 42px;
@@ -695,79 +480,6 @@ p { margin: 0; }
   width: 1px;
   height: 20px;
   background: var(--border-divider);
-}
-
-.topbar .nav {
-  display: flex;
-  align-items: stretch;
-  height: 100%;
-  gap: 0;
-}
-
-.topbar .nav button {
-  height: 100%;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-weight: var(--fw-medium);
-  font-size: var(--fs-13-5);
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  transition: color var(--dur-fast);
-}
-
-.topbar .nav button:hover {
-  color: var(--text-primary);
-}
-
-.topbar .nav button[aria-current="page"],
-.topbar .nav button.active {
-  color: var(--text-primary);
-  box-shadow: inset 0 -1px 0 var(--text-primary);
-}
-
-.runstate {
-  display: flex;
-  align-items: center;
-  color: var(--text-faint);
-  font-size: var(--fs-12-5);
-  white-space: nowrap;
-}
-
-.runstate.failed {
-  color: var(--danger);
-}
-
-.run-button {
-  height: 30px;
-  padding: 0 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--text-primary);
-  color: var(--bg-app);
-  font-weight: var(--fw-semibold);
-  font-size: var(--fs-13);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all var(--dur-fast);
-}
-
-.run-button:hover:not(:disabled) {
-  background: var(--ink-0);
-}
-
-.run-button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-  box-shadow: none;
 }
 
 /* ── Copilot 340px folding to 44px rail ──────────────── */
@@ -3905,23 +3617,6 @@ p { margin: 0; }
 .info-dock-val { color: var(--text-primary); font-variant-numeric: tabular-nums; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .info-dock-val.warn { color: var(--danger); }
 
-/* ── TopBar Objective Additions ──────────────────────── */
-.tab-badge-open {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: var(--danger-wash);
-  color: var(--danger);
-  font-family: var(--font-mono);
-  font-size: var(--fs-12);
-  font-weight: 500;
-  line-height: 1;
-}
-
 /* ── Step 5: Objective Page ──────────────────────────── */
 .objective-screen {
   display: flex;
@@ -4212,7 +3907,6 @@ p { margin: 0; }
   border-bottom: none;
 }
 
-
 .ledger-table .entry-key {
   font-weight: 400;
   color: var(--ink-3);
@@ -4316,7 +4010,6 @@ p { margin: 0; }
   border-bottom: 1px solid var(--alpha-04);
   font-size: var(--fs-13-5);
 }
-
 
 .from-data-k {
   width: 118px;
@@ -7702,7 +7395,7 @@ p { margin: 0; }
 }
 
 /* ── Page frame (Flow Studio main screen) ── */
-.page-frame { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.page-frame { display: flex; gap: 1px; background: var(--pane-divider); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .page-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-surface); }
 .page-header { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px; padding: 20px 24px 16px; border-bottom: 1px solid var(--alpha-10); flex-shrink: 0; }
 .page-header-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 220px; }

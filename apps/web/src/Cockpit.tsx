@@ -12,13 +12,15 @@ import { Experiments } from "./views/Experiments.tsx";
 import { DeployPage } from "./views/deploy/DeployPage.tsx";
 import { ReportsPage } from "./views/reports/ReportsPage.tsx";
 import { SettingsPage } from "./views/settings/SettingsPage.tsx";
+import { LAYOUT } from "./styles/palette.ts";
 import { useSelection } from "./workbench/selection.ts";
 import { useWorkbench } from "./workbench/workbench.ts";
 
+/** The design's main screen frame: a 48px top bar over the rail, the page and the Copilot
+ * column, joined by 1px lines (designx "09 Main screen"). */
 export function Cockpit() {
   const nav = useSelection((s) => s.nav);
   const copilotOpen = useWorkbench((s) => s.copilotOpen);
-  const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
@@ -33,16 +35,12 @@ export function Cockpit() {
   }, []);
 
   return (
-    <div className={`cockpit ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
+    <div style={{ height: "calc(100vh - 16px)", margin: "8px", borderRadius: "var(--r-lg,10px)", border: `1px solid ${LAYOUT.frame}`, background: "var(--bg-app,#0a0a0a)", overflow: "hidden", display: "grid", gridTemplateRows: "48px minmax(0,1fr)", color: "var(--t-primary,#f2f2f2)", fontFamily: "var(--font-sans)", fontSize: "13.5px", lineHeight: "1.5" }}>
       <TopBar />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <div
-        className={`cockpit-shell ${sidebarOpen ? "with-sidebar" : "folded-sidebar"} ${
-          copilotOpen ? "with-copilot" : "folded-copilot"
-        }`}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: `var(--size-rail) minmax(0,1fr) ${copilotOpen ? "var(--size-copilot)" : "var(--size-copilot-rail)"}`, gap: LAYOUT.gap, background: LAYOUT.divider, borderTop: `1px solid ${LAYOUT.divider}`, minHeight: "0" }}>
         <ActivityBar />
-        <main className="cockpit-main">
+        <main style={{ minHeight: "0", minWidth: "0", overflow: "hidden", display: "flex" }}>
           {nav === "Objective" ? (
             <ObjectivePage />
           ) : nav === "Flow" ? (

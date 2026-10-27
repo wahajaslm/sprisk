@@ -2,6 +2,7 @@ import "@fontsource-variable/instrument-sans";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./styles/cockpit.css";
+import "./styles/designx.css";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";

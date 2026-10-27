@@ -44,3 +44,11 @@ Arch doc sections: §2A (workbench UI), §13 (design system). Supersedes the vis
 - **Positive:** Complete elimination of arbitrary colors and hard-coded pixel nudges across the workbench.
 - **Positive:** Full local font bundling ensures offline capability and removes third-party network requests.
 - **Migration:** All ad-hoc styling in `apps/web` is mapped to the token system, and existing components are restyled to match the reference specifications.
+
+## Amendment (27 October 2026): copy the design's markup
+- The user rejected the migration plan's rule "Never copy the design's JSX; restyle our own components to match".
+- Restyling by eye drifted from the design. The design's FlowNode, StageCard, Slider and StatusDot went unused, and pages grew their own CSS.
+- A component now copies the designx markup (the main screen in `Flow Studio Design System.html`) with its inline styles and values. It keeps our logic, data hooks, real buttons and keyboard access.
+- Where the design and the app differ, the design's style and layout win. Our extra features stay, for example the bottom panel's collapse and expand, the sidebar fold and reopening closed tabs.
+- The tokens the design's markup reads (`--t-*`, `--ink-rgb`, `--r-*`, `--ic-*`) live in `cockpit.css`, with the values its main screen renders. `designx.css` holds only the button reset, focus and hover states.
+- Shell widths follow the main screen: rail 48px, sidebar 264px, Copilot 280px (44px folded).

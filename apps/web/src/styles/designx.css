@@ -1,0 +1,29 @@
+/* Flow Studio design system (designx, ADR-0061). Components copy the design's markup with its
+   inline styles; the tokens it reads live in cockpit.css. This file holds only what inline
+   styles cannot: the button reset, focus, and the design's hover states. */
+
+/* The design draws its controls as divs; ours are real buttons that look the same. */
+.dx-btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.dx-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.dx-btn:focus-visible {
+  outline: 1px solid var(--t-primary);
+  outline-offset: -1px;
+}
+
+/* The design's hover states. Inline styles set the resting value, so these win with !important. */
+.dx-h-text:hover { color: var(--t-primary) !important; }
+.dx-h-03:hover { background: rgba(var(--ink-rgb), 0.03) !important; }
+.dx-h-04:hover { background: rgba(var(--ink-rgb), 0.04) !important; }
+.dx-h-05:hover { background: rgba(var(--ink-rgb), 0.05) !important; }
+.dx-h-06:hover { background: rgba(var(--ink-rgb), 0.06) !important; }
+.dx-h-06t:hover { background: rgba(var(--ink-rgb), 0.06) !important; color: var(--t-primary) !important; }
+.dx-h-08:hover { background: rgba(var(--ink-rgb), 0.08) !important; }
+.dx-h-10:hover { background: rgba(var(--ink-rgb), 0.1) !important; }
+.dx-h-12:hover { background: rgba(var(--ink-rgb), 0.12) !important; }
