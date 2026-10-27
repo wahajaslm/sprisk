@@ -913,7 +913,7 @@ fn params_for(operator: &Operator, node: &Node) -> Map<String, Value> {
 /// task, features and costs, whatever the new model accepts. Any other step keeps nothing, so
 /// it takes only the settings the rule decided: an old split's stratify or group column must
 /// not come back.
-fn model_settings(
+pub(crate) fn model_settings(
     operators: &[&Operator],
     node: &Node,
     replacement: &str,

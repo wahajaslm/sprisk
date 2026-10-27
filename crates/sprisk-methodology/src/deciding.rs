@@ -632,12 +632,22 @@ pub fn apply_option(
             },
             &format!("the role {role}"),
         )?;
-        let mut params: Map<String, Value> = replace
-            .settings
+        // A model swapped for another keeps its target, task, features and costs, as a rule's
+        // swap does; the option's own settings come on top.
+        let replaced = pipeline
+            .nodes
             .iter()
-            .flat_map(|s| s.iter())
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+            .find(|n| n.id.as_str() == step)
+            .ok_or_else(|| ResolveError::UnknownNode(step.clone()))?;
+        let all: Vec<&Operator> = operators.iter().collect();
+        let mut params = crate::decision::model_settings(&all, replaced, operator.id.as_str())?;
+        params.extend(
+            replace
+                .settings
+                .iter()
+                .flat_map(|s| s.iter())
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
         let concepts = replace
             .concepts
             .iter()

@@ -1328,3 +1328,72 @@ fn a_set_option_reading_a_statement_the_question_does_not_make_is_refused() {
     .unwrap_err();
     assert!(refused.to_string().contains("costs"), "{refused}");
 }
+
+/// A compared method's option (ADR-0063 D3): it swaps the model for another.
+fn model_swap() -> sprisk_contracts::Method {
+    parse(
+        &json!({
+            "schema_version": "sprisk.method/v2",
+            "id": "methodology.supervised.model_shortlist@1.0.0",
+            "decides": "modeling.estimator_selection", "name": "Model shortlist",
+            "activity": "Models", "question": "Which models are worth comparing?",
+            "pitfall": "One complex model hides whether it beats a naive guess.",
+            "compare": true,
+            "needs": { "concepts": [], "evidence": [], "decisions": [] },
+            "options": [{
+                "id": "linear_model", "label": "Linear model", "description": "A linear model.",
+                "condition": "always", "when": "always", "rationale": "The simplest learner.",
+                "action": { "replace": { "role": "model", "operator": "sprisk.ml.linear_model@3.0.0" } },
+                "verify": [],
+            }],
+            "verifications": {}, "source": "Hastie et al. (2009), ch. 7.",
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_model_replaced_by_another_keeps_the_settings_the_new_model_takes() {
+    let ops = operators();
+    let flow: PipelineVersion = parse(
+        &json!({
+            "schema_version": "sprisk.pipeline_version/v1",
+            "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0", "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+            "nodes": [
+                { "id": "load", "operator": "sprisk.io.load_table@1.0.0",
+                  "params": { "path": "rows.csv", "format": "csv" } },
+                { "id": "split", "operator": "sprisk.validation.random_split@1.0.0",
+                  "params": { "test_fraction": 0.2, "seed": 0 } },
+                { "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0",
+                  "params": { "target": "churned", "task": "classification", "exclude": ["id"] } },
+            ],
+            "edges": [
+                { "from": "load.data", "to": "split.data" },
+                { "from": "split.train", "to": "model.train" },
+            ],
+            "created_at": "2026-10-27T00:00:00Z",
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let applied = apply_option(
+        &model_swap(),
+        "linear_model",
+        MethodAssurance::Rule,
+        &Basis {
+            bindings: &[],
+            pipeline: &flow,
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&applied.effects).unwrap(),
+        json!([{ "kind": "replace_node", "node_id": "model",
+                 "operator": "sprisk.ml.linear_model@3.0.0",
+                 "params": { "target": "churned", "task": "classification", "exclude": ["id"] } }])
+    );
+}
