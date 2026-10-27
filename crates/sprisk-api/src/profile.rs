@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-use sprisk_contracts::{DataFormat, DatasetProfile, KeyMatches, TableShift, parse};
+use sprisk_contracts::{DatasetProfile, KeyMatches, SourceProfileRequest, TableShift, parse};
 
 use crate::bounded::{BoundedProcess, ProcessError};
 
@@ -58,16 +58,14 @@ impl SourceProfiler {
         ))
     }
 
-    /// The profile of the first rows of `files`, checked against the contract. The files were
-    /// listed by Rust and hold no line breaks.
+    /// The profile of the first rows of the request's files, checked against the contract.
     pub async fn profile(
         &self,
-        format: DataFormat,
-        files: &[String],
-        target: Option<&str>,
+        request: &SourceProfileRequest,
     ) -> Result<DatasetProfile, ProcessError> {
-        let input = format!("{format}\n{}\n{}\n", target.unwrap_or(""), files.join("\n"));
-        let text = self.0.run(input.into_bytes()).await?;
+        let input = serde_json::to_vec(request)
+            .map_err(|e| ProcessError::Failed(format!("invalid request: {e}")))?;
+        let text = self.0.run(input).await?;
         parse(&text).map_err(|e| ProcessError::Failed(format!("invalid profile: {e}")))
     }
 }

@@ -250,14 +250,8 @@ fn check_local_paths(plan: &Plan, roots: &[std::path::PathBuf]) -> Result<(), Ap
             let Some(raw) = step.params.get(name).and_then(|v| v.as_str()) else {
                 continue;
             };
-            let at = format!("node {} param {name}", step.node_id);
-            match std::path::Path::new(raw).canonicalize() {
-                Err(e) => problems.push(("path_not_found", format!("{at}: {raw}: {e}"))),
-                Ok(path) if !roots.iter().any(|r| path.starts_with(r)) => problems.push((
-                    "path_outside_data_roots",
-                    format!("{at}: {} is outside the data roots", path.display()),
-                )),
-                Ok(_) => {}
+            if let Err((code, why)) = inside_roots(std::path::Path::new(raw), roots) {
+                problems.push((code, format!("node {} param {name}: {why}", step.node_id)));
             }
         }
     }
@@ -266,6 +260,24 @@ fn check_local_paths(plan: &Plan, roots: &[std::path::PathBuf]) -> Result<(), Ap
     } else {
         Err(ApiError::Policy(problems))
     }
+}
+
+/// `path` resolved through symlinks, if it is inside one of the data roots; else the problem's
+/// code and why. The roots are the server's policy: nothing a request sends adds to them.
+fn inside_roots(
+    path: &std::path::Path,
+    roots: &[std::path::PathBuf],
+) -> Result<std::path::PathBuf, (&'static str, String)> {
+    let resolved = path
+        .canonicalize()
+        .map_err(|e| ("path_not_found", format!("{}: {e}", path.display())))?;
+    if !roots.iter().any(|r| resolved.starts_with(r)) {
+        return Err((
+            "path_outside_data_roots",
+            format!("{} is outside the data roots", resolved.display()),
+        ));
+    }
+    Ok(resolved)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -429,7 +441,7 @@ impl ApiError {
 }
 
 /// A data source that cannot be registered or read (ADR-0067): the location's fault is 422,
-/// the object store's is 502 or 504.
+/// the store's is 502 or 504. Every variant is named, so a new one must be mapped here.
 fn source_problem(e: &sprisk_artifacts::StoreError) -> (StatusCode, Vec<(&'static str, String)>) {
     use sprisk_artifacts::StoreError as E;
     let (status, code) = match e {
@@ -440,7 +452,21 @@ fn source_problem(e: &sprisk_artifacts::StoreError) -> (StatusCode, Vec<(&'stati
         E::UnsupportedFormat(_) => (StatusCode::UNPROCESSABLE_ENTITY, "unsupported_format"),
         E::MixedFormats(_) => (StatusCode::UNPROCESSABLE_ENTITY, "mixed_formats"),
         E::ListTimeout(_) => (StatusCode::GATEWAY_TIMEOUT, "list_timeout"),
-        _ => (StatusCode::BAD_GATEWAY, "source_unreachable"),
+        E::SourceUnreadable { .. } => (StatusCode::BAD_GATEWAY, "source_unreadable"),
+        // The artifact store's own failures never come from a source listing.
+        E::UnsafeName(_)
+        | E::InvalidHash(_)
+        | E::OutsideStaging(_)
+        | E::HashMismatch { .. }
+        | E::NotFound(_)
+        | E::Io { .. }
+        | E::Object(_)
+        | E::NotATable { .. }
+        | E::Parquet(_)
+        | E::Arrow(_) => {
+            tracing::error!(error = %e, "data source failed");
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal")
+        }
     };
     (status, vec![(code, e.to_string())])
 }

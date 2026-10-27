@@ -2,7 +2,7 @@
 //! they live and keeps a fingerprint of their metadata; it never copies or reads the data to
 //! register it. A local location stays inside the data roots, file by file.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use axum::Json;
@@ -12,9 +12,11 @@ use serde_json::json;
 use sprisk_artifacts::source::{
     ListLimits, Location, SourceFiles, list_local, list_remote, parse_location,
 };
-use sprisk_contracts::{CreateDatasetVersion, DatasetProfile, DatasetVersion, parse};
+use sprisk_contracts::{
+    CreateDatasetVersion, DatasetProfile, DatasetVersion, SourceProfileRequest, parse,
+};
 
-use crate::{ApiError, AppState, Query, body, id, limit, optional_id};
+use crate::{ApiError, AppState, Query, body, id, inside_roots, limit, optional_id};
 
 /// A petabyte source can hold millions of files; more than this is refused, never cut.
 const LIMITS: ListLimits = ListLimits {
@@ -107,11 +109,19 @@ pub(crate) async fn get_dataset_version_profile(
     if listed.fingerprint != fingerprint {
         return Err(ApiError::SourceChanged(version.location.to_string()));
     }
-    let files: Vec<String> = listed.files.into_iter().map(|f| f.path).collect();
-    let made = state
-        .source_profiler
-        .profile(listed.format, &files, target)
-        .await?;
+    let mut request = json!({
+        "format": listed.format,
+        "files": listed.files.into_iter().map(|f| f.path).collect::<Vec<_>>(),
+    });
+    if let Some(target) = target {
+        request["target"] = json!(target);
+    }
+    let request: SourceProfileRequest =
+        parse(&request.to_string()).map_err(|e| ApiError::BadRequest {
+            code: "invalid_target",
+            message: e.to_string(),
+        })?;
+    let made = state.source_profiler.profile(&request).await?;
     state
         .store
         .save_profile(fingerprint, code, target, &made)
@@ -119,18 +129,21 @@ pub(crate) async fn get_dataset_version_profile(
     Ok(Json(made))
 }
 
-/// The location as kept (a local path as its canonical `file://` URI), its name and its files. A local
-/// path, and each file under it after following symlinks, must be inside a data root.
+/// The location as kept (a local path as its canonical `file://` URI), its name and its files.
+/// A local path, and each file under it after following symlinks, must be inside a data root;
+/// its files are given resolved, so the profiler reads exactly what was checked.
 async fn list(
     state: &AppState,
     location: &Location,
 ) -> Result<(url::Url, String, SourceFiles), ApiError> {
     match location {
         Location::Local(path) => {
-            let path = inside_roots(path, &state.data_roots)?;
-            let listed = list_local(&path, LIMITS).await.map_err(ApiError::Source)?;
-            for file in &listed.files {
-                inside_roots(Path::new(&file.path), &state.data_roots)?;
+            let path = inside_roots(path, &state.data_roots).map_err(policy)?;
+            let mut listed = list_local(&path, LIMITS).await.map_err(ApiError::Source)?;
+            for file in &mut listed.files {
+                let resolved =
+                    inside_roots(Path::new(&file.path), &state.data_roots).map_err(policy)?;
+                file.path = resolved.display().to_string();
             }
             let uri = url::Url::from_file_path(&path)
                 .map_err(|()| ApiError::Internal(format!("{} is not absolute", path.display())))?;
@@ -147,19 +160,8 @@ async fn list(
     }
 }
 
-/// `path` resolved through symlinks, if it is inside one of the data roots. The roots are the
-/// server's policy: registering never adds to them.
-fn inside_roots(path: &Path, roots: &[PathBuf]) -> Result<PathBuf, ApiError> {
-    let resolved = path.canonicalize().map_err(|e| {
-        ApiError::Policy(vec![("path_not_found", format!("{}: {e}", path.display()))])
-    })?;
-    if !roots.iter().any(|r| resolved.starts_with(r)) {
-        return Err(ApiError::Policy(vec![(
-            "path_outside_data_roots",
-            format!("{} is outside the data roots", resolved.display()),
-        )]));
-    }
-    Ok(resolved)
+fn policy(problem: (&'static str, String)) -> ApiError {
+    ApiError::Policy(vec![problem])
 }
 
 /// The last part of an object-store URI: the object or folder, else the bucket.
