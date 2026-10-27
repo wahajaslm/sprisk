@@ -90,6 +90,7 @@ function MethodDetail({ current, all, operators, onPick }: { current: OrderedMet
         </span>
         <h2>{method.name}</h2>
         <p>{method.question}</p>
+        {(method.applies_when?.assets?.length ?? 0) > 0 && <p className="mth-order-applies">Applies only when the question binds {method.applies_when?.assets?.join(" and ")} files to its rows.</p>}
       </header>
       <section>
         <h3 className="dsx-h">Choices</h3>

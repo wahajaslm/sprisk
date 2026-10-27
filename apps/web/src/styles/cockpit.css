@@ -2478,6 +2478,7 @@ p { margin: 0; }
 .mth-order-choices strong { color: var(--text-strong); font-weight: var(--fw-medium); }
 .mth-order-does { font: 11px var(--mono); color: var(--text-secondary); }
 .mth-order-why { color: var(--text-secondary); }
+.mth-order-applies { font-size: var(--fs-12-5); color: var(--text-muted); }
 .mth-order-links { display: flex; flex-wrap: wrap; gap: 6px; }
 .mth-order-link { padding: 2px 8px; border: 1px solid var(--border-panel); border-radius: var(--radius-sm); background: transparent; color: var(--text-primary); font: var(--fs-12) var(--sans); cursor: pointer; }
 .mth-order-link:hover { border-color: var(--ink-3); }
