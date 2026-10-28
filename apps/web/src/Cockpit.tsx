@@ -12,6 +12,7 @@ import { Experiments } from "./views/Experiments.tsx";
 import { DeployPage } from "./views/deploy/DeployPage.tsx";
 import { ReportsPage } from "./views/reports/ReportsPage.tsx";
 import { SettingsPage } from "./views/settings/SettingsPage.tsx";
+import { SplitChoiceExample } from "./views/examples/SplitChoiceExample.tsx";
 import { useSelection } from "./workbench/selection.ts";
 import { useWorkbench } from "./workbench/workbench.ts";
 
@@ -49,6 +50,8 @@ export function Cockpit() {
             <FlowPage />
           ) : nav === "Methodology" ? (
             <MethodologyPage />
+          ) : nav === "SplitExample" ? (
+            <SplitChoiceExample />
           ) : nav === "Experiments" ? (
             <Experiments />
           ) : nav === "Notebooks" ? (

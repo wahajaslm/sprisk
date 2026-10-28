@@ -1,0 +1,27 @@
+schema_version: sprisk.exploration/v1
+id: customer-safe-split
+
+# One exploration record contains the evidence snapshot, decision, and settings.
+# There is no second user-authored YAML file for this example.
+node:
+  id: validation_split
+  source: split.py
+
+evidence:
+  data.structure.time_column: null
+  data.structure.group_column: customer_id
+
+decision:
+  method: split
+  mode: auto
+  selected_operator: group_split
+  reason: Keep every customer_id value entirely inside train or test.
+
+settings:
+  group_column: customer_id
+  test_fraction: 0.20
+  seed: 42
+
+notebook:
+  path: customer-safe-split.ipynb
+  cell: validation_split

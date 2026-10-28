@@ -17,6 +17,7 @@ const TAB_ICONS: Record<Nav, typeof ObjectiveIcon> = {
   Datasets: DatasetsIcon,
   Notebooks: NotebooksIcon,
   Methodology: MethodologyIcon,
+  SplitExample: MethodologyIcon,
   Experiments: ExperimentsIcon,
   Deploy: DeployIcon,
   Reports: ReportsIcon,
