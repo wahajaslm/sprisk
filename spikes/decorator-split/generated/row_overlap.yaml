@@ -1,0 +1,44 @@
+# Generated from the decorated pack. Do not edit.
+schema_version: sprisk.operator/v1
+id: sprisk.validation.row_overlap@1.0.0
+title: Row leakage check
+capability_class: analyzer
+description: Counts the test rows whose features match a train row.
+entrypoint: validation.row_overlap:row_overlap
+attach:
+  role: split
+  side: output
+concepts:
+  target: common.target
+produces:
+  evaluation.row_overlap:
+    fields:
+      in_both: integer
+      train_rows: integer
+      test_rows: integer
+inputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
+outputs:
+- name: evidence
+  kind: report
+params_schema:
+  type: object
+  additionalProperties: false
+  required:
+  - target
+  properties:
+    target:
+      type: string
+      minLength: 1
+      x-sprisk-column: true
+      x-sprisk-excluded: true
+effects: pure
+network: none
+resources:
+  cpu_cores: 1
+  memory_mb: 2048
+  gpu: none
+  timeout_seconds: 600

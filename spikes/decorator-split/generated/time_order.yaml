@@ -1,0 +1,45 @@
+# Generated from the decorated pack. Do not edit.
+schema_version: sprisk.operator/v1
+id: sprisk.validation.time_order@1.0.0
+title: Time order check
+capability_class: analyzer
+description: Counts the test rows that are not later than the latest train row.
+entrypoint: validation.temporal_split:time_order
+attach:
+  role: split
+  side: output
+concepts:
+  time_column: common.event_time
+produces:
+  evaluation.time_order:
+    fields:
+      not_later_test_rows: integer
+      latest_train: string
+      earliest_test: string
+      train_rows: integer
+      test_rows: integer
+inputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
+outputs:
+- name: evidence
+  kind: report
+params_schema:
+  type: object
+  additionalProperties: false
+  required:
+  - time_column
+  properties:
+    time_column:
+      type: string
+      minLength: 1
+      x-sprisk-column: true
+effects: pure
+network: none
+resources:
+  cpu_cores: 1
+  memory_mb: 1024
+  gpu: none
+  timeout_seconds: 300

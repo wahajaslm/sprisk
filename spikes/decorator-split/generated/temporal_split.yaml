@@ -1,0 +1,49 @@
+# Generated from the decorated pack. Do not edit.
+schema_version: sprisk.operator/v1
+id: sprisk.validation.temporal_split@1.0.0
+title: Temporal split
+capability_class: transform
+role: split
+folds: time
+description: Split by time. Every train row is strictly earlier than every test row.
+entrypoint: validation.temporal_split:temporal_split
+inputs:
+- name: data
+  kind: table
+outputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
+concepts:
+  time_column: common.event_time
+  group_column: common.item_identity
+promises:
+- test_after_train
+params_schema:
+  type: object
+  additionalProperties: false
+  required:
+  - time_column
+  properties:
+    time_column:
+      type: string
+      minLength: 1
+      x-sprisk-column: true
+    test_fraction:
+      type: number
+      minimum: 0.05
+      maximum: 0.4
+      x-sprisk-step: 0.05
+      default: 0.2
+    group_column:
+      type: string
+      minLength: 1
+      x-sprisk-column: true
+effects: pure
+network: none
+resources:
+  cpu_cores: 1
+  memory_mb: 2048
+  gpu: none
+  timeout_seconds: 600

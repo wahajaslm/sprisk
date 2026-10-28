@@ -1,0 +1,4 @@
+extend = "../../pyproject.toml"
+
+[lint.isort]
+known-first-party = ["sprisk", "sprisk_*", "concepts", "validation", "split_method"]
