@@ -248,3 +248,75 @@ def test_a_verification_that_returns_no_result_and_detail_is_refused(
     )
     (answer,) = answers(verify_request(module))
     assert answer["answer"] == "refused"
+
+
+DECORATED = """
+from authored_method import split_way
+"""
+WAY = "methodology.test.split_way@1.0.0"
+
+
+def decorated_request(module: Path, **changes: Any) -> str:
+    message = {
+        "schema_version": "sprisk.method_request/v1",
+        "module": str(module),
+        "method": WAY,
+        "needs": {"concepts": ["common.event_time"], "evidence": [], "decisions": []},
+        "options": ["by_time", "first_rows"],
+        "task": "classification",
+        "evidence": {},
+        "decisions": {},
+        "bound": ["common.event_time"],
+    }
+    return json.dumps({**message, **changes})
+
+
+def test_a_decorated_method_answers_from_the_project_s_bindings(tmp_path: Path) -> None:
+    module = write(tmp_path, "method", DECORATED)
+
+    bound, unbound = answers(decorated_request(module), decorated_request(module, bound=[]))
+
+    assert bound == {
+        "answer": "decided",
+        "method": WAY,
+        "outcome": "choose",
+        "option": "by_time",
+        "reason": "A time column orders the rows.",
+    }
+    assert (unbound["option"], unbound["reason"]) == ("first_rows", "No time column.")
+
+
+def test_a_ruled_out_choice_asks_the_person_to_pick_an_open_option(tmp_path: Path) -> None:
+    module = write(tmp_path, "method", DECORATED)
+    ruled_out = [
+        {"option": "by_time", "verification": "no_shared_rows", "detail": "4 rows are on both."}
+    ]
+
+    (asked,) = answers(decorated_request(module, options=["first_rows"], ruled_out=ruled_out))
+
+    assert (asked["outcome"], asked["option"]) == ("ask", "first_rows")
+    assert asked["reason"] == (
+        "Train on earlier rows, test on later ones broke its promise: 4 rows are on both. "
+        "Which way should it go instead?"
+    )
+
+
+def test_a_decorated_method_with_no_open_option_refuses(tmp_path: Path) -> None:
+    module = write(tmp_path, "method", DECORATED)
+    ruled_out = [{"option": "by_time", "verification": "no_shared_rows", "detail": "Broken."}]
+
+    (refused,) = answers(decorated_request(module, options=[], ruled_out=ruled_out))
+
+    assert refused["answer"] == "refused"
+    assert "no option is left" in refused["error"]
+
+
+def test_a_decorated_promise_s_verdict_is_its_verification(tmp_path: Path) -> None:
+    module = write(tmp_path, "method", DECORATED)
+    evidence = {"shared": 2, "examples": [], "status": "fail", "detail": "2 rows are on both."}
+
+    (found,) = answers(
+        verify_request(module, method=WAY, verification="no_shared_rows", evidence=evidence)
+    )
+
+    assert (found["result"], found["detail"]) == ("fail", "2 rows are on both.")

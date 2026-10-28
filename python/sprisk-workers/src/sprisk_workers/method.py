@@ -1,4 +1,5 @@
-"""Run methods' decide(ctx) and verify_<name>() (ADR-0063), one session per walk round.
+"""Run methods' decide(ctx) and verify_<name>() (ADR-0063), or a decorated method and the
+verdicts of its promises (ADR-0071), one session per walk round.
 
 Run as `python -m sprisk_workers.method`: one MethodRequest or VerificationRequest per line on
 stdin, one MethodAnswer per line on stdout, until stdin closes. Rust picks each module from the
@@ -6,6 +7,7 @@ loaded catalog and sends only what the method's needs declare; ctx refuses any o
 """
 
 import importlib.util
+import inspect
 import json
 import os
 import sys
@@ -17,6 +19,7 @@ from typing import Any, TextIO, get_args
 from pydantic import ValidationError
 
 from sprisk_contracts import MethodAnswer, MethodRequest, VerificationOutcome, VerificationRequest
+from sprisk_workers.authoring import Binding, Choice, MethodDeclaration, declared_method
 from sprisk_workers.errors import MethodError
 
 
@@ -98,16 +101,61 @@ OUTCOMES = {o.value for o in VerificationOutcome}
 (VERIFY,) = get_args(VerificationRequest.model_fields["schema_version"].annotation)
 
 
-def load_function(module_path: Path, name: str) -> Callable[..., Any]:
+def _module(module_path: Path) -> Any:
     spec = importlib.util.spec_from_file_location("sprisk_method", module_path)
     if spec is None or spec.loader is None:
         raise MethodError(f"cannot load method module {module_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    found = getattr(module, name, None)
+    return module
+
+
+def _decorated(module_path: Path) -> Callable[..., Any] | None:
+    """The module's decorated method, when it is written that way (ADR-0071)."""
+    found = [v for v in vars(_module(module_path)).values() if callable(v) and declared_method(v)]
+    if len(found) > 1:
+        raise MethodError(f"{module_path} holds {len(found)} methods; a method file holds one")
+    return found[0] if found else None
+
+
+def load_function(module_path: Path, name: str) -> Callable[..., Any]:
+    found = getattr(_module(module_path), name, None)
     if not callable(found):
         raise MethodError(f"{module_path} has no {name}() function")
     return found  # type: ignore[no-any-return]
+
+
+def _arguments(fn: Callable[..., Any], found: MethodDeclaration, ctx: Context) -> dict[str, Any]:
+    """The task, and a Binding or None for each concept: never a column name (ADR-0063)."""
+    arguments: dict[str, Any] = {}
+    for name in inspect.signature(fn).parameters:
+        if name == "task":
+            arguments[name] = ctx.task
+        elif name in found.concepts:
+            arguments[name] = Binding() if ctx.bound(found.concepts[name]) else None
+        else:
+            raise MethodError(f"{fn.__name__}: parameter {name} is neither task nor a concept")
+    return arguments
+
+
+def _decide(fn: Callable[..., Any], ctx: Context, request: MethodRequest) -> Outcome:
+    """Run a decorated method. A choice whose promise already broke is never taken again:
+    the person is asked to pick one of the options still open (ADR-0071)."""
+    found = declared_method(fn)
+    assert found is not None
+    choice = fn(**_arguments(fn, found, ctx))
+    if not isinstance(choice, Choice):
+        raise MethodError(f"{fn.__name__} must return method.choose(option, reason=...)")
+    broken = ctx.ruled_out(choice.option) if choice.option in found.options else None
+    if broken is None:
+        return ctx.choose(choice.option, choice.reason)
+    still_open = [o for o in found.options if o in {x.root for x in request.options}]
+    if not still_open:
+        raise MethodError(f"{fn.__name__}: every option broke its promise; no option is left")
+    label = found.options[choice.option].label
+    return ctx.ask(
+        still_open[0], f"{label} broke its promise: {broken} Which way should it go instead?"
+    )
 
 
 def answer(request: MethodRequest) -> MethodAnswer:
@@ -115,7 +163,12 @@ def answer(request: MethodRequest) -> MethodAnswer:
     ends the session."""
     method = request.method.root
     try:
-        outcome = load_function(Path(request.module), "decide")(Context(request))
+        decorated = _decorated(Path(request.module))
+        ctx = Context(request)
+        if decorated is not None:
+            outcome = _decide(decorated, ctx, request)
+        else:
+            outcome = load_function(Path(request.module), "decide")(ctx)
         if not isinstance(outcome, Outcome):
             raise MethodError(f"{method}: decide() must return ctx.choose or ask")
     except MethodError as e:
@@ -138,9 +191,13 @@ def verify(request: VerificationRequest) -> MethodAnswer:
     sent = request.model_dump(mode="json")
     method, name = sent["method"], sent["verification"]
     try:
-        found = load_function(Path(request.module), f"verify_{name}")(
-            sent["evidence"], sent["settings"]
-        )
+        if _decorated(Path(request.module)) is not None:
+            # A decorated promise judged its own outputs; its verdict is in the evidence.
+            found = (sent["evidence"].get("status"), sent["evidence"].get("detail"))
+        else:
+            found = load_function(Path(request.module), f"verify_{name}")(
+                sent["evidence"], sent["settings"]
+            )
         if not (
             isinstance(found, tuple)
             and len(found) == 2
