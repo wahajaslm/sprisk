@@ -20,6 +20,9 @@ concepts:
   group_column: common.item_identity
 promises:
 - test_after_train
+plots:
+- id: rows_over_time
+  title: Rows over time, with the cutoff
 params_schema:
   type: object
   additionalProperties: false

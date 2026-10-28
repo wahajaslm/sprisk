@@ -70,13 +70,10 @@ options:
   - no_row_in_both
 verifications:
   test_after_train:
-    needs: evaluation.time_order
     promise: Every test row is later than the latest train row.
   no_group_overlap:
-    needs: evaluation.group_overlap
     promise: No item has rows in both train and test.
   no_row_in_both:
-    needs: evaluation.row_overlap
     promise: No test row has the same features as a train row.
 source: "Roberts et al. (2017), Ecography 40(8): cross-validation for temporal and grouped data; scikit-learn\
   \ User Guide \xA73.1: GroupShuffleSplit, train_test_split(stratify=y)."

@@ -18,6 +18,9 @@ outputs:
 concepts: {}
 promises:
 - no_row_in_both
+plots:
+- id: rows_per_side
+  title: Rows in train and test
 params_schema:
   type: object
   additionalProperties: false

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -7,45 +7,66 @@ import { SplitChoiceExample } from "../src/views/examples/SplitChoiceExample.tsx
 const cell = (label: string) => screen.getByLabelText(label) as HTMLTextAreaElement;
 
 describe("decorator split example", () => {
-  it("shows the method's own choice, reason, bound column and promise", async () => {
+  it("shows the method's choice, reason, column, promise and the operator's plot on the node", async () => {
     render(<SplitChoiceExample />);
 
-    expect(screen.getByText("Group split", { selector: ".split-example-selected" })).toBeInTheDocument();
-    expect(screen.getByText("Chosen by the method")).toBeInTheDocument();
-    expect(screen.getByText("title_id")).toBeInTheDocument();
-    expect(screen.getByText(/Rows of one item stay on one side/)).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Promises" })).toHaveTextContent("No item has rows in both train and test.");
+    const node = screen.getByRole("article", { name: "Split node" });
+    expect(within(node).getByText("Group split", { selector: ".split-example-selected" })).toBeInTheDocument();
+    expect(within(node).getByText("Chosen by the method")).toBeInTheDocument();
+    expect(within(node).getByText("title_id")).toBeInTheDocument();
+    expect(within(node).getByText("Rows of one item stay on one side.")).toBeInTheDocument();
+    expect(within(node).getByRole("list", { name: "Promises" })).toHaveTextContent("No item has rows in both train and test.");
+    expect(await within(node).findByRole("img", { name: "Items in train and test" })).toBeInTheDocument();
+  });
+
+  it("shows the split and its plot as plain Python cells", async () => {
+    render(<SplitChoiceExample />);
 
     const split = await screen.findByLabelText("Split cell") as HTMLTextAreaElement;
     expect(split.value).toContain("def group_split(");
-    expect(split.value).toContain('group_split(data, group_column="title_id", test_fraction=0.2, seed=42)');
-    expect(split.value).not.toMatch(/sprisk|@operator|ItemIdentity|TestFraction/);
-    expect(await screen.findByRole("img", { name: "Rows in train and test" })).toBeInTheDocument();
+    expect(split.value).toContain('train, test = group_split(data, group_column="title_id", test_fraction=0.2, seed=42)');
+    expect(split.value).not.toMatch(/sprisk|@operator|@promise/);
+
+    const plot = await screen.findByLabelText("Items in train and test cell") as HTMLTextAreaElement;
+    expect(plot.value).toContain("def items_per_side(");
+    expect(plot.value).toContain('figure = items_per_side(train, test, group_column="title_id")');
   });
 
-  it("overrides the method and says what auto would pick", async () => {
+  it("swaps operator, promise and plot together on an override", async () => {
     const user = userEvent.setup();
     render(<SplitChoiceExample />);
 
     await user.click(screen.getByRole("button", { name: "Random" }));
 
-    expect(screen.getByText("Random split", { selector: ".split-example-selected" })).toBeInTheDocument();
-    expect(screen.getByText("Chosen by you")).toBeInTheDocument();
-    expect(screen.getByText(/Auto would pick Group split/)).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Promises" })).toHaveTextContent("No test row has the same features as a train row.");
+    const node = screen.getByRole("article", { name: "Split node" });
+    expect(within(node).getByText("Random split", { selector: ".split-example-selected" })).toBeInTheDocument();
+    expect(within(node).getByText("Chosen by you")).toBeInTheDocument();
+    expect(within(node).getByText(/Auto would pick Group split/)).toBeInTheDocument();
+    expect(within(node).getByRole("list", { name: "Promises" })).toHaveTextContent("No test row has the same features as a train row.");
+    expect(await within(node).findByRole("img", { name: "Rows in train and test" })).toBeInTheDocument();
     expect((await screen.findByLabelText("Split cell") as HTMLTextAreaElement).value)
-      .toContain("random_split(data, test_fraction=0.2, seed=42)");
+      .toContain("train, test = random_split(data, test_fraction=0.2, seed=42)");
   });
 
-  it("refuses to pretend a split runs when its concept is not bound", async () => {
+  it("refuses to pretend a split runs when its column is not bound", async () => {
     const user = userEvent.setup();
     render(<SplitChoiceExample />);
 
     await user.click(screen.getByRole("button", { name: "Temporal" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("Temporal split needs common.event_time, which this project has not bound.");
-    expect(screen.queryByRole("img", { name: "Rows in train and test" })).not.toBeInTheDocument();
-    expect(screen.getByText(/No chart: the split cannot run/)).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Rows over time, with the cutoff" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("No plot: common.event_time is not bound.").length).toBeGreaterThan(0);
+  });
+
+  it("holds back a plot that reads the target until the final score", async () => {
+    const user = userEvent.setup();
+    render(<SplitChoiceExample />);
+
+    await user.click(screen.getByRole("button", { name: "Stratified" }));
+
+    expect(screen.queryByRole("img", { name: "Class shares in train and test" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Reads the target, so it is shown with the final score.").length).toBeGreaterThan(0);
   });
 
   it("moves a setting from the form to the cell and from the cell to the form", async () => {
@@ -82,25 +103,29 @@ describe("decorator split example", () => {
     expect(screen.getByText(/Custom code. The promises are still checked/)).toBeInTheDocument();
   });
 
-  it("lists the files a person writes apart from the YAML Rust reads", async () => {
+  it("lists only the five files a person writes", async () => {
     const user = userEvent.setup();
     render(<SplitChoiceExample />);
 
-    await user.click(screen.getByRole("tab", { name: "Pack files" }));
-    expect((await screen.findByLabelText("split_method.py source") as HTMLTextAreaElement).value).toContain("@method(");
+    await user.click(screen.getByRole("tab", { name: "Files" }));
 
-    await user.click(screen.getByRole("button", { name: "generated/split_method.yaml" }));
-    const yaml = await screen.findByLabelText("generated/split_method.yaml source") as HTMLTextAreaElement;
-    expect(yaml).toHaveAttribute("readonly");
-    expect(yaml.value).toContain("# Generated from the decorated pack. Do not edit.");
+    const files = within(screen.getByRole("navigation", { name: "Files" })).getAllByRole("button").map((b) => b.textContent);
+    expect(files).toEqual([
+      "split_method.py",
+      "validation/group_split.py",
+      "validation/temporal_split.py",
+      "validation/random_split.py",
+      "validation/stratified_split.py",
+    ]);
+    expect((await screen.findByLabelText("split_method.py source") as HTMLTextAreaElement).value).toContain("@method(");
   });
 
-  it("exports the split and chart cells as a plain notebook", () => {
+  it("exports the split and plot cells as a plain notebook", () => {
     render(<SplitChoiceExample />);
 
     const href = screen.getByRole("link", { name: "Export .ipynb" }).getAttribute("href") ?? "";
     const notebook = JSON.parse(decodeURIComponent(href.split(",", 2)[1] ?? "")) as { cells: { source: string[] }[] };
     expect(notebook.cells[1]?.source.join("")).toContain("def group_split(");
-    expect(notebook.cells[2]?.source.join("")).toContain("def split_chart(");
+    expect(notebook.cells[2]?.source.join("")).toContain("def items_per_side(");
   });
 });

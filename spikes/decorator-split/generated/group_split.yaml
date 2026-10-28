@@ -19,6 +19,9 @@ concepts:
   group_column: common.item_identity
 promises:
 - no_group_overlap
+plots:
+- id: items_per_side
+  title: Items in train and test
 params_schema:
   type: object
   additionalProperties: false

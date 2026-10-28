@@ -19,6 +19,9 @@ concepts:
   stratify: common.target
 promises:
 - no_row_in_both
+plots:
+- id: class_shares
+  title: Class shares in train and test
 params_schema:
   type: object
   additionalProperties: false
@@ -29,7 +32,6 @@ params_schema:
       type: string
       minLength: 1
       x-sprisk-column: true
-      x-sprisk-excluded: true
     test_fraction:
       type: number
       minimum: 0.05

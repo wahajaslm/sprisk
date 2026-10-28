@@ -1,15 +1,20 @@
-from concepts import EventTime, ItemIdentity, Target, Task
-from sprisk import Choice, choose, method
+from sprisk import method
 from validation import group_split, random_split, stratified_split, temporal_split
 
 
 @method(
+    id="split_method",
     decides="split.method",
     name="Train/test split",
     activity="Fair evaluation",
     question="How are rows divided into training and test so the score is fair?",
     applies_when={"task": ["classification", "regression"]},
     decisions=["data.repeated_items"],
+    columns={
+        "event_time": "common.event_time",
+        "item_identity": "common.item_identity",
+        "target": "common.target",
+    },
     options={
         "temporal": temporal_split,
         "item_groups": group_split,
@@ -21,27 +26,13 @@ from validation import group_split, random_split, stratified_split, temporal_spl
         "data; scikit-learn User Guide §3.1: GroupShuffleSplit, train_test_split(stratify=y)."
     ),
 )
-def split_method(
-    task: Task,
-    event_time: EventTime | None,
-    item_identity: ItemIdentity | None,
-    target: Target | None,
-) -> Choice:
+def split(task, event_time, item_identity, target):
     if event_time:
-        return choose(
-            "temporal",
-            "A time column orders the rows: train on earlier rows, test on later ones. The split "
-            "leaves no gap at the cutoff, so a label that looks ahead may share its window "
-            "with the first test rows.",
-        )
+        return method.choose("temporal", reason="Train on earlier rows, test on later ones.")
     if item_identity:
-        return choose(
-            "item_groups",
-            "Rows of one item stay on one side, so no item is scored on rows the model saw.",
-        )
+        return method.choose("item_groups", reason="Rows of one item stay on one side.")
     if task == "classification" and target:
-        return choose(
-            "stratified_random",
-            "Every row is its own item, and each class keeps its share in train and test.",
+        return method.choose(
+            "stratified_random", reason="Each class keeps its share in train and test."
         )
-    return choose("simple_random", "Every row is its own item.")
+    return method.choose("simple_random", reason="Every row is its own item.")
