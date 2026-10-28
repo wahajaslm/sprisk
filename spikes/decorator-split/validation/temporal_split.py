@@ -1,20 +1,25 @@
 import plotly.graph_objects as go
 import polars as pl
 
-from sprisk import operator, promise
+from sprisk import Verdict, operator, promise, visualization
 
 
 @promise(id="test_after_train", text="Every test row is later than the latest train row.")
 def test_after_train(train: pl.DataFrame, test: pl.DataFrame, time_column: str):
     latest = train[time_column].max()
     early = test.filter(pl.col(time_column) <= latest).height
+    evidence = {
+        "not_later_test_rows": early,
+        "latest_train": str(latest),
+        "earliest_test": str(test[time_column].min()),
+    }
     if early:
-        return "fail", f"{early} test rows are not later than {latest}."
-    return "pass", f"Every test row is later than {latest}."
+        return Verdict("fail", f"{early} test rows are not later than {latest}.", evidence)
+    return Verdict("pass", f"Every test row is later than {latest}.", evidence)
 
 
-def rows_over_time(train: pl.DataFrame, test: pl.DataFrame, time_column: str) -> go.Figure:
-    """Rows over time, with the cutoff"""
+@visualization(title="Rows over time, with the cutoff")
+def rows_over_time(train: pl.DataFrame, test: pl.DataFrame, time_column: str):
     figure = go.Figure()
     for name, side in (("train", train), ("test", test)):
         counts = side.group_by(time_column).len().sort(time_column)

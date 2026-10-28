@@ -2,15 +2,24 @@ import plotly.graph_objects as go
 import polars as pl
 from sklearn.model_selection import GroupShuffleSplit
 
-from sprisk import operator, promise
+from sprisk import Verdict, operator, promise
 
 
 @promise(id="no_group_overlap", text="No item has rows in both train and test.")
 def no_group_overlap(train: pl.DataFrame, test: pl.DataFrame, group_column: str):
-    both = set(train[group_column]) & set(test[group_column])
+    train_items, test_items = set(train[group_column]), set(test[group_column])
+    both = train_items & test_items
+    evidence = {
+        "overlapping_items": len(both),
+        "examples": sorted(map(str, both))[:5],
+        "train_items": len(train_items),
+        "test_items": len(test_items),
+    }
+    if not train_items or not test_items:
+        return Verdict("inconclusive", "One side has no items.", evidence)
     if both:
-        return "fail", f"{len(both)} items have rows in both train and test."
-    return "pass", "No item is in both sides."
+        return Verdict("fail", f"{len(both)} items have rows in both train and test.", evidence)
+    return Verdict("pass", "No item is in both sides.", evidence)
 
 
 def items_per_side(train: pl.DataFrame, test: pl.DataFrame, group_column: str) -> go.Figure:

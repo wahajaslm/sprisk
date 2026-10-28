@@ -1,4 +1,4 @@
-# Generated from the decorated pack. Do not edit.
+# Method IR, compiled from the decorated pack. Do not edit.
 schema_version: sprisk.operator/v1
 id: sprisk.validation.group_split@1.0.0
 title: Group split
@@ -19,7 +19,7 @@ concepts:
   group_column: common.item_identity
 promises:
 - no_group_overlap
-plots:
+visualizations:
 - id: items_per_side
   title: Items in train and test
 params_schema:

@@ -1,4 +1,4 @@
-# Generated from the decorated pack. Do not edit.
+# Method IR, compiled from the decorated pack. Do not edit.
 schema_version: sprisk.operator/v1
 id: sprisk.validation.random_split@1.0.0
 title: Random split
@@ -18,7 +18,7 @@ outputs:
 concepts: {}
 promises:
 - no_row_in_both
-plots:
+visualizations:
 - id: rows_per_side
   title: Rows in train and test
 params_schema:

@@ -1,4 +1,4 @@
-# Generated from the decorated pack. Do not edit.
+# Method IR, compiled from the decorated pack. Do not edit.
 schema_version: sprisk.operator/v1
 id: sprisk.validation.stratified_split@1.0.0
 title: Stratified split
@@ -19,7 +19,7 @@ concepts:
   stratify: common.target
 promises:
 - no_row_in_both
-plots:
+visualizations:
 - id: class_shares
   title: Class shares in train and test
 params_schema:

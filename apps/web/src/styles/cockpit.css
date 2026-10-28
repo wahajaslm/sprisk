@@ -7844,19 +7844,23 @@ p { margin: 0; }
 .split-example-canvas { display: flex; min-height: 265px; align-items: center; justify-content: center; padding: 24px; background-image: radial-gradient(var(--alpha-08) 0.7px, transparent 0.7px); background-size: 18px 18px; }
 .split-example-link { width: 36px; height: 1px; flex-shrink: 0; background: var(--alpha-14); }
 .split-example-data-node { position: relative; z-index: 1; padding: 13px; border: 1px solid var(--alpha-08); border-radius: var(--radius-md); background: var(--gray-4); color: var(--text-secondary); font-size: var(--fs-13); text-align: center; }
-.split-example-node { width: 300px; flex-shrink: 0; position: relative; z-index: 1; overflow: hidden; border: 1px solid var(--alpha-14); border-radius: var(--radius-md); background: var(--gray-5); box-shadow: 0 10px 30px var(--black-alpha-60); }
+.split-example-node { width: 340px; flex-shrink: 0; position: relative; z-index: 1; overflow: hidden; border: 1px solid var(--alpha-14); border-radius: var(--radius-md); background: var(--gray-5); box-shadow: 0 10px 30px var(--black-alpha-60); }
 .split-example-node header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--alpha-07); }
 .split-example-node header h2 { margin: 0; color: var(--text-primary); font-size: var(--fs-15); font-weight: var(--fw-medium); }
 .split-example-node header p { margin: 2px 0 0; color: var(--text-faint); font-size: var(--fs-11-5); }
 .split-example-node-icon { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--alpha-14); border-radius: var(--radius-sm); background: var(--gray-7); }
 .split-example-node dl { display: grid; gap: 7px; margin: 0; padding: 12px 14px; font-size: var(--fs-12-5); }
-.split-example-node dl div { display: grid; grid-template-columns: 92px 1fr; gap: 8px; }
+.split-example-node dl div { display: grid; grid-template-columns: 100px 1fr; gap: 8px; }
 .split-example-node dt { color: var(--text-faint); }
 .split-example-node dd { margin: 0; color: var(--text-secondary); }
 .split-example-node .split-example-selected { color: var(--text-primary); }
 .split-example-reason { margin: 0; padding: 0 14px 12px; color: var(--text-muted); font-size: var(--fs-11-5); line-height: var(--lh-body); }
 .split-example-promises { display: grid; gap: 4px; margin: 0; padding: 0 14px 12px; list-style: none; font-size: var(--fs-11-5); color: var(--text-secondary); }
-.split-example-promises li::before { content: "◦ "; color: var(--text-faint); }
+.split-example-promises li { display: grid; gap: 2px; }
+.split-example-promises small { padding-left: 12px; color: var(--text-faint); font: var(--fs-11) var(--font-mono); }
+.split-example-node dd.split-example-decision { color: var(--text-primary); }
+.split-example-binding { display: block; margin-top: 3px; color: var(--text-faint); font: var(--fs-11) var(--font-mono); }
+.split-example-record { margin: 0; padding: 0 14px 10px; color: var(--text-faint); font: var(--fs-11) var(--font-mono); overflow-wrap: anywhere; }
 .split-example-warning { margin: 0; padding: 8px 10px; border: 1px solid var(--alpha-14); border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--fs-12); }
 .split-example-note { margin: 0 20px 10px; color: var(--text-faint); font-size: var(--fs-11-5); }
 .split-example-output { margin: 0 20px 22px; padding: 10px 0; border: 1px solid var(--border-panel); background: var(--bg-input); }

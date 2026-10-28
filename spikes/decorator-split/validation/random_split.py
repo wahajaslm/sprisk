@@ -1,15 +1,16 @@
 import plotly.graph_objects as go
 import polars as pl
 
-from sprisk import operator, promise
+from sprisk import Verdict, operator, promise
 
 
 @promise(id="no_row_in_both", text="No test row has the same features as a train row.")
 def no_row_in_both(train: pl.DataFrame, test: pl.DataFrame):
     repeated = test.join(train.unique(), on=test.columns, how="semi", nulls_equal=True).height
+    evidence = {"repeated_rows": repeated, "test_rows": test.height}
     if repeated:
-        return "fail", f"{repeated} test rows repeat a train row."
-    return "pass", "No test row repeats a train row."
+        return Verdict("fail", f"{repeated} test rows repeat a train row.", evidence)
+    return Verdict("pass", "No test row repeats a train row.", evidence)
 
 
 def rows_per_side(train: pl.DataFrame, test: pl.DataFrame) -> go.Figure:

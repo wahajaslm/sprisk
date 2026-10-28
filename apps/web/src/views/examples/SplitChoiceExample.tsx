@@ -12,10 +12,12 @@ const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
 type Setting = { type: string; minimum?: number; maximum?: number; "x-sprisk-step"?: number; default?: number };
 type Plot = (typeof pack.options)[number]["plots"][number] & { figure: string | null };
-type Option = Omit<(typeof pack.options)[number], "settings" | "columns" | "plots"> & {
+type Verification = { promise: string; text: string; status: string; detail: string; evidence: Record<string, unknown> };
+type Option = Omit<(typeof pack.options)[number], "settings" | "columns" | "plots" | "verifications"> & {
   settings: Record<string, Setting>;
   columns: Record<string, string>;
   plots: Plot[];
+  verifications: Verification[];
 };
 type Values = Record<string, number>;
 
@@ -75,6 +77,16 @@ function exportedNotebook(cells: string[]): string {
   }, null, 2);
 }
 
+const MARK: Record<string, string> = { pass: "✓", fail: "✗", inconclusive: "?" };
+
+/** Evidence a person can read: counts and values, not empty example lists. */
+function evidenceText(evidence: Record<string, unknown>): string {
+  return Object.entries(evidence)
+    .filter(([, value]) => !Array.isArray(value) || value.length > 0)
+    .map(([name, value]) => `${name.replaceAll("_", " ")} ${Array.isArray(value) ? value.join(", ") : String(value)}`)
+    .join(" · ");
+}
+
 function PlotView({ plot, missing, atDefaults, small = false }: { plot: Plot; missing: string[]; atDefaults: boolean; small?: boolean }) {
   if (missing.length > 0) return <p className="split-example-plot-note">No plot: {missing.join(", ")} is not bound.</p>;
   if (plot.final_only) return <p className="split-example-plot-note">Reads the target, so it is shown with the final score.</p>;
@@ -98,7 +110,8 @@ export function SplitChoiceExample() {
   const [edited, setEdited] = useState<string | null>(null);
   const [file, setFile] = useState(pack.files[0]!.path);
 
-  const auto = byId(pack.auto.option);
+  const decision = pack.decision;
+  const auto = byId(decision.option);
   const selected = override ? byId(override) : auto;
   const current = values[selected.id]!;
   const code = edited ?? `${selected.definition}\n\n${splitCall(selected, current)}`;
@@ -166,17 +179,34 @@ export function SplitChoiceExample() {
                   </div>
                 </header>
                 <dl>
-                  <div><dt>Operator</dt><dd className="split-example-selected">{selected.label}</dd></div>
-                  {Object.entries(selected.columns).map(([name, column]) => (
-                    <div key={name}><dt>{name}</dt><dd>{BINDINGS[column] ?? "not bound"}</dd></div>
-                  ))}
+                  <div><dt>Decision</dt><dd className="split-example-decision">{selected.label}</dd></div>
+                  <div>
+                    <dt>Why</dt>
+                    <dd>
+                      {override ? `Chosen by you. The method would pick: ${auto.label}.` : decision.reason}
+                      {Object.entries(selected.columns).map(([name, column]) => (
+                        <span key={name} className="split-example-binding">{column} → {BINDINGS[column] ?? "not bound"}</span>
+                      ))}
+                    </dd>
+                  </div>
+                  <div><dt>Implementation</dt><dd className="split-example-selected">{selected.implementation}</dd></div>
                 </dl>
-                <p className="split-example-reason">
-                  {override ? `Auto would pick ${auto.label}: ${pack.auto.reason}` : pack.auto.reason}
-                </p>
-                <ul className="split-example-promises" aria-label="Promises">
-                  {selected.promises.map((promise) => <li key={promise}>{promise}</li>)}
+                <ul className="split-example-promises" aria-label="Verification">
+                  {selected.verifications.length > 0
+                    ? selected.verifications.map((check) => (
+                      <li key={check.promise} data-status={check.status}>
+                        <span>{MARK[check.status]} {check.text}</span>
+                        <small>{evidenceText(check.evidence)}</small>
+                      </li>
+                    ))
+                    : selected.promises.map((promise) => <li key={promise}><span>· {promise}</span><small>Not checked: the split cannot run.</small></li>)}
+                  {selected.verifications.length > 0 && !atDefaults && <li><small>Checked at the default settings.</small></li>}
                 </ul>
+                {!override && (
+                  <p className="split-example-record">
+                    Decided from {Object.entries(decision.inputs).filter(([, value]) => value !== null).map(([name, value]) => `${name}=${String(value)}`).join(", ")} · code {decision.code}
+                  </p>
+                )}
                 {selected.plots.map((plot) => (
                   <figure key={plot.name} className="split-example-node-plot" aria-label={`${plot.title} on the node`}>
                     <figcaption>{plot.title}</figcaption>
@@ -193,16 +223,16 @@ export function SplitChoiceExample() {
                 <button type="button" className={override === null ? "active" : ""} onClick={() => pick(null)}>Auto</button>
                 {OPTIONS.map((option) => (
                   <button key={option.id} type="button" className={override === option.id ? "active" : ""} onClick={() => pick(option.id)}>
-                    {option.label.replace(" split", "")}
+                    {option.implementation.replace(" split", "")}
                   </button>
                 ))}
               </div>
               {missing.length > 0 && (
                 <p className="split-example-warning" role="alert">
-                  {selected.label} needs {missing.join(", ")}, which this project has not bound. It cannot run.
+                  {selected.implementation} needs {missing.join(", ")}, which this project has not bound. It cannot run.
                 </p>
               )}
-              <h3>{selected.label} settings</h3>
+              <h3>{selected.implementation} settings</h3>
               <div className="split-example-fields">
                 {Object.entries(selected.settings).map(([name, setting]) => (
                   <label key={name}>

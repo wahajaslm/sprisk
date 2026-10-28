@@ -1,4 +1,4 @@
-from sprisk import method
+from sprisk import method, option
 from validation import group_split, random_split, stratified_split, temporal_split
 
 
@@ -16,10 +16,10 @@ from validation import group_split, random_split, stratified_split, temporal_spl
         "target": "common.target",
     },
     options={
-        "temporal": temporal_split,
-        "item_groups": group_split,
-        "stratified_random": stratified_split,
-        "simple_random": random_split,
+        "temporal": option("Train on earlier rows, test on later ones", temporal_split),
+        "item_groups": option("Keep each item's rows on one side", group_split),
+        "stratified_random": option("Random rows, with class shares kept", stratified_split),
+        "simple_random": option("Random rows", random_split),
     },
     source=(
         "Roberts et al. (2017), Ecography 40(8): cross-validation for temporal and grouped "

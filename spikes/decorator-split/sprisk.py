@@ -1,24 +1,108 @@
-"""Spike runtime. `@method`, `@operator` and `@promise` record what a function declares. Plots
-are found by AST: a function in an operator's file that returns `go.Figure`. The `*_manifest`
-functions write today's YAML shapes, so Rust keeps reading YAML."""
+"""Spike runtime. Python is the authoring format: `@concept`, `@method`, `@operator`, `@promise`
+and `@visualization` record what a function declares. A visualization is also found by AST: a
+function in an operator's file that returns a view type. The `*_manifest` functions compile
+the records into the versioned Method IR; YAML is its current serialization."""
 
 import ast
+import hashlib
 import inspect
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 Fn = Callable[..., Any]
 
 RESOURCES = {"cpu_cores": 1, "memory_mb": 2048, "gpu": "none", "timeout_seconds": 600}
 JSON_TYPES = {float: "number", int: "integer", str: "string"}
+# Return types the app can draw: Plotly and Vega-Lite (Altair).
+VIEW_TYPES = {"go.Figure", "alt.Chart"}
+
+
+@dataclass(frozen=True)
+class Concept:
+    id: str
+    kind: str
+    description: str
+    accepts: tuple[str, ...]
+
+
+CONCEPTS: dict[str, Concept] = {}
+
+
+def concept(*, id: str, kind: str, description: str, accepts: list[str]) -> Callable[[type], type]:
+    """Define a new reusable meaning. Existing concepts are referenced by id, never redefined."""
+
+    def register(cls: type) -> type:
+        if id in CONCEPTS:
+            raise ValueError(f"concept {id} is already defined")
+        CONCEPTS[id] = Concept(id, kind, description, tuple(accepts))
+        return cls
+
+    return register
+
+
+@concept(
+    id="common.item_identity",
+    kind="entity_identifier",
+    description="Groups rows that describe the same real-world item.",
+    accepts=["column", "derived"],
+)
+class ItemIdentity: ...
+
+
+@concept(
+    id="common.event_time",
+    kind="time",
+    description="When the event a row describes happened.",
+    accepts=["column"],
+)
+class EventTime: ...
+
+
+@concept(
+    id="common.target",
+    kind="label",
+    description="The value the model learns to predict.",
+    accepts=["column"],
+)
+class Target: ...
+
+
+def _concepts(concepts: dict[str, str] | None, columns: dict[str, str] | None) -> dict[str, str]:
+    """`columns=` is the short form for concepts bound to a table column."""
+    merged = {**(concepts or {}), **(columns or {})}
+    for name, concept_id in merged.items():
+        if concept_id not in CONCEPTS:
+            raise ValueError(f"{name} names concept {concept_id}, which is not defined")
+    for name, concept_id in (columns or {}).items():
+        if "column" not in CONCEPTS[concept_id].accepts:
+            raise ValueError(f"{name}: concept {concept_id} cannot be bound to a column")
+    return merged
+
+
+@dataclass(frozen=True)
+class Option:
+    label: str
+    operator: Fn
+
+
+def option(label: str, operator: Fn) -> Option:
+    """A methodological choice and the operator that carries it out."""
+    return Option(label, operator)
 
 
 @dataclass(frozen=True)
 class Choice:
     option: str
     reason: str
+
+
+@dataclass(frozen=True)
+class Verdict:
+    status: str
+    detail: str
+    evidence: dict[str, Any] = field(default_factory=dict)
 
 
 def _record(**declared: Any) -> Callable[[Fn], Fn]:
@@ -29,8 +113,13 @@ def _record(**declared: Any) -> Callable[[Fn], Fn]:
     return attach
 
 
-def method(**declared: Any) -> Callable[[Fn], Fn]:
-    return _record(kind="method", **declared)
+def method(
+    *,
+    concepts: dict[str, str] | None = None,
+    columns: dict[str, str] | None = None,
+    **declared: Any,
+) -> Callable[[Fn], Fn]:
+    return _record(kind="method", concepts=_concepts(concepts, columns), **declared)
 
 
 method.choose = Choice  # type: ignore[attr-defined]
@@ -43,6 +132,7 @@ def operator(
     outputs: list[str],
     role: str,
     folds: str,
+    concepts: dict[str, str] | None = None,
     columns: dict[str, str] | None = None,
     tunables: dict[str, dict[str, float]] | None = None,
     promises: list[Fn] | None = None,
@@ -55,7 +145,7 @@ def operator(
         outputs=outputs,
         role=role,
         folds=folds,
-        columns=columns or {},
+        concepts=_concepts(concepts, columns),
         tunables=tunables or {},
         promises=promises or [],
         role_default=role_default,
@@ -66,41 +156,85 @@ def promise(*, id: str, text: str) -> Callable[[Fn], Fn]:
     return _record(kind="promise", id=id, text=text)
 
 
-def decide(fn: Fn, **values: Any) -> Choice:
+def visualization(*, title: str | None = None) -> Callable[[Fn], Fn]:
+    return _record(kind="visualization", title=title)
+
+
+def decide(fn: Fn, **inputs: Any) -> Choice:
     """What the engine does with a method: call it, then refuse an answer it did not declare."""
-    choice: Choice = fn(**values)
+    choice: Choice = fn(**inputs)
     if choice.option not in fn.__sprisk__["options"]:  # type: ignore[attr-defined]
         raise ValueError(f"{fn.__name__} chose {choice.option!r}, which is not one of its options")
     return choice
 
 
-def plots(op: Fn) -> list[Fn]:
-    """The functions in the operator's file that return `go.Figure`, read by AST."""
-    module = inspect.getmodule(op)
-    tree = ast.parse(inspect.getsource(module))  # type: ignore[arg-type]
-    return [
-        getattr(module, node.name)
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-        and node.returns is not None
-        and ast.unparse(node.returns) == "go.Figure"
-    ]
+def decision_record(fn: Fn, choice: Choice, inputs: dict[str, Any]) -> dict[str, Any]:
+    """What Rust stores: the same inputs and the same code always give the same choice."""
+    chosen: Option = fn.__sprisk__["options"][choice.option]  # type: ignore[attr-defined]
+    return {
+        "method": fn.__sprisk__["id"],  # type: ignore[attr-defined]
+        "option": choice.option,
+        "label": chosen.label,
+        "operator": chosen.operator.__sprisk__["id"],
+        "reason": choice.reason,
+        "inputs": inputs,
+        "code": hashlib.sha256(inspect.getsource(fn).encode()).hexdigest()[:12],
+    }
 
 
 def call(fn: Fn, train: Any, test: Any, settings: dict[str, Any]) -> Any:
-    """Run a promise or a plot on a step's outputs, with the settings it names."""
+    """Run a promise or a visualization on a step's outputs, with the settings it names."""
     names = inspect.signature(fn).parameters
     return fn(train, test, **{k: v for k, v in settings.items() if k in names})
 
 
+def verification(
+    check: Fn, option_id: str, train: Any, test: Any, settings: dict[str, Any]
+) -> dict[str, Any]:
+    """A promise's result, recorded against the decision option it verifies."""
+    verdict: Verdict = call(check, train, test, settings)
+    return {
+        "option": option_id,
+        "promise": check.__sprisk__["id"],  # type: ignore[attr-defined]
+        "text": check.__sprisk__["text"],  # type: ignore[attr-defined]
+        "status": verdict.status,
+        "detail": verdict.detail,
+        "evidence": verdict.evidence,
+    }
+
+
+def visualizations(op: Fn) -> list[Fn]:
+    """The operator file's views, in file order: marked `@visualization`, or found by AST
+    because they return a view type."""
+    module = inspect.getmodule(op)
+    tree = ast.parse(inspect.getsource(module))  # type: ignore[arg-type]
+    found = []
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        marked = any(
+            ast.unparse(d.func if isinstance(d, ast.Call) else d) == "visualization"
+            for d in node.decorator_list
+        )
+        returns_view = node.returns is not None and ast.unparse(node.returns) in VIEW_TYPES
+        if marked or returns_view:
+            found.append(getattr(module, node.name))
+    return found
+
+
+def view_title(view: Fn) -> str:
+    declared = getattr(view, "__sprisk__", {})
+    return declared.get("title") or inspect.getdoc(view) or view.__name__
+
+
 def _defaults(op: Fn) -> dict[str, Any]:
-    columns = op.__sprisk__["columns"]  # type: ignore[attr-defined]
+    concepts = op.__sprisk__["concepts"]  # type: ignore[attr-defined]
     return {
         name: p.default
         for name, p in inspect.signature(op).parameters.items()
         if p.default is not inspect.Parameter.empty
         and p.default is not None
-        and name not in columns
+        and name not in concepts
     }
 
 
@@ -115,7 +249,7 @@ def _params_schema(op: Fn) -> dict[str, Any]:
         if annotation not in JSON_TYPES:  # `str | None`
             (annotation,) = [a for a in annotation.__args__ if a is not type(None)]
         prop: dict[str, Any] = {"type": JSON_TYPES[annotation]}
-        if name in declared["columns"]:
+        if name in declared["concepts"]:
             prop |= {"minLength": 1, "x-sprisk-column": True}
         for key, value in declared["tunables"].get(name, {}).items():
             prop["x-sprisk-step" if key == "step" else key] = value
@@ -145,10 +279,9 @@ def operator_manifest(op: Fn, pack: str, version: str) -> dict[str, Any]:
         "entrypoint": f"{op.__module__}:{op.__name__}",
         "inputs": [{"name": n, "kind": "table"} for n in declared["inputs"]],
         "outputs": [{"name": n, "kind": "table"} for n in declared["outputs"]],
-        # The YAML key stays `concepts`: that is the contract Rust reads today.
-        "concepts": declared["columns"],
+        "concepts": declared["concepts"],
         "promises": [p.__sprisk__["id"] for p in declared["promises"]],
-        "plots": [{"id": p.__name__, "title": inspect.getdoc(p)} for p in plots(op)],
+        "visualizations": [{"id": v.__name__, "title": view_title(v)} for v in visualizations(op)],
         "params_schema": _params_schema(op),
         "effects": "pure",
         "network": "none",
@@ -163,19 +296,20 @@ def method_manifest(fn: Fn, pack: str, operator_pack: str, version: str) -> dict
     declared = fn.__sprisk__  # type: ignore[attr-defined]
     options = []
     verifications: dict[str, Any] = {}
-    for option_id, op in declared["options"].items():
+    for option_id, choice in declared["options"].items():
+        op = choice.operator
         replace: dict[str, Any] = {
             "role": op.__sprisk__["role"],
             "operator": f"{operator_pack}.{op.__sprisk__['id']}@{version}",
         }
-        if op.__sprisk__["columns"]:
-            replace["concepts"] = op.__sprisk__["columns"]
+        if op.__sprisk__["concepts"]:
+            replace["concepts"] = op.__sprisk__["concepts"]
         replace["settings"] = _defaults(op)
         promises = op.__sprisk__["promises"]
         options.append(
             {
                 "id": option_id,
-                "label": op.__sprisk__["id"].replace("_", " ").capitalize(),
+                "label": choice.label,
                 "action": {"replace": replace},
                 "verify": [p.__sprisk__["id"] for p in promises],
             }
@@ -191,7 +325,7 @@ def method_manifest(fn: Fn, pack: str, operator_pack: str, version: str) -> dict
         "question": declared["question"],
         "applies_when": declared["applies_when"],
         "needs": {
-            "concepts": list(declared["columns"].values()),
+            "concepts": list(declared["concepts"].values()),
             "evidence": [],
             "decisions": declared["decisions"],
         },

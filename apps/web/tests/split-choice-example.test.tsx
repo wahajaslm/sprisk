@@ -7,15 +7,18 @@ import { SplitChoiceExample } from "../src/views/examples/SplitChoiceExample.tsx
 const cell = (label: string) => screen.getByLabelText(label) as HTMLTextAreaElement;
 
 describe("decorator split example", () => {
-  it("shows the method's choice, reason, column, promise and the operator's plot on the node", async () => {
+  it("shows the decision, why, implementation, verified evidence and plot on the node", async () => {
     render(<SplitChoiceExample />);
 
     const node = screen.getByRole("article", { name: "Split node" });
+    expect(within(node).getByText("Keep each item's rows on one side", { selector: ".split-example-decision" })).toBeInTheDocument();
+    expect(within(node).getByText(/Rows of one item stay on one side\./)).toBeInTheDocument();
+    expect(within(node).getByText("common.item_identity → title_id")).toBeInTheDocument();
     expect(within(node).getByText("Group split", { selector: ".split-example-selected" })).toBeInTheDocument();
-    expect(within(node).getByText("Chosen by the method")).toBeInTheDocument();
-    expect(within(node).getByText("title_id")).toBeInTheDocument();
-    expect(within(node).getByText("Rows of one item stay on one side.")).toBeInTheDocument();
-    expect(within(node).getByRole("list", { name: "Promises" })).toHaveTextContent("No item has rows in both train and test.");
+    const checks = within(node).getByRole("list", { name: "Verification" });
+    expect(checks).toHaveTextContent("✓ No item has rows in both train and test.");
+    expect(checks).toHaveTextContent("overlapping items 0 · train items 80 · test items 21");
+    expect(within(node).getByText(/Decided from task=classification, item_identity=title_id, target=product_type · code [0-9a-f]{12}/)).toBeInTheDocument();
     expect(await within(node).findByRole("img", { name: "Items in train and test" })).toBeInTheDocument();
   });
 
@@ -41,8 +44,10 @@ describe("decorator split example", () => {
     const node = screen.getByRole("article", { name: "Split node" });
     expect(within(node).getByText("Random split", { selector: ".split-example-selected" })).toBeInTheDocument();
     expect(within(node).getByText("Chosen by you")).toBeInTheDocument();
-    expect(within(node).getByText(/Auto would pick Group split/)).toBeInTheDocument();
-    expect(within(node).getByRole("list", { name: "Promises" })).toHaveTextContent("No test row has the same features as a train row.");
+    expect(within(node).getByText(/The method would pick: Keep each item's rows on one side\./)).toBeInTheDocument();
+    expect(within(node).getByText("Random rows", { selector: ".split-example-decision" })).toBeInTheDocument();
+    expect(within(node).getByRole("list", { name: "Verification" })).toHaveTextContent("✓ No test row has the same features as a train row.");
+    expect(within(node).queryByText(/Decided from/)).not.toBeInTheDocument();
     expect(await within(node).findByRole("img", { name: "Rows in train and test" })).toBeInTheDocument();
     expect((await screen.findByLabelText("Split cell") as HTMLTextAreaElement).value)
       .toContain("train, test = random_split(data, test_fraction=0.2, seed=42)");
@@ -57,6 +62,7 @@ describe("decorator split example", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Temporal split needs common.event_time, which this project has not bound.");
     expect(screen.queryByRole("img", { name: "Rows over time, with the cutoff" })).not.toBeInTheDocument();
     expect(screen.getAllByText("No plot: common.event_time is not bound.").length).toBeGreaterThan(0);
+    expect(screen.getByRole("list", { name: "Verification" })).toHaveTextContent("Not checked: the split cannot run.");
   });
 
   it("holds back a plot that reads the target until the final score", async () => {
@@ -79,6 +85,7 @@ describe("decorator split example", () => {
     await user.type(fraction, "0.3");
     expect(cell("Split cell").value).toContain("test_fraction=0.3");
     expect(screen.getByText(/Drawn at the default settings/)).toBeInTheDocument();
+    expect(screen.getByText("Checked at the default settings.")).toBeInTheDocument();
 
     fireEvent.change(cell("Split cell"), { target: { value: cell("Split cell").value.replace("seed=42", "seed=7") } });
     expect(screen.getByLabelText("seed")).toHaveValue(7);

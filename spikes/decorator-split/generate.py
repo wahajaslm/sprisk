@@ -1,4 +1,4 @@
-"""Write the YAML Rust reads and the example screen's data, from the decorated pack."""
+"""Compile the decorated pack into the Method IR (YAML for now) and the example screen's data."""
 
 import inspect
 import json
@@ -10,7 +10,18 @@ import yaml
 
 import validation
 from split_method import split
-from sprisk import call, decide, method_manifest, notebook_cell, operator_manifest, plots
+from sprisk import (
+    CONCEPTS,
+    call,
+    decide,
+    decision_record,
+    method_manifest,
+    notebook_cell,
+    operator_manifest,
+    verification,
+    view_title,
+    visualizations,
+)
 
 HERE = Path(__file__).parent
 OUT = HERE / "generated"
@@ -37,48 +48,54 @@ def without_call(cell: str) -> str:
     return cell[: cell.rindex("\n\n")].rstrip() + "\n"
 
 
-def plot_entry(
-    plot: Any, op: Any, step: tuple[Any, Any] | None, settings: dict[str, Any]
+def view_entry(
+    view: Any, op: Any, step: tuple[Any, Any] | None, settings: dict[str, Any]
 ) -> dict[str, Any]:
-    params = [p for p in inspect.signature(plot).parameters if p not in ("train", "test")]
-    labels = [p for p in params if op.__sprisk__["columns"].get(p) == "common.target"]
-    # A plot that reads the target would read test labels, so it waits for the final score.
-    figure = None if step is None or labels else call(plot, *step, settings).to_json()
+    params = [p for p in inspect.signature(view).parameters if p not in ("train", "test")]
+    concepts = op.__sprisk__["concepts"]
+    labels = [p for p in params if p in concepts and CONCEPTS[concepts[p]].kind == "label"]
+    # A view that reads a label would read test labels, so it waits for the final score.
+    figure = None if step is None or labels else call(view, *step, settings).to_json()
     return {
-        "name": plot.__name__,
-        "title": inspect.getdoc(plot),
+        "name": view.__name__,
+        "title": view_title(view),
         "params": params,
-        "definition": without_call(notebook_cell(plot, ["train", "test"], {})),
+        "definition": without_call(notebook_cell(view, ["train", "test"], {})),
         "final_only": bool(labels),
         "figure": figure,
     }
 
 
 def option_entry(option: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any]:
-    op = split.__sprisk__["options"][option["id"]]
-    columns = op.__sprisk__["columns"]
-    bound = {name: BINDINGS[c] for name, c in columns.items() if c in BINDINGS}
-    needed = [
+    op = split.__sprisk__["options"][option["id"]].operator
+    concepts = op.__sprisk__["concepts"]
+    bound = {name: BINDINGS[c] for name, c in concepts.items() if c in BINDINGS}
+    unbound = [
         c
-        for name, c in columns.items()
+        for name, c in concepts.items()
         if c not in BINDINGS and inspect.signature(op).parameters[name].default is not None
     ]
-    step = None if needed else op(ROWS, **bound)
+    step = None if unbound else op(ROWS, **bound)
     settings = {**bound, **option["action"]["replace"]["settings"]}
+    promises = op.__sprisk__["promises"]
     return {
         "id": option["id"],
         "label": option["label"],
         "operator": op.__name__,
-        "columns": columns,
-        "unbound": needed,
+        "implementation": manifest["title"],
+        "columns": concepts,
+        "unbound": unbound,
         "settings": {
             name: prop
             for name, prop in manifest["params_schema"]["properties"].items()
-            if name not in columns
+            if name not in concepts
         },
-        "promises": [p.__sprisk__["text"] for p in op.__sprisk__["promises"]],
+        "promises": [p.__sprisk__["text"] for p in promises],
+        "verifications": []
+        if step is None
+        else [verification(p, option["id"], *step, settings) for p in promises],
         "definition": without_call(notebook_cell(op, ["data"], {})),
-        "plots": [plot_entry(plot, op, step, settings) for plot in plots(op)],
+        "plots": [view_entry(view, op, step, settings) for view in visualizations(op)],
     }
 
 
@@ -87,27 +104,27 @@ def main() -> None:
     pack, version = validation.PACK, validation.VERSION
     method = method_manifest(split, "methodology.supervised", pack, version)
     manifests = {}
-    for op in split.__sprisk__["options"].values():
-        manifests[op.__name__] = operator_manifest(op, pack, version)
+    for choice in split.__sprisk__["options"].values():
+        manifests[choice.operator.__name__] = operator_manifest(choice.operator, pack, version)
     for name, manifest in [("split_method", method), *manifests.items()]:
         text = yaml.safe_dump(manifest, sort_keys=False, width=100)
         (OUT / f"{name}.yaml").write_text(
-            "# Generated from the decorated pack. Do not edit.\n" + text
+            "# Method IR, compiled from the decorated pack. Do not edit.\n" + text
         )
 
-    auto = decide(
-        split,
-        task="classification",
-        event_time=BINDINGS.get("common.event_time"),
-        item_identity=BINDINGS.get("common.item_identity"),
-        target=BINDINGS.get("common.target"),
-    )
+    inputs = {
+        "task": "classification",
+        "event_time": BINDINGS.get("common.event_time"),
+        "item_identity": BINDINGS.get("common.item_identity"),
+        "target": BINDINGS.get("common.target"),
+    }
+    decision = decision_record(split, decide(split, **inputs), inputs)
     screen = {
         "method": {k: method[k] for k in ("name", "question", "activity")},
         "bindings": BINDINGS,
-        "auto": {"option": auto.option, "reason": auto.reason},
+        "decision": decision,
         "options": [
-            option_entry(o, manifests[split.__sprisk__["options"][o["id"]].__name__])
+            option_entry(o, manifests[split.__sprisk__["options"][o["id"]].operator.__name__])
             for o in method["options"]
         ],
         "files": [{"path": path, "text": (HERE / path).read_text()} for path in WRITTEN],

@@ -1,4 +1,4 @@
-# Generated from the decorated pack. Do not edit.
+# Method IR, compiled from the decorated pack. Do not edit.
 schema_version: sprisk.operator/v1
 id: sprisk.validation.temporal_split@1.0.0
 title: Temporal split
@@ -20,7 +20,7 @@ concepts:
   group_column: common.item_identity
 promises:
 - test_after_train
-plots:
+visualizations:
 - id: rows_over_time
   title: Rows over time, with the cutoff
 params_schema:

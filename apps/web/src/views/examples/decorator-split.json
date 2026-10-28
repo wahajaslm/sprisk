@@ -8,15 +8,26 @@
     "common.item_identity": "title_id",
     "common.target": "product_type"
   },
-  "auto": {
+  "decision": {
+    "method": "split_method",
     "option": "item_groups",
-    "reason": "Rows of one item stay on one side."
+    "label": "Keep each item's rows on one side",
+    "operator": "group_split",
+    "reason": "Rows of one item stay on one side.",
+    "inputs": {
+      "task": "classification",
+      "event_time": null,
+      "item_identity": "title_id",
+      "target": "product_type"
+    },
+    "code": "1c5a9d32dc9a"
   },
   "options": [
     {
       "id": "temporal",
-      "label": "Temporal split",
+      "label": "Train on earlier rows, test on later ones",
       "operator": "temporal_split",
+      "implementation": "Temporal split",
       "columns": {
         "time_column": "common.event_time",
         "group_column": "common.item_identity"
@@ -36,6 +47,7 @@
       "promises": [
         "Every test row is later than the latest train row."
       ],
+      "verifications": [],
       "definition": "import polars as pl\n\n\ndef temporal_split(\n    data: pl.DataFrame,\n    time_column: str,\n    test_fraction: float = 0.20,\n    group_column: str | None = None,\n):\n    \"\"\"Split by time. Every train row is strictly earlier than every test row.\"\"\"\n    if data[time_column].null_count():\n        raise ValueError(f\"{time_column} has {data[time_column].null_count()} missing values\")\n    cutoff = data[time_column].quantile(1 - test_fraction, interpolation=\"lower\")\n    train = data.filter(pl.col(time_column) < cutoff)\n    test = data.filter(pl.col(time_column) >= cutoff)\n    # Train drops every item that is also in test, so no item is on both sides.\n    if group_column is not None:\n        train = train.filter(~pl.col(group_column).is_in(test[group_column].implode()))\n    return train, test\n",
       "plots": [
         {
@@ -44,7 +56,7 @@
           "params": [
             "time_column"
           ],
-          "definition": "import plotly.graph_objects as go\nimport polars as pl\n\n\ndef rows_over_time(train: pl.DataFrame, test: pl.DataFrame, time_column: str) -> go.Figure:\n    \"\"\"Rows over time, with the cutoff\"\"\"\n    figure = go.Figure()\n    for name, side in ((\"train\", train), (\"test\", test)):\n        counts = side.group_by(time_column).len().sort(time_column)\n        figure.add_bar(x=counts[time_column], y=counts[\"len\"], name=name)\n    figure.add_vline(x=test[time_column].min())\n    return figure\n",
+          "definition": "import plotly.graph_objects as go\nimport polars as pl\n\n\ndef rows_over_time(train: pl.DataFrame, test: pl.DataFrame, time_column: str):\n    figure = go.Figure()\n    for name, side in ((\"train\", train), (\"test\", test)):\n        counts = side.group_by(time_column).len().sort(time_column)\n        figure.add_bar(x=counts[time_column], y=counts[\"len\"], name=name)\n    figure.add_vline(x=test[time_column].min())\n    return figure\n",
           "final_only": false,
           "figure": null
         }
@@ -52,8 +64,9 @@
     },
     {
       "id": "item_groups",
-      "label": "Group split",
+      "label": "Keep each item's rows on one side",
       "operator": "group_split",
+      "implementation": "Group split",
       "columns": {
         "group_column": "common.item_identity"
       },
@@ -76,6 +89,21 @@
       "promises": [
         "No item has rows in both train and test."
       ],
+      "verifications": [
+        {
+          "option": "item_groups",
+          "promise": "no_group_overlap",
+          "text": "No item has rows in both train and test.",
+          "status": "pass",
+          "detail": "No item is in both sides.",
+          "evidence": {
+            "overlapping_items": 0,
+            "examples": [],
+            "train_items": 80,
+            "test_items": 21
+          }
+        }
+      ],
       "definition": "import polars as pl\nfrom sklearn.model_selection import GroupShuffleSplit\n\n\ndef group_split(data: pl.DataFrame, group_column: str, test_fraction: float = 0.20, seed: int = 42):\n    \"\"\"Hold out complete entities so the same group never appears in train and test.\"\"\"\n    groups = data[group_column]\n    if groups.null_count():\n        raise ValueError(f\"{group_column} has {groups.null_count()} missing values\")\n    if groups.n_unique() < 2:\n        raise ValueError(f\"{group_column} needs at least two distinct groups\")\n    splitter = GroupShuffleSplit(n_splits=1, test_size=test_fraction, random_state=seed)\n    train_rows, test_rows = next(splitter.split(range(data.height), groups=groups.to_list()))\n    return data[sorted(train_rows)], data[sorted(test_rows)]\n",
       "plots": [
         {
@@ -92,8 +120,9 @@
     },
     {
       "id": "stratified_random",
-      "label": "Stratified split",
+      "label": "Random rows, with class shares kept",
       "operator": "stratified_split",
+      "implementation": "Stratified split",
       "columns": {
         "stratify": "common.target"
       },
@@ -116,6 +145,19 @@
       "promises": [
         "No test row has the same features as a train row."
       ],
+      "verifications": [
+        {
+          "option": "stratified_random",
+          "promise": "no_row_in_both",
+          "text": "No test row has the same features as a train row.",
+          "status": "pass",
+          "detail": "No test row repeats a train row.",
+          "evidence": {
+            "repeated_rows": 0,
+            "test_rows": 60
+          }
+        }
+      ],
       "definition": "import polars as pl\nfrom sklearn.model_selection import train_test_split\n\n\ndef stratified_split(\n    data: pl.DataFrame, stratify: str, test_fraction: float = 0.20, seed: int = 42\n):\n    \"\"\"Shuffle rows into train and test, keeping each class's share on both sides.\"\"\"\n    if data[stratify].null_count():\n        raise ValueError(f\"{stratify} has {data[stratify].null_count()} missing values\")\n    train_rows, test_rows = train_test_split(\n        list(range(data.height)),\n        test_size=test_fraction,\n        random_state=seed,\n        stratify=data[stratify].to_list(),\n    )\n    return data[sorted(train_rows)], data[sorted(test_rows)]\n",
       "plots": [
         {
@@ -132,8 +174,9 @@
     },
     {
       "id": "simple_random",
-      "label": "Random split",
+      "label": "Random rows",
       "operator": "random_split",
+      "implementation": "Random split",
       "columns": {},
       "unbound": [],
       "settings": {
@@ -154,6 +197,19 @@
       "promises": [
         "No test row has the same features as a train row."
       ],
+      "verifications": [
+        {
+          "option": "simple_random",
+          "promise": "no_row_in_both",
+          "text": "No test row has the same features as a train row.",
+          "status": "pass",
+          "detail": "No test row repeats a train row.",
+          "evidence": {
+            "repeated_rows": 0,
+            "test_rows": 60
+          }
+        }
+      ],
       "definition": "import polars as pl\n\n\ndef random_split(data: pl.DataFrame, test_fraction: float = 0.20, seed: int = 42):\n    \"\"\"Shuffle rows with a fixed seed into train and test.\"\"\"\n    shuffled = data.sample(fraction=1.0, shuffle=True, seed=seed)\n    n_test = round(shuffled.height * test_fraction)\n    return shuffled.slice(n_test), shuffled.head(n_test)\n",
       "plots": [
         {
@@ -170,23 +226,23 @@
   "files": [
     {
       "path": "split_method.py",
-      "text": "from sprisk import method\nfrom validation import group_split, random_split, stratified_split, temporal_split\n\n\n@method(\n    id=\"split_method\",\n    decides=\"split.method\",\n    name=\"Train/test split\",\n    activity=\"Fair evaluation\",\n    question=\"How are rows divided into training and test so the score is fair?\",\n    applies_when={\"task\": [\"classification\", \"regression\"]},\n    decisions=[\"data.repeated_items\"],\n    columns={\n        \"event_time\": \"common.event_time\",\n        \"item_identity\": \"common.item_identity\",\n        \"target\": \"common.target\",\n    },\n    options={\n        \"temporal\": temporal_split,\n        \"item_groups\": group_split,\n        \"stratified_random\": stratified_split,\n        \"simple_random\": random_split,\n    },\n    source=(\n        \"Roberts et al. (2017), Ecography 40(8): cross-validation for temporal and grouped \"\n        \"data; scikit-learn User Guide \u00a73.1: GroupShuffleSplit, train_test_split(stratify=y).\"\n    ),\n)\ndef split(task, event_time, item_identity, target):\n    if event_time:\n        return method.choose(\"temporal\", reason=\"Train on earlier rows, test on later ones.\")\n    if item_identity:\n        return method.choose(\"item_groups\", reason=\"Rows of one item stay on one side.\")\n    if task == \"classification\" and target:\n        return method.choose(\n            \"stratified_random\", reason=\"Each class keeps its share in train and test.\"\n        )\n    return method.choose(\"simple_random\", reason=\"Every row is its own item.\")\n"
+      "text": "from sprisk import method, option\nfrom validation import group_split, random_split, stratified_split, temporal_split\n\n\n@method(\n    id=\"split_method\",\n    decides=\"split.method\",\n    name=\"Train/test split\",\n    activity=\"Fair evaluation\",\n    question=\"How are rows divided into training and test so the score is fair?\",\n    applies_when={\"task\": [\"classification\", \"regression\"]},\n    decisions=[\"data.repeated_items\"],\n    columns={\n        \"event_time\": \"common.event_time\",\n        \"item_identity\": \"common.item_identity\",\n        \"target\": \"common.target\",\n    },\n    options={\n        \"temporal\": option(\"Train on earlier rows, test on later ones\", temporal_split),\n        \"item_groups\": option(\"Keep each item's rows on one side\", group_split),\n        \"stratified_random\": option(\"Random rows, with class shares kept\", stratified_split),\n        \"simple_random\": option(\"Random rows\", random_split),\n    },\n    source=(\n        \"Roberts et al. (2017), Ecography 40(8): cross-validation for temporal and grouped \"\n        \"data; scikit-learn User Guide \u00a73.1: GroupShuffleSplit, train_test_split(stratify=y).\"\n    ),\n)\ndef split(task, event_time, item_identity, target):\n    if event_time:\n        return method.choose(\"temporal\", reason=\"Train on earlier rows, test on later ones.\")\n    if item_identity:\n        return method.choose(\"item_groups\", reason=\"Rows of one item stay on one side.\")\n    if task == \"classification\" and target:\n        return method.choose(\n            \"stratified_random\", reason=\"Each class keeps its share in train and test.\"\n        )\n    return method.choose(\"simple_random\", reason=\"Every row is its own item.\")\n"
     },
     {
       "path": "validation/group_split.py",
-      "text": "import plotly.graph_objects as go\nimport polars as pl\nfrom sklearn.model_selection import GroupShuffleSplit\n\nfrom sprisk import operator, promise\n\n\n@promise(id=\"no_group_overlap\", text=\"No item has rows in both train and test.\")\ndef no_group_overlap(train: pl.DataFrame, test: pl.DataFrame, group_column: str):\n    both = set(train[group_column]) & set(test[group_column])\n    if both:\n        return \"fail\", f\"{len(both)} items have rows in both train and test.\"\n    return \"pass\", \"No item is in both sides.\"\n\n\ndef items_per_side(train: pl.DataFrame, test: pl.DataFrame, group_column: str) -> go.Figure:\n    \"\"\"Items in train and test\"\"\"\n    items = [train[group_column].n_unique(), test[group_column].n_unique()]\n    return go.Figure(go.Bar(x=[\"train\", \"test\"], y=items))\n\n\n@operator(\n    id=\"group_split\",\n    inputs=[\"data\"],\n    outputs=[\"train\", \"test\"],\n    role=\"split\",\n    folds=\"group\",\n    columns={\"group_column\": \"common.item_identity\"},\n    tunables={\n        \"test_fraction\": {\"minimum\": 0.05, \"maximum\": 0.40, \"step\": 0.05},\n        \"seed\": {\"minimum\": 0, \"maximum\": 10000},\n    },\n    promises=[no_group_overlap],\n)\ndef group_split(data: pl.DataFrame, group_column: str, test_fraction: float = 0.20, seed: int = 42):\n    \"\"\"Hold out complete entities so the same group never appears in train and test.\"\"\"\n    groups = data[group_column]\n    if groups.null_count():\n        raise ValueError(f\"{group_column} has {groups.null_count()} missing values\")\n    if groups.n_unique() < 2:\n        raise ValueError(f\"{group_column} needs at least two distinct groups\")\n    splitter = GroupShuffleSplit(n_splits=1, test_size=test_fraction, random_state=seed)\n    train_rows, test_rows = next(splitter.split(range(data.height), groups=groups.to_list()))\n    return data[sorted(train_rows)], data[sorted(test_rows)]\n"
+      "text": "import plotly.graph_objects as go\nimport polars as pl\nfrom sklearn.model_selection import GroupShuffleSplit\n\nfrom sprisk import Verdict, operator, promise\n\n\n@promise(id=\"no_group_overlap\", text=\"No item has rows in both train and test.\")\ndef no_group_overlap(train: pl.DataFrame, test: pl.DataFrame, group_column: str):\n    train_items, test_items = set(train[group_column]), set(test[group_column])\n    both = train_items & test_items\n    evidence = {\n        \"overlapping_items\": len(both),\n        \"examples\": sorted(map(str, both))[:5],\n        \"train_items\": len(train_items),\n        \"test_items\": len(test_items),\n    }\n    if not train_items or not test_items:\n        return Verdict(\"inconclusive\", \"One side has no items.\", evidence)\n    if both:\n        return Verdict(\"fail\", f\"{len(both)} items have rows in both train and test.\", evidence)\n    return Verdict(\"pass\", \"No item is in both sides.\", evidence)\n\n\ndef items_per_side(train: pl.DataFrame, test: pl.DataFrame, group_column: str) -> go.Figure:\n    \"\"\"Items in train and test\"\"\"\n    items = [train[group_column].n_unique(), test[group_column].n_unique()]\n    return go.Figure(go.Bar(x=[\"train\", \"test\"], y=items))\n\n\n@operator(\n    id=\"group_split\",\n    inputs=[\"data\"],\n    outputs=[\"train\", \"test\"],\n    role=\"split\",\n    folds=\"group\",\n    columns={\"group_column\": \"common.item_identity\"},\n    tunables={\n        \"test_fraction\": {\"minimum\": 0.05, \"maximum\": 0.40, \"step\": 0.05},\n        \"seed\": {\"minimum\": 0, \"maximum\": 10000},\n    },\n    promises=[no_group_overlap],\n)\ndef group_split(data: pl.DataFrame, group_column: str, test_fraction: float = 0.20, seed: int = 42):\n    \"\"\"Hold out complete entities so the same group never appears in train and test.\"\"\"\n    groups = data[group_column]\n    if groups.null_count():\n        raise ValueError(f\"{group_column} has {groups.null_count()} missing values\")\n    if groups.n_unique() < 2:\n        raise ValueError(f\"{group_column} needs at least two distinct groups\")\n    splitter = GroupShuffleSplit(n_splits=1, test_size=test_fraction, random_state=seed)\n    train_rows, test_rows = next(splitter.split(range(data.height), groups=groups.to_list()))\n    return data[sorted(train_rows)], data[sorted(test_rows)]\n"
     },
     {
       "path": "validation/temporal_split.py",
-      "text": "import plotly.graph_objects as go\nimport polars as pl\n\nfrom sprisk import operator, promise\n\n\n@promise(id=\"test_after_train\", text=\"Every test row is later than the latest train row.\")\ndef test_after_train(train: pl.DataFrame, test: pl.DataFrame, time_column: str):\n    latest = train[time_column].max()\n    early = test.filter(pl.col(time_column) <= latest).height\n    if early:\n        return \"fail\", f\"{early} test rows are not later than {latest}.\"\n    return \"pass\", f\"Every test row is later than {latest}.\"\n\n\ndef rows_over_time(train: pl.DataFrame, test: pl.DataFrame, time_column: str) -> go.Figure:\n    \"\"\"Rows over time, with the cutoff\"\"\"\n    figure = go.Figure()\n    for name, side in ((\"train\", train), (\"test\", test)):\n        counts = side.group_by(time_column).len().sort(time_column)\n        figure.add_bar(x=counts[time_column], y=counts[\"len\"], name=name)\n    figure.add_vline(x=test[time_column].min())\n    return figure\n\n\n@operator(\n    id=\"temporal_split\",\n    inputs=[\"data\"],\n    outputs=[\"train\", \"test\"],\n    role=\"split\",\n    folds=\"time\",\n    columns={\"time_column\": \"common.event_time\", \"group_column\": \"common.item_identity\"},\n    tunables={\"test_fraction\": {\"minimum\": 0.05, \"maximum\": 0.40, \"step\": 0.05}},\n    promises=[test_after_train],\n)\ndef temporal_split(\n    data: pl.DataFrame,\n    time_column: str,\n    test_fraction: float = 0.20,\n    group_column: str | None = None,\n):\n    \"\"\"Split by time. Every train row is strictly earlier than every test row.\"\"\"\n    if data[time_column].null_count():\n        raise ValueError(f\"{time_column} has {data[time_column].null_count()} missing values\")\n    cutoff = data[time_column].quantile(1 - test_fraction, interpolation=\"lower\")\n    train = data.filter(pl.col(time_column) < cutoff)\n    test = data.filter(pl.col(time_column) >= cutoff)\n    # Train drops every item that is also in test, so no item is on both sides.\n    if group_column is not None:\n        train = train.filter(~pl.col(group_column).is_in(test[group_column].implode()))\n    return train, test\n"
+      "text": "import plotly.graph_objects as go\nimport polars as pl\n\nfrom sprisk import Verdict, operator, promise, visualization\n\n\n@promise(id=\"test_after_train\", text=\"Every test row is later than the latest train row.\")\ndef test_after_train(train: pl.DataFrame, test: pl.DataFrame, time_column: str):\n    latest = train[time_column].max()\n    early = test.filter(pl.col(time_column) <= latest).height\n    evidence = {\n        \"not_later_test_rows\": early,\n        \"latest_train\": str(latest),\n        \"earliest_test\": str(test[time_column].min()),\n    }\n    if early:\n        return Verdict(\"fail\", f\"{early} test rows are not later than {latest}.\", evidence)\n    return Verdict(\"pass\", f\"Every test row is later than {latest}.\", evidence)\n\n\n@visualization(title=\"Rows over time, with the cutoff\")\ndef rows_over_time(train: pl.DataFrame, test: pl.DataFrame, time_column: str):\n    figure = go.Figure()\n    for name, side in ((\"train\", train), (\"test\", test)):\n        counts = side.group_by(time_column).len().sort(time_column)\n        figure.add_bar(x=counts[time_column], y=counts[\"len\"], name=name)\n    figure.add_vline(x=test[time_column].min())\n    return figure\n\n\n@operator(\n    id=\"temporal_split\",\n    inputs=[\"data\"],\n    outputs=[\"train\", \"test\"],\n    role=\"split\",\n    folds=\"time\",\n    columns={\"time_column\": \"common.event_time\", \"group_column\": \"common.item_identity\"},\n    tunables={\"test_fraction\": {\"minimum\": 0.05, \"maximum\": 0.40, \"step\": 0.05}},\n    promises=[test_after_train],\n)\ndef temporal_split(\n    data: pl.DataFrame,\n    time_column: str,\n    test_fraction: float = 0.20,\n    group_column: str | None = None,\n):\n    \"\"\"Split by time. Every train row is strictly earlier than every test row.\"\"\"\n    if data[time_column].null_count():\n        raise ValueError(f\"{time_column} has {data[time_column].null_count()} missing values\")\n    cutoff = data[time_column].quantile(1 - test_fraction, interpolation=\"lower\")\n    train = data.filter(pl.col(time_column) < cutoff)\n    test = data.filter(pl.col(time_column) >= cutoff)\n    # Train drops every item that is also in test, so no item is on both sides.\n    if group_column is not None:\n        train = train.filter(~pl.col(group_column).is_in(test[group_column].implode()))\n    return train, test\n"
     },
     {
       "path": "validation/random_split.py",
-      "text": "import plotly.graph_objects as go\nimport polars as pl\n\nfrom sprisk import operator, promise\n\n\n@promise(id=\"no_row_in_both\", text=\"No test row has the same features as a train row.\")\ndef no_row_in_both(train: pl.DataFrame, test: pl.DataFrame):\n    repeated = test.join(train.unique(), on=test.columns, how=\"semi\", nulls_equal=True).height\n    if repeated:\n        return \"fail\", f\"{repeated} test rows repeat a train row.\"\n    return \"pass\", \"No test row repeats a train row.\"\n\n\ndef rows_per_side(train: pl.DataFrame, test: pl.DataFrame) -> go.Figure:\n    \"\"\"Rows in train and test\"\"\"\n    return go.Figure(go.Bar(x=[\"train\", \"test\"], y=[train.height, test.height]))\n\n\n@operator(\n    id=\"random_split\",\n    inputs=[\"data\"],\n    outputs=[\"train\", \"test\"],\n    role=\"split\",\n    folds=\"plain\",\n    role_default=True,\n    tunables={\n        \"test_fraction\": {\"minimum\": 0.05, \"maximum\": 0.40, \"step\": 0.05},\n        \"seed\": {\"minimum\": 0, \"maximum\": 10000},\n    },\n    promises=[no_row_in_both],\n)\ndef random_split(data: pl.DataFrame, test_fraction: float = 0.20, seed: int = 42):\n    \"\"\"Shuffle rows with a fixed seed into train and test.\"\"\"\n    shuffled = data.sample(fraction=1.0, shuffle=True, seed=seed)\n    n_test = round(shuffled.height * test_fraction)\n    return shuffled.slice(n_test), shuffled.head(n_test)\n"
+      "text": "import plotly.graph_objects as go\nimport polars as pl\n\nfrom sprisk import Verdict, operator, promise\n\n\n@promise(id=\"no_row_in_both\", text=\"No test row has the same features as a train row.\")\ndef no_row_in_both(train: pl.DataFrame, test: pl.DataFrame):\n    repeated = test.join(train.unique(), on=test.columns, how=\"semi\", nulls_equal=True).height\n    evidence = {\"repeated_rows\": repeated, \"test_rows\": test.height}\n    if repeated:\n        return Verdict(\"fail\", f\"{repeated} test rows repeat a train row.\", evidence)\n    return Verdict(\"pass\", \"No test row repeats a train row.\", evidence)\n\n\ndef rows_per_side(train: pl.DataFrame, test: pl.DataFrame) -> go.Figure:\n    \"\"\"Rows in train and test\"\"\"\n    return go.Figure(go.Bar(x=[\"train\", \"test\"], y=[train.height, test.height]))\n\n\n@operator(\n    id=\"random_split\",\n    inputs=[\"data\"],\n    outputs=[\"train\", \"test\"],\n    role=\"split\",\n    folds=\"plain\",\n    role_default=True,\n    tunables={\n        \"test_fraction\": {\"minimum\": 0.05, \"maximum\": 0.40, \"step\": 0.05},\n        \"seed\": {\"minimum\": 0, \"maximum\": 10000},\n    },\n    promises=[no_row_in_both],\n)\ndef random_split(data: pl.DataFrame, test_fraction: float = 0.20, seed: int = 42):\n    \"\"\"Shuffle rows with a fixed seed into train and test.\"\"\"\n    shuffled = data.sample(fraction=1.0, shuffle=True, seed=seed)\n    n_test = round(shuffled.height * test_fraction)\n    return shuffled.slice(n_test), shuffled.head(n_test)\n"
     },
     {
       "path": "validation/stratified_split.py",
-      "text": "import plotly.graph_objects as go\nimport polars as pl\nfrom sklearn.model_selection import train_test_split\n\nfrom sprisk import operator, promise\n\n\n@promise(id=\"no_row_in_both\", text=\"No test row has the same features as a train row.\")\ndef no_row_in_both(train: pl.DataFrame, test: pl.DataFrame):\n    repeated = test.join(train.unique(), on=test.columns, how=\"semi\", nulls_equal=True).height\n    if repeated:\n        return \"fail\", f\"{repeated} test rows repeat a train row.\"\n    return \"pass\", \"No test row repeats a train row.\"\n\n\ndef class_shares(train: pl.DataFrame, test: pl.DataFrame, stratify: str) -> go.Figure:\n    \"\"\"Class shares in train and test\"\"\"\n    figure = go.Figure()\n    for name, side in ((\"train\", train), (\"test\", test)):\n        shares = side[stratify].value_counts(normalize=True).sort(stratify)\n        figure.add_bar(x=shares[stratify], y=shares[\"proportion\"], name=name)\n    return figure\n\n\n@operator(\n    id=\"stratified_split\",\n    inputs=[\"data\"],\n    outputs=[\"train\", \"test\"],\n    role=\"split\",\n    folds=\"plain\",\n    columns={\"stratify\": \"common.target\"},\n    tunables={\n        \"test_fraction\": {\"minimum\": 0.05, \"maximum\": 0.40, \"step\": 0.05},\n        \"seed\": {\"minimum\": 0, \"maximum\": 10000},\n    },\n    promises=[no_row_in_both],\n)\ndef stratified_split(\n    data: pl.DataFrame, stratify: str, test_fraction: float = 0.20, seed: int = 42\n):\n    \"\"\"Shuffle rows into train and test, keeping each class's share on both sides.\"\"\"\n    if data[stratify].null_count():\n        raise ValueError(f\"{stratify} has {data[stratify].null_count()} missing values\")\n    train_rows, test_rows = train_test_split(\n        list(range(data.height)),\n        test_size=test_fraction,\n        random_state=seed,\n        stratify=data[stratify].to_list(),\n    )\n    return data[sorted(train_rows)], data[sorted(test_rows)]\n"
+      "text": "import plotly.graph_objects as go\nimport polars as pl\nfrom sklearn.model_selection import train_test_split\n\nfrom sprisk import Verdict, operator, promise\n\n\n@promise(id=\"no_row_in_both\", text=\"No test row has the same features as a train row.\")\ndef no_row_in_both(train: pl.DataFrame, test: pl.DataFrame):\n    repeated = test.join(train.unique(), on=test.columns, how=\"semi\", nulls_equal=True).height\n    evidence = {\"repeated_rows\": repeated, \"test_rows\": test.height}\n    if repeated:\n        return Verdict(\"fail\", f\"{repeated} test rows repeat a train row.\", evidence)\n    return Verdict(\"pass\", \"No test row repeats a train row.\", evidence)\n\n\ndef class_shares(train: pl.DataFrame, test: pl.DataFrame, stratify: str) -> go.Figure:\n    \"\"\"Class shares in train and test\"\"\"\n    figure = go.Figure()\n    for name, side in ((\"train\", train), (\"test\", test)):\n        shares = side[stratify].value_counts(normalize=True).sort(stratify)\n        figure.add_bar(x=shares[stratify], y=shares[\"proportion\"], name=name)\n    return figure\n\n\n@operator(\n    id=\"stratified_split\",\n    inputs=[\"data\"],\n    outputs=[\"train\", \"test\"],\n    role=\"split\",\n    folds=\"plain\",\n    columns={\"stratify\": \"common.target\"},\n    tunables={\n        \"test_fraction\": {\"minimum\": 0.05, \"maximum\": 0.40, \"step\": 0.05},\n        \"seed\": {\"minimum\": 0, \"maximum\": 10000},\n    },\n    promises=[no_row_in_both],\n)\ndef stratified_split(\n    data: pl.DataFrame, stratify: str, test_fraction: float = 0.20, seed: int = 42\n):\n    \"\"\"Shuffle rows into train and test, keeping each class's share on both sides.\"\"\"\n    if data[stratify].null_count():\n        raise ValueError(f\"{stratify} has {data[stratify].null_count()} missing values\")\n    train_rows, test_rows = train_test_split(\n        list(range(data.height)),\n        test_size=test_fraction,\n        random_state=seed,\n        stratify=data[stratify].to_list(),\n    )\n    return data[sorted(train_rows)], data[sorted(test_rows)]\n"
     }
   ]
 }

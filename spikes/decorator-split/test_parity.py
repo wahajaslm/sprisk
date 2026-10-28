@@ -15,13 +15,19 @@ from polars.testing import assert_frame_equal
 import validation
 from split_method import split
 from sprisk import (
+    CONCEPTS,
     call,
+    concept,
     decide,
+    decision_record,
     method,
     method_manifest,
     notebook_cell,
+    operator,
     operator_manifest,
-    plots,
+    option,
+    verification,
+    visualizations,
 )
 from sprisk_validation import group_split as old_group
 from sprisk_validation import random_split as old_random
@@ -96,7 +102,7 @@ def test_the_method_picks_todays_option(task: str, bound: set[str]) -> None:
 
 
 def test_a_method_cannot_choose_an_option_it_did_not_declare() -> None:
-    @method(options={"only": random_split})
+    @method(options={"only": option("Only", random_split)})
     def broken() -> Any:
         return method.choose("other", reason="typo")
 
@@ -136,25 +142,85 @@ def test_promises_give_todays_verdict(rows: pl.DataFrame) -> None:
     for train, test in (clean, leaky):
         overlap = old_evidence.group_overlap(train, test, "title_id")["evaluation.group_overlap"]
         old = OLD.verify_no_group_overlap(overlap, {})[0]
-        assert no_group_overlap(train, test, group_column="title_id")[0] == old
+        assert no_group_overlap(train, test, group_column="title_id").status == old
 
         repeats = old_evidence.row_overlap(train, test, "kind")["evaluation.row_overlap"]
         old = OLD.verify_no_row_in_both(repeats, {})[0]
         # Today the target is dropped before rows are compared; the engine still does that.
         features = [c for c in test.columns if c != "kind"]
-        assert no_row_in_both(train.select(features), test.select(features))[0] == old
+        assert no_row_in_both(train.select(features), test.select(features)).status == old
 
         order = old_evidence.time_order(train, test, "day")["evaluation.time_order"]
         old = OLD.verify_test_after_train(order, {})[0]
-        assert promise_test_after_train(train, test, time_column="day")[0] == old
-    assert no_group_overlap(*leaky, group_column="title_id")[0] == "fail"
+        assert promise_test_after_train(train, test, time_column="day").status == old
+    assert no_group_overlap(*leaky, group_column="title_id").status == "fail"
 
 
-def test_plots_are_the_functions_that_return_a_figure() -> None:
-    assert plots(group_split) == [items_per_side]
-    assert plots(temporal_split) == [rows_over_time]
-    assert plots(random_split) == [rows_per_side]
-    assert plots(stratified_split) == [class_shares]
+def test_visualizations_are_marked_or_found_by_their_view_return_type() -> None:
+    assert visualizations(group_split) == [items_per_side]
+    # Marked with @visualization: it has no return type for AST to see.
+    assert visualizations(temporal_split) == [rows_over_time]
+    assert visualizations(random_split) == [rows_per_side]
+    assert visualizations(stratified_split) == [class_shares]
+
+
+def test_a_verification_records_the_option_it_checks_and_its_evidence(
+    rows: pl.DataFrame,
+) -> None:
+    train, test = group_split(rows, group_column="title_id", test_fraction=0.25, seed=3)
+
+    record = verification(
+        no_group_overlap, "item_groups", train, test, {"group_column": "title_id"}
+    )
+
+    assert record == {
+        "option": "item_groups",
+        "promise": "no_group_overlap",
+        "text": "No item has rows in both train and test.",
+        "status": "pass",
+        "detail": "No item is in both sides.",
+        "evidence": {"overlapping_items": 0, "examples": [], "train_items": 15, "test_items": 5},
+    }
+
+
+def test_a_decision_record_repeats_for_the_same_inputs_and_code() -> None:
+    inputs = {
+        "task": "classification",
+        "event_time": None,
+        "item_identity": "title_id",
+        "target": "kind",
+    }
+
+    first = decision_record(split, decide(split, **inputs), inputs)
+    again = decision_record(split, decide(split, **inputs), inputs)
+
+    assert first == again
+    assert first["option"] == "item_groups"
+    assert first["label"] == "Keep each item's rows on one side"
+    assert first["operator"] == "group_split"
+    assert len(first["code"]) == 12
+
+
+def test_concepts_must_be_defined_and_columns_must_accept_a_column() -> None:
+    def run(data: pl.DataFrame, place: str): ...
+
+    with pytest.raises(ValueError, match="names concept common.nowhere, which is not defined"):
+        operator(id="x", inputs=["data"], outputs=[], role="split", folds="plain",
+                 columns={"place": "common.nowhere"})(run)  # fmt: skip
+
+    @concept(id="test.recording", kind="audio", description="A sound file.", accepts=["file"])
+    class Recording: ...
+
+    try:
+        with pytest.raises(ValueError, match="concept test.recording cannot be bound to a column"):
+            operator(id="x", inputs=["data"], outputs=[], role="split", folds="plain",
+                     columns={"place": "test.recording"})(run)  # fmt: skip
+        assert operator(id="x", inputs=["data"], outputs=[], role="split", folds="plain",
+                        concepts={"place": "test.recording"})(run)  # fmt: skip
+        with pytest.raises(ValueError, match="test.recording is already defined"):
+            concept(id="test.recording", kind="audio", description="", accepts=[])(Recording)
+    finally:
+        del CONCEPTS["test.recording"]
 
 
 def test_a_plot_runs_on_the_split_with_the_settings_it_names(rows: pl.DataFrame) -> None:
@@ -169,13 +235,6 @@ def test_a_plot_runs_on_the_split_with_the_settings_it_names(rows: pl.DataFrame)
 
 # Every way the generated method differs from today's method.yaml.
 DIFFERENCES = {
-    # The label is the operator's title; the method's reason says why in its own words.
-    "labels": {
-        "temporal": ("Train on earlier rows, test on later ones", "Temporal split"),
-        "item_groups": ("Keep each item's rows on one side", "Group split"),
-        "stratified_random": ("Random rows, with class shares kept", "Stratified split"),
-        "simple_random": ("Random rows", "Random split"),
-    },
     # Stratifying became its own operator instead of a setting on random_split.
     "stratified_operator": (
         "sprisk.validation.random_split@1.0.0",
@@ -202,7 +261,7 @@ def test_the_generated_method_matches_todays_yaml_except_the_listed_differences(
     for new_option, old_option in zip(new["options"], old["options"], strict=True):
         option = old_option["id"]
         assert new_option["verify"] == old_option["verify"], option
-        assert (old_option["label"], new_option["label"]) == DIFFERENCES["labels"][option]
+        assert new_option["label"] == old_option["label"], option
         new_replace, old_replace = new_option["action"]["replace"], old_option["action"]["replace"]
         assert new_replace.get("concepts") == old_replace.get("concepts"), option
         assert new_replace["settings"] == old_replace["settings"], option
@@ -235,9 +294,15 @@ def test_generated_operator_manifests_match_todays(op: Any) -> None:
         assert prop["type"] == old_props[name]["type"], name
 
 
-def test_the_manifest_lists_the_plots_with_their_titles() -> None:
+def test_the_manifest_lists_the_visualizations_with_their_titles() -> None:
     manifest = operator_manifest(group_split, validation.PACK, validation.VERSION)
-    assert manifest["plots"] == [{"id": "items_per_side", "title": "Items in train and test"}]
+    assert manifest["visualizations"] == [
+        {"id": "items_per_side", "title": "Items in train and test"}
+    ]
+    manifest = operator_manifest(temporal_split, validation.PACK, validation.VERSION)
+    assert manifest["visualizations"] == [
+        {"id": "rows_over_time", "title": "Rows over time, with the cutoff"}
+    ]
 
 
 @pytest.mark.parametrize(
@@ -253,7 +318,7 @@ def test_the_notebook_cells_are_plain_python_that_run_like_the_step(
     op: Any, settings: dict[str, Any], rows: pl.DataFrame
 ) -> None:
     split_cell = notebook_cell(op, ["data"], settings, result="train, test")
-    (plot,) = plots(op)
+    (plot,) = visualizations(op)
     plot_settings = {k: v for k, v in settings.items() if k in plot.__code__.co_varnames}
     plot_cell = notebook_cell(plot, ["train", "test"], plot_settings, result="figure")
     for cell in (split_cell, plot_cell):
