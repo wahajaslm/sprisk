@@ -1,0 +1,30 @@
+# Generated from the decorated pack. Do not edit.
+schema_version: sprisk.operator/v1
+id: sprisk.validation.split_chart@1.0.0
+title: Split chart
+capability_class: analyzer
+role: chart
+description: How many rows each side of the split holds.
+entrypoint: validation.split_chart:split_chart
+inputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
+outputs:
+- name: figure
+  kind: figure
+concepts: {}
+promises: []
+params_schema:
+  type: object
+  additionalProperties: false
+  required: []
+  properties: {}
+effects: pure
+network: none
+resources:
+  cpu_cores: 1
+  memory_mb: 2048
+  gpu: none
+  timeout_seconds: 600

@@ -1,357 +1,149 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import { CodeInput } from "../CodeInput.tsx";
 import { KindIcon } from "../Icons.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
+import { Loading } from "../../components/ui/Loading.tsx";
+// Written by spikes/decorator-split/generate.py from the decorated pack. Python ran the method
+// and the chart step; the browser only shows the results (rule 9).
+import pack from "./decorator-split.json";
 
-type Choice = "auto" | "temporal" | "group" | "random";
-type OperatorChoice = Exclude<Choice, "auto">;
+const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
-type GroupSettings = { groupColumn: string; testFraction: number; seed: number };
-type RandomSettings = { testFraction: number; seed: number };
-type TemporalSettings = { timeColumn: string; testFraction: number };
-
-const CHOICES: { id: Choice; label: string }[] = [
-  { id: "auto", label: "Auto" },
-  { id: "temporal", label: "Temporal" },
-  { id: "group", label: "Group" },
-  { id: "random", label: "Random" },
-];
-
-const LABEL: Record<OperatorChoice, string> = {
-  temporal: "Temporal split",
-  group: "Group split",
-  random: "Random split",
+type Setting = { type: string; minimum?: number; maximum?: number; "x-sprisk-step"?: number; default?: number };
+type Option = Omit<(typeof pack.options)[number], "settings" | "concepts"> & {
+  settings: Record<string, Setting>;
+  concepts: Record<string, string>;
 };
+type Values = Record<string, number>;
 
-export const SPLIT_NODE_SOURCE = `from typing import Literal
+const OPTIONS = pack.options as Option[];
+const BINDINGS: Record<string, string> = pack.bindings;
 
-import polars as pl
-from sprisk import method, operator
-
-
-SplitChoice = Literal["auto", "temporal", "group", "random"]
-
-
-@operator(
-    id="random_split",
-    inputs=["data"],
-    outputs=["train", "test"],
-    tunables={
-        "test_fraction": {"minimum": 0.05, "maximum": 0.40, "step": 0.05},
-        "seed": {"minimum": 0, "maximum": 10000},
-    },
-)
-def random_split(
-    data: pl.DataFrame,
-    test_fraction: float = 0.20,
-    seed: int = 42,
-):
-    rows = data.with_row_index("_sprisk_row")
-    test = rows.sample(fraction=test_fraction, seed=seed, shuffle=True)
-    train = rows.filter(~pl.col("_sprisk_row").is_in(test["_sprisk_row"]))
-    return train.drop("_sprisk_row"), test.drop("_sprisk_row")
-
-
-@operator(
-    id="group_split",
-    inputs=["data"],
-    outputs=["train", "test"],
-    tunables={
-        "test_fraction": {"minimum": 0.05, "maximum": 0.40, "step": 0.05},
-        "seed": {"minimum": 0, "maximum": 10000},
-    },
-)
-def group_split(
-    data: pl.DataFrame,
-    group_column: str,
-    test_fraction: float = 0.20,
-    seed: int = 42,
-):
-    test_groups = (
-        data.select(group_column)
-        .unique()
-        .sample(fraction=test_fraction, seed=seed, shuffle=True)
-        .get_column(group_column)
-    )
-    train = data.filter(~pl.col(group_column).is_in(test_groups))
-    test = data.filter(pl.col(group_column).is_in(test_groups))
-    return train, test
-
-
-@operator(
-    id="temporal_split",
-    inputs=["data"],
-    outputs=["train", "test"],
-    tunables={
-        "test_fraction": {"minimum": 0.05, "maximum": 0.40, "step": 0.05},
-    },
-)
-def temporal_split(
-    data: pl.DataFrame,
-    time_column: str,
-    test_fraction: float = 0.20,
-):
-    ordered = data.sort(time_column)
-    cut = int(ordered.height * (1.0 - test_fraction))
-    return ordered.head(cut), ordered.tail(ordered.height - cut)
-
-
-@method(
-    id="split",
-    needs={
-        "evidence": {
-            "time_column": "data.structure.time_column",
-            "group_column": "data.structure.group_column",
-        },
-    },
-    options={
-        "temporal": temporal_split,
-        "group": group_split,
-        "random": random_split,
-    },
-)
-def split(
-    data: pl.DataFrame,
-    choice: SplitChoice = "auto",
-    time_column: str | None = None,
-    group_column: str | None = None,
-    test_fraction: float = 0.20,
-    seed: int = 42,
-):
-    if choice != "auto":
-        return method.choose(choice, reason=f"User manually selected {choice}.")
-    if time_column is not None:
-        return method.choose(
-            "temporal",
-            reason=f"Use {time_column} so future observations cannot train the model.",
-        )
-    if group_column is not None:
-        return method.choose(
-            "group",
-            reason=f"Keep every {group_column} value entirely inside train or test.",
-        )
-    return method.choose("random", reason="No temporal or entity boundary was found.")
-`;
-
-function functionSource(source: string, name: string): string {
-  const start = source.indexOf(`def ${name}(`);
-  if (start < 0) return `# ${name} is missing from the node source`;
-  const ends = [source.indexOf("\n\n@operator(", start), source.indexOf("\n\n@method(", start)].filter((end) => end > start);
-  const end = ends.length > 0 ? Math.min(...ends) : source.length;
-  return source.slice(start, end).trim();
+function byId(id: string): Option {
+  const option = OPTIONS.find((candidate) => candidate.id === id);
+  if (!option) throw new Error(`The pack has no split option ${id}`);
+  return option;
 }
 
-function notebookCode(
-  source: string,
-  override: Choice,
-  selected: OperatorChoice,
-  reason: string,
-  group: GroupSettings,
-  random: RandomSettings,
-  temporal: TemporalSettings,
-): string {
-  const implementation = functionSource(source, `${selected}_split`);
-  const parameters =
-    selected === "group"
-      ? `split_parameters = {\n    "group_column": ${JSON.stringify(group.groupColumn)},\n    "test_fraction": ${group.testFraction},\n    "seed": ${group.seed},\n}`
-      : selected === "temporal"
-        ? `split_parameters = {\n    "time_column": ${JSON.stringify(temporal.timeColumn)},\n    "test_fraction": ${temporal.testFraction},\n}`
-        : `split_parameters = {\n    "test_fraction": ${random.testFraction},\n    "seed": ${random.seed},\n}`;
-  return `# Resolved from the Split choice node.
-# Decision: ${selected}
-# Reason: ${reason}
-split_choice = ${JSON.stringify(override)}
-${parameters}
-
-import polars as pl
-
-
-${implementation}
-
-
-train, test = ${selected}_split(data, **split_parameters)
-`;
+function defaults(option: Option): Values {
+  return Object.fromEntries(Object.entries(option.settings).map(([name, setting]) => [name, setting.default ?? 0]));
 }
 
-function readChoice(source: string): Choice | undefined {
-  const found = source.match(/split_choice\s*=\s*["'](auto|temporal|group|random)["']/);
-  return found?.[1] as Choice | undefined;
+/** The concepts this option needs that the project has not bound to a column. */
+function unbound(option: Option): string[] {
+  return Object.values(option.concepts).filter((concept) => !(concept in BINDINGS));
 }
 
-function readStringArgument(source: string, name: string): string | undefined {
-  const block = source.match(/split_parameters\s*=\s*\{([\s\S]*?)\}/)?.[1] ?? "";
-  const found = block.match(new RegExp(`["']${name}["']\\s*:\\s*["']([^"']+)["']`))
-    ?? source.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`));
-  return found?.[1];
+function callLine(option: Option, values: Values): string {
+  const columns = Object.entries(option.concepts)
+    .filter(([, concept]) => concept in BINDINGS)
+    .map(([name, concept]) => `${name}=${JSON.stringify(BINDINGS[concept])}`);
+  const settings = Object.entries(values).map(([name, value]) => `${name}=${value}`);
+  const args = ["data", ...columns, ...settings].join(", ");
+  const picked = option.outputs.map((output) => `step["${output}"]`).join(", ");
+  return `step = ${option.operator}(${args})\n${option.outputs.join(", ")} = ${picked}\n`;
 }
 
-function readNumberArgument(source: string, name: string): number | undefined {
-  const block = source.match(/split_parameters\s*=\s*\{([\s\S]*?)\}/)?.[1] ?? "";
-  const found = block.match(new RegExp(`["']${name}["']\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`))
-    ?? source.match(new RegExp(`${name}\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`));
-  if (!found) return undefined;
-  const value = Number(found[1]);
-  return Number.isFinite(value) ? value : undefined;
-}
-
-function notebookFunction(source: string, name: string): string | undefined {
-  const start = source.search(new RegExp(`^def ${name}\\(`, "m"));
-  if (start < 0) return undefined;
-  const lines = source.slice(start).split("\n");
-  let signatureComplete = false;
-  let endLine = lines.length;
-  for (let index = 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (!signatureComplete) {
-      if (line.trimEnd().endsWith(":") && !line.startsWith("    ")) signatureComplete = true;
-      continue;
-    }
-    if (line.trim() !== "" && !line.startsWith(" ") && !line.startsWith("\t")) {
-      endLine = index;
-      break;
+/** Settings a person typed into the call line, kept only when they are in range. */
+function readSettings(code: string, option: Option): Values {
+  const call = code.slice(code.lastIndexOf(`${option.operator}(`));
+  const found: Values = {};
+  for (const [name, setting] of Object.entries(option.settings)) {
+    const match = call.match(new RegExp(`\\b${name}\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`));
+    const value = match ? Number(match[1]) : Number.NaN;
+    if (Number.isFinite(value) && value >= (setting.minimum ?? -Infinity) && value <= (setting.maximum ?? Infinity)) {
+      found[name] = value;
     }
   }
-  return lines.slice(0, endLine).join("\n").trimEnd();
+  return found;
 }
 
-function replaceNodeFunction(nodeSource: string, notebookSource: string, name: string): string {
-  const replacement = notebookFunction(notebookSource, name);
-  if (!replacement) return nodeSource;
-  const start = nodeSource.indexOf(`def ${name}(`);
-  if (start < 0) return nodeSource;
-  const ends = [nodeSource.indexOf("\n\n@operator(", start), nodeSource.indexOf("\n\n@method(", start)]
-    .filter((end) => end > start);
-  const end = ends.length > 0 ? Math.min(...ends) : nodeSource.length;
-  return `${nodeSource.slice(0, start)}${replacement}${nodeSource.slice(end)}`;
-}
-
-function exportedNotebook(code: string, selected: OperatorChoice, override: Choice): string {
+function exportedNotebook(splitCode: string, option: Option): string {
+  const cell = (source: string, operator: string) => ({
+    cell_type: "code",
+    execution_count: null,
+    metadata: { sprisk: { method: "split_method", operator } },
+    outputs: [],
+    source: source.split(/(?<=\n)/),
+  });
   return JSON.stringify({
     nbformat: 4,
     nbformat_minor: 5,
-    metadata: {
-      kernelspec: { display_name: "Python 3", language: "python", name: "python3" },
-      language_info: { name: "python", version: "3.12" },
-      sprisk: {
-        exploration: "customer-safe-split",
-        node: "validation_split",
-        method: "split",
-        operator: `${selected}_split`,
-        choice: override,
-      },
-    },
+    metadata: { kernelspec: { display_name: "Python 3", language: "python", name: "python3" } },
     cells: [
-      {
-        cell_type: "markdown",
-        metadata: {},
-        source: [
-          "# Customer-safe split\n",
-          "Exported from the Split choice node. This notebook contains plain Python and does not require Sprisk.\n",
-        ],
-      },
-      {
-        cell_type: "code",
-        execution_count: null,
-        metadata: {
-          sprisk: {
-            node: "validation_split",
-            method: "split",
-            operator: `${selected}_split`,
-          },
-        },
-        outputs: [],
-        source: code.split(/(?<=\n)/),
-      },
+      { cell_type: "markdown", metadata: {}, source: [`# ${pack.method.name}\n`, `${pack.method.question}\n`] },
+      cell(splitCode, option.operator),
+      cell(pack.chart_cell, "split_chart"),
     ],
   }, null, 2);
 }
 
-/** A vertical example of the proposed composite method/operator node. It is deliberately
- * local UI state: the production graph remains governed by its current wire contracts. */
+/** The split method written with decorators (spikes/decorator-split), shown on one node. */
 export function SplitChoiceExample() {
   const [tab, setTab] = useState<"preview" | "source">("preview");
-  const [override, setOverride] = useState<Choice>("auto");
-  const [nodeSource, setNodeSource] = useState(SPLIT_NODE_SOURCE);
-  const [group, setGroup] = useState<GroupSettings>({ groupColumn: "customer_id", testFraction: 0.2, seed: 42 });
-  const [random, setRandom] = useState<RandomSettings>({ testFraction: 0.2, seed: 42 });
-  const [temporal, setTemporal] = useState<TemporalSettings>({ timeColumn: "created_at", testFraction: 0.2 });
-  const recommended: OperatorChoice = "group";
-  const selected: OperatorChoice = override === "auto" ? recommended : override;
-  const reason =
-    override !== "auto"
-      ? `User manually selected ${override}.`
-      : `Evidence identifies ${group.groupColumn} as the entity boundary, so each customer stays on one side.`;
-  const materialized = notebookCode(nodeSource, override, selected, reason, group, random, temporal);
-  const [notebook, setNotebook] = useState(materialized);
-  const [notebookDirty, setNotebookDirty] = useState(false);
-  const [syncMessage, setSyncMessage] = useState("Live sync ready");
-  const editorCode = notebookDirty ? notebook : materialized;
-  const notebookDownload = `data:application/x-ipynb+json;charset=utf-8,${encodeURIComponent(exportedNotebook(editorCode, selected, override))}`;
+  const [override, setOverride] = useState<string | null>(null);
+  const [values, setValues] = useState<Record<string, Values>>(() =>
+    Object.fromEntries(OPTIONS.map((option) => [option.id, defaults(option)])));
+  const [edited, setEdited] = useState<string | null>(null);
+  const [file, setFile] = useState(pack.files[0]!.path);
 
-  const syncNotebook = (source: string) => {
-    setNotebook(source);
-    setNotebookDirty(true);
-    const choice = readChoice(source);
-    if (choice && choice !== override) {
-      setOverride(choice);
-      setSyncMessage(`Synced choice: ${choice}`);
-      // A new choice resolves to a different operator, so show that implementation.
-      setNotebookDirty(false);
-    }
-    const operator = (["temporal", "group", "random"] as const)
-      .find((candidate) => source.includes(`def ${candidate}_split(`));
-    const testFraction = readNumberArgument(source, "test_fraction");
-    const seed = readNumberArgument(source, "seed");
-    if (operator === "group") {
-      setGroup((current) => ({
-        groupColumn: readStringArgument(source, "group_column") ?? current.groupColumn,
-        testFraction: testFraction ?? current.testFraction,
-        seed: seed ?? current.seed,
-      }));
-      setSyncMessage("Synced Group parameters");
-    } else if (operator === "random") {
-      setRandom((current) => ({
-        testFraction: testFraction ?? current.testFraction,
-        seed: seed ?? current.seed,
-      }));
-      setSyncMessage("Synced Random parameters");
-    } else if (operator === "temporal") {
-      setTemporal((current) => ({
-        timeColumn: readStringArgument(source, "time_column") ?? current.timeColumn,
-        testFraction: testFraction ?? current.testFraction,
-      }));
-      setSyncMessage("Synced Temporal parameters");
-    }
-    if (operator) setNodeSource((current) => replaceNodeFunction(current, source, `${operator}_split`));
+  const auto = byId(pack.auto.option);
+  const selected = override ? byId(override) : auto;
+  const current = values[selected.id]!;
+  const code = edited ?? `${selected.definition}\n\n${callLine(selected, current)}`;
+  const custom = edited !== null && !edited.startsWith(selected.definition);
+  const missing = unbound(selected);
+  const atDefaults = Object.entries(defaults(selected)).every(([name, value]) => current[name] === value);
+  const shown = pack.files.find((candidate) => candidate.path === file)!;
+
+  const pick = (id: string | null) => {
+    setOverride(id);
+    setEdited(null);
+  };
+  const setValue = (name: string, value: number) => {
+    setValues({ ...values, [selected.id]: { ...current, [name]: value } });
+    setEdited(null);
+  };
+  const editCell = (text: string) => {
+    setEdited(text);
+    setValues({ ...values, [selected.id]: { ...current, ...readSettings(text, selected) } });
   };
 
   return (
     <section className="split-example-page" aria-label="Composite split example">
       <PageHeader
-        eyebrow="Interactive design example · one method and three operators"
+        eyebrow="Design example · method and operators written with decorators"
         title="Split choice node"
-        description="Evidence recommends an operator. Override the choice or tune its settings and the resolved notebook changes immediately."
+        description="The method picks an operator from the project's bindings. Override it or change a setting, and the notebook follows."
       />
       <div className="split-example-tabs" role="tablist" aria-label="Example views">
         <button type="button" role="tab" aria-selected={tab === "preview"} onClick={() => setTab("preview")}>Flow and notebook</button>
-        <button type="button" role="tab" aria-selected={tab === "source"} onClick={() => setTab("source")}>Node code</button>
+        <button type="button" role="tab" aria-selected={tab === "source"} onClick={() => setTab("source")}>Pack files</button>
       </div>
 
       {tab === "source" ? (
-        <div className="split-example-source">
-          <div className="split-example-panel-head">
-            <div>
-              <h2>Editable composite source</h2>
-              <p>The method, options, tunables and implementations live in this one node-owned file.</p>
-            </div>
-            <a className="page-btn" href="/examples/composite-split/split.py" download>Download split.py</a>
-          </div>
+        <div className="split-example-files">
+          <nav aria-label="Pack files">
+            {(["written", "generated"] as const).map((kind) => (
+              <div key={kind}>
+                <h3>{kind === "written" ? "Written by a person" : "Generated · Rust reads these"}</h3>
+                {pack.files.filter((candidate) => candidate.kind === kind).map((candidate) => (
+                  <button key={candidate.path} type="button" aria-pressed={candidate.path === file} onClick={() => setFile(candidate.path)}>
+                    {candidate.path}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
           <CodeInput
-            value={nodeSource}
-            label="Decorated node source"
-            onChange={(source) => { setNodeSource(source); setNotebookDirty(false); }}
-            onRun={(source) => { setNodeSource(source); setNotebookDirty(false); }}
+            key={shown.path}
+            value={shown.text}
+            label={`${shown.path} source`}
+            language={shown.path.endsWith(".yaml") ? "yaml" : "python"}
+            readOnly
+            onChange={() => undefined}
+            onRun={() => undefined}
           />
         </div>
       ) : (
@@ -360,88 +152,71 @@ export function SplitChoiceExample() {
             <div className="split-example-panel-head">
               <div>
                 <h2>Flow</h2>
-                <p>One composite node resolves its method to one operator.</p>
+                <p>{pack.method.activity}: {pack.method.question}</p>
               </div>
-              <a className="page-btn" href="/examples/composite-split/exploration.yaml" download>Exploration YAML</a>
             </div>
 
             <div className="split-example-canvas">
-              <div className="split-example-edge" aria-hidden="true" />
-              <div className="split-example-data-node">Customer data</div>
-              <article className="split-example-node" aria-label="Split choice node">
+              <div className="split-example-data-node">Products</div>
+              <span className="split-example-link" aria-hidden="true" />
+              <article className="split-example-node" aria-label="Split node">
                 <header>
                   <span className="split-example-node-icon"><KindIcon kind="decision" /></span>
                   <div>
                     <h2>Split</h2>
-                    <p>Method + selected operator</p>
+                    <p>{override ? "Chosen by you" : "Chosen by the method"}</p>
                   </div>
                 </header>
                 <dl>
-                  <div><dt>Mode</dt><dd>{override === "auto" ? "Automatic" : "Override"}</dd></div>
-                  <div><dt>Selected operator</dt><dd className="split-example-selected">{LABEL[selected]}</dd></div>
-                  <div><dt>Evidence</dt><dd>entity column · {group.groupColumn}</dd></div>
+                  <div><dt>Operator</dt><dd className="split-example-selected">{selected.label}</dd></div>
+                  {Object.entries(selected.concepts).map(([name, concept]) => (
+                    <div key={name}><dt>{name}</dt><dd>{BINDINGS[concept] ?? "not bound"}</dd></div>
+                  ))}
                 </dl>
-                <p className="split-example-reason">{reason}</p>
+                <p className="split-example-reason">
+                  {override ? `Auto would pick ${auto.label}: ${pack.auto.reason}` : pack.auto.reason}
+                </p>
+                <ul className="split-example-promises" aria-label="Promises">
+                  {selected.promises.map((promise) => <li key={promise}>{promise}</li>)}
+                </ul>
                 <footer><span>train</span><span>test</span></footer>
               </article>
+              <span className="split-example-link" aria-hidden="true" />
+              <div className="split-example-data-node">Split chart</div>
             </div>
 
-            <section className="split-example-controls" aria-label="Split choices and parameters">
+            <section className="split-example-controls" aria-label="Split choices and settings">
               <h3>Choice</h3>
               <div className="split-example-choice-row">
-                {CHOICES.map((choice) => (
-                  <button key={choice.id} type="button" className={override === choice.id ? "active" : ""} onClick={() => { setOverride(choice.id); setNotebookDirty(false); }}>
-                    {choice.label}
+                <button type="button" className={override === null ? "active" : ""} onClick={() => pick(null)}>Auto</button>
+                {OPTIONS.map((option) => (
+                  <button key={option.id} type="button" className={override === option.id ? "active" : ""} onClick={() => pick(option.id)}>
+                    {option.label.replace(" split", "")}
                   </button>
                 ))}
               </div>
-              <p className="split-example-help">Auto recommends Group from the current evidence. Any other value is an explicit exploration override.</p>
-              <h3>{LABEL[selected]} parameters</h3>
+              {missing.length > 0 && (
+                <p className="split-example-warning" role="alert">
+                  {selected.label} needs {missing.join(", ")}, which this project has not bound. It cannot run.
+                </p>
+              )}
+              <h3>{selected.label} settings</h3>
               <div className="split-example-fields">
-                {selected === "group" && (
-                  <label>Group column<input aria-label="Group column" value={group.groupColumn} onChange={(event) => { setGroup({ ...group, groupColumn: event.target.value }); setNotebookDirty(false); }} /></label>
-                )}
-                {selected === "temporal" && (
-                  <label>Time column<input aria-label="Time column" value={temporal.timeColumn} onChange={(event) => { setTemporal({ ...temporal, timeColumn: event.target.value }); setNotebookDirty(false); }} /></label>
-                )}
-                <label>
-                  Test fraction
-                  <input
-                    aria-label="Test fraction"
-                    type="number"
-                    min="0.05"
-                    max="0.4"
-                    step="0.05"
-                    value={selected === "group" ? group.testFraction : selected === "random" ? random.testFraction : temporal.testFraction}
-                    onChange={(event) => {
-                      const value = Number(event.target.value);
-                      if (selected === "group") setGroup({ ...group, testFraction: value });
-                      else if (selected === "random") setRandom({ ...random, testFraction: value });
-                      else setTemporal({ ...temporal, testFraction: value });
-                      setNotebookDirty(false);
-                    }}
-                  />
-                  <span>Tunable · 0.05–0.40</span>
-                </label>
-                {selected !== "temporal" && (
-                  <label>
-                    Seed
+                {Object.entries(selected.settings).map(([name, setting]) => (
+                  <label key={name}>
+                    {name}
                     <input
-                      aria-label="Seed"
+                      aria-label={name}
                       type="number"
-                      min="0"
-                      max="10000"
-                      value={selected === "group" ? group.seed : random.seed}
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        if (selected === "group") setGroup({ ...group, seed: value });
-                        else setRandom({ ...random, seed: value });
-                        setNotebookDirty(false);
-                      }}
+                      min={setting.minimum}
+                      max={setting.maximum}
+                      step={setting["x-sprisk-step"] ?? 1}
+                      value={current[name]}
+                      onChange={(event) => setValue(name, Number(event.target.value))}
                     />
-                    <span>Tunable · 0–10,000</span>
+                    <span>{setting.minimum}–{setting.maximum}</span>
                   </label>
-                )}
+                ))}
               </div>
             </section>
           </section>
@@ -449,22 +224,38 @@ export function SplitChoiceExample() {
           <section className="split-example-notebook" aria-label="Notebook preview">
             <div className="split-example-panel-head">
               <div>
-                <h2>Resolved notebook</h2>
-                <p>Edit <code>split_parameters</code> or <code>split_choice</code>; the flow controls update immediately.</p>
+                <h2>Notebook</h2>
+                <p>Plain Python, made from the operator functions. Edit a setting in the call line and the node follows.</p>
               </div>
-              <div className="split-example-actions">
-                <a className="page-btn" href={notebookDownload} download="customer-safe-split.ipynb">Export .ipynb</a>
-                <span className="split-example-live" aria-live="polite">{syncMessage}</span>
-              </div>
+              <a
+                className="page-btn"
+                href={`data:application/x-ipynb+json;charset=utf-8,${encodeURIComponent(exportedNotebook(code, selected))}`}
+                download="split.ipynb"
+              >
+                Export .ipynb
+              </a>
             </div>
             <div className="split-example-cell">
-              <span className="split-example-count">[ ]</span>
-              <CodeInput value={editorCode} label="Resolved notebook code" onChange={syncNotebook} onRun={syncNotebook} />
+              <span className="split-example-count">[1]</span>
+              <CodeInput key={selected.id} value={code} label="Split cell" onChange={editCell} onRun={editCell} />
             </div>
-            <aside>
-              <strong>Round-trip metadata</strong>
-              <span>node validation_split · method split · operator {selected}_split · exploration customer-safe-split</span>
-            </aside>
+            {custom && <p className="split-example-note">Custom code. The promises are still checked on this cell's train and test.</p>}
+            <div className="split-example-cell">
+              <span className="split-example-count">[2]</span>
+              <CodeInput value={pack.chart_cell} label="Chart cell" readOnly onChange={() => undefined} onRun={() => undefined} />
+            </div>
+            <div className="split-example-output">
+              {selected.chart === null ? (
+                <p>No chart: the split cannot run until {missing.join(", ")} is bound.</p>
+              ) : (
+                <>
+                  {!atDefaults && <p>Drawn at the default settings. It is drawn again with yours when the step runs.</p>}
+                  <Suspense fallback={<Loading text="Loading chart…" pad />}>
+                    <PlotlyFigure json={selected.chart} label="Rows in train and test" />
+                  </Suspense>
+                </>
+              )}
+            </div>
           </section>
         </div>
       )}

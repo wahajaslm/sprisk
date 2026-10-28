@@ -4,6 +4,7 @@ import polars as pl
 
 from concepts import EventTime, ItemIdentity
 from sprisk import evidence, operator, promise
+from validation.settings import TestFraction
 
 
 class TimeOrder(TypedDict):
@@ -42,20 +43,13 @@ def test_after_train(order: TimeOrder) -> tuple[str, str]:
     return "pass", f"Every test row is later than {latest}, the latest train row."
 
 
-@operator(
-    inputs=["data"],
-    outputs=["train", "test"],
-    role="split",
-    folds="time",
-    tunables={"test_fraction": {"minimum": 0.05, "maximum": 0.40, "step": 0.05}},
-    promises=[test_after_train],
-)
+@operator(role="split", folds="time", promises=[test_after_train])
 def temporal_split(
     data: pl.DataFrame,
     time_column: EventTime,
-    test_fraction: float = 0.2,
+    test_fraction: TestFraction = 0.2,
     group_column: ItemIdentity | None = None,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
+) -> dict[str, pl.DataFrame]:
     """Split by time. Every train row is strictly earlier than every test row."""
     times = data[time_column]
     if times.null_count():
@@ -68,4 +62,4 @@ def temporal_split(
         train = train.filter(~pl.col(group_column).is_in(test[group_column].implode()))
     if train.is_empty() or test.is_empty():
         raise ValueError(f"split gave {train.height} train and {test.height} test rows")
-    return train, test
+    return {"train": train, "test": test}

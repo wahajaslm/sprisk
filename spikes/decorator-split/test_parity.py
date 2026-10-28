@@ -20,6 +20,7 @@ from sprisk import (
     method,
     method_manifest,
     notebook_cell,
+    operator,
     operator_manifest,
 )
 from sprisk_validation import group_split as old_group
@@ -29,6 +30,7 @@ from sprisk_validation import temporal_split as old_temporal
 from validation import group_split, random_split, stratified_split, temporal_split
 from validation.group_split import group_overlap, no_group_overlap
 from validation.row_overlap import no_row_in_both, row_overlap
+from validation.split_chart import split_chart
 
 # Aliased: pytest would collect a name starting with test_ as a test.
 from validation.temporal_split import test_after_train as promise_test_after_train
@@ -123,15 +125,15 @@ def test_each_operator_splits_exactly_as_today(rows: pl.DataFrame) -> None:
             temporal_split(rows, time_column="day", test_fraction=0.2, group_column="title_id"),
         ),
     ]
-    for old, (train, test) in pairs:
-        assert_frame_equal(old["train"], train)
-        assert_frame_equal(old["test"], test)
+    for old, new in pairs:
+        assert_frame_equal(old["train"], new["train"])
+        assert_frame_equal(old["test"], new["test"])
 
 
 def test_evidence_and_promises_judge_exactly_as_today(rows: pl.DataFrame) -> None:
     clean = group_split(rows, group_column="title_id", test_fraction=0.25, seed=3)
     leaky = random_split(rows, test_fraction=0.25, seed=3)
-    for train, test in (clean, leaky):
+    for train, test in (clean.values(), leaky.values()):
         old = old_evidence.group_overlap(train, test, "title_id")["evaluation.group_overlap"]
         new = group_overlap(train, test, group_column="title_id")
         assert new == old
@@ -146,7 +148,7 @@ def test_evidence_and_promises_judge_exactly_as_today(rows: pl.DataFrame) -> Non
         new = time_order(train, test, time_column="day")
         assert new == old
         assert promise_test_after_train(new) == OLD.verify_test_after_train(old, {})
-    assert no_group_overlap(group_overlap(*leaky, group_column="title_id"))[0] == "fail"
+    assert no_group_overlap(group_overlap(*leaky.values(), group_column="title_id"))[0] == "fail"
 
 
 # Every way the generated method differs from today's method.yaml.
@@ -232,13 +234,40 @@ def test_generated_evidence_manifests_match_todays(fn: Any, role: str) -> None:
             assert prop.get(flag) == old_prop.get(flag), (name, flag)
 
 
-def test_an_operator_whose_inputs_do_not_match_its_tables_is_refused() -> None:
-    random_split.__sprisk__ = {**random_split.__sprisk__, "inputs": ["rows"]}
-    try:
-        with pytest.raises(ValueError, match=r"declares inputs \['rows'\] but takes tables"):
-            operator_manifest(random_split, validation.PACK, validation.VERSION)
-    finally:
-        random_split.__sprisk__ = {**random_split.__sprisk__, "inputs": ["data"]}
+def test_outputs_are_read_from_the_returned_dict_and_must_be_named() -> None:
+    def unnamed(data: pl.DataFrame) -> dict[str, pl.DataFrame]:
+        return dict(train=data)
+
+    def uneven(data: pl.DataFrame) -> dict[str, pl.DataFrame]:
+        if data.is_empty():
+            return {"train": data}
+        return {"train": data, "test": data}
+
+    for fn, message in ((unnamed, "must return a dict literal"), (uneven, "different outputs")):
+        operator(role="split")(fn)
+        with pytest.raises(ValueError, match=message):
+            operator_manifest(fn, validation.PACK, validation.VERSION)
+
+
+def test_ranges_come_from_the_setting_types() -> None:
+    props = operator_manifest(group_split, validation.PACK, validation.VERSION)["params_schema"]
+    assert props["properties"]["test_fraction"] == {
+        "type": "number", "minimum": 0.05, "maximum": 0.40, "x-sprisk-step": 0.05, "default": 0.2,
+    }  # fmt: skip
+    assert props["required"] == ["group_column"]
+
+
+def test_the_chart_is_its_own_step_with_a_figure_output(rows: pl.DataFrame) -> None:
+    manifest = operator_manifest(split_chart, validation.PACK, validation.VERSION)
+    assert manifest["inputs"] == [
+        {"name": "train", "kind": "table"},
+        {"name": "test", "kind": "table"},
+    ]
+    assert manifest["outputs"] == [{"name": "figure", "kind": "figure"}]
+
+    split = group_split(rows, group_column="title_id", test_fraction=0.25, seed=3)
+    bars = split_chart(**split)["figure"].data[0]
+    assert list(bars.y) == [split["train"].height, split["test"].height]
 
 
 @pytest.mark.parametrize(
@@ -259,6 +288,13 @@ def test_the_notebook_cell_is_plain_python_that_splits_like_the_step(
     scope: dict[str, Any] = {"data": rows}
     exec(compile(cell, "<cell>", "exec"), scope)
 
-    train, test = op(rows, **settings)
-    assert_frame_equal(scope["train"], train)
-    assert_frame_equal(scope["test"], test)
+    step = op(rows, **settings)
+    assert_frame_equal(scope["train"], step["train"])
+    assert_frame_equal(scope["test"], step["test"])
+
+
+def test_the_chart_cell_draws_from_the_notebook_tables(rows: pl.DataFrame) -> None:
+    split = random_split(rows, test_fraction=0.2, seed=7)
+    scope: dict[str, Any] = dict(split)
+    exec(compile(notebook_cell(split_chart, {}), "<cell>", "exec"), scope)
+    assert list(scope["figure"].data[0].y) == [32, 8]

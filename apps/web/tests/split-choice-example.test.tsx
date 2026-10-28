@@ -4,112 +4,103 @@ import { describe, expect, it } from "vitest";
 
 import { SplitChoiceExample } from "../src/views/examples/SplitChoiceExample.tsx";
 
-describe("composite split example", () => {
-  it("shows the evidence-backed choice, its operator settings, and resolved notebook code", async () => {
+const cell = (label: string) => screen.getByLabelText(label) as HTMLTextAreaElement;
+
+describe("decorator split example", () => {
+  it("shows the method's own choice, reason, bound column and promise", async () => {
     render(<SplitChoiceExample />);
 
-    expect(screen.getByRole("heading", { name: "Split" })).toBeInTheDocument();
-    expect(screen.getByText("Selected operator")).toBeInTheDocument();
     expect(screen.getByText("Group split", { selector: ".split-example-selected" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Group column")).toHaveValue("customer_id");
-    expect(screen.getByLabelText("Test fraction")).toHaveValue(0.2);
-    expect(screen.getByRole("link", { name: "Exploration YAML" })).toHaveAttribute(
-      "href",
-      "/examples/composite-split/exploration.yaml",
-    );
+    expect(screen.getByText("Chosen by the method")).toBeInTheDocument();
+    expect(screen.getByText("title_id")).toBeInTheDocument();
+    expect(screen.getByText(/Rows of one item stay on one side/)).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Promises" })).toHaveTextContent("No item has rows in both train and test.");
 
-    const notebook = await screen.findByLabelText("Resolved notebook code") as HTMLTextAreaElement;
-    expect(notebook.value).toContain("def group_split(");
-    expect(notebook.value).toContain('"group_column": "customer_id"');
-    expect(notebook.value).not.toContain("@operator");
-    expect(notebook.value).not.toContain("@method");
+    const split = await screen.findByLabelText("Split cell") as HTMLTextAreaElement;
+    expect(split.value).toContain("def group_split(");
+    expect(split.value).toContain('group_split(data, group_column="title_id", test_fraction=0.2, seed=42)');
+    expect(split.value).not.toMatch(/sprisk|@operator|ItemIdentity|TestFraction/);
+    expect(await screen.findByRole("img", { name: "Rows in train and test" })).toBeInTheDocument();
   });
 
-  it("overrides the method, shows that operator's controls, and updates the notebook", async () => {
+  it("overrides the method and says what auto would pick", async () => {
     const user = userEvent.setup();
     render(<SplitChoiceExample />);
 
     await user.click(screen.getByRole("button", { name: "Random" }));
 
     expect(screen.getByText("Random split", { selector: ".split-example-selected" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Group column")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Seed")).toHaveValue(42);
-    const notebook = screen.getByLabelText("Resolved notebook code") as HTMLTextAreaElement;
-    expect(notebook.value).toContain("def random_split(");
-    expect(notebook.value).toContain('split_choice = "random"');
+    expect(screen.getByText("Chosen by you")).toBeInTheDocument();
+    expect(screen.getByText(/Auto would pick Group split/)).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Promises" })).toHaveTextContent("No test row has the same features as a train row.");
+    expect((await screen.findByLabelText("Split cell") as HTMLTextAreaElement).value)
+      .toContain("random_split(data, test_fraction=0.2, seed=42)");
   });
 
-  it("keeps option-specific values when choices are changed", async () => {
+  it("refuses to pretend a split runs when its concept is not bound", async () => {
     const user = userEvent.setup();
     render(<SplitChoiceExample />);
 
-    const fraction = screen.getByLabelText("Test fraction");
+    await user.click(screen.getByRole("button", { name: "Temporal" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Temporal split needs common.event_time, which this project has not bound.");
+    expect(screen.queryByRole("img", { name: "Rows in train and test" })).not.toBeInTheDocument();
+    expect(screen.getByText(/No chart: the split cannot run/)).toBeInTheDocument();
+  });
+
+  it("moves a setting from the form to the cell and from the cell to the form", async () => {
+    const user = userEvent.setup();
+    render(<SplitChoiceExample />);
+    await screen.findByLabelText("Split cell");
+
+    const fraction = screen.getByLabelText("test_fraction");
     await user.clear(fraction);
     await user.type(fraction, "0.3");
-    await user.click(screen.getByRole("button", { name: "Temporal" }));
-    await user.click(screen.getByRole("button", { name: "Group" }));
+    expect(cell("Split cell").value).toContain("test_fraction=0.3");
+    expect(screen.getByText(/Drawn at the default settings/)).toBeInTheDocument();
 
-    expect(screen.getByLabelText("Test fraction")).toHaveValue(0.3);
-    expect((screen.getByLabelText("Resolved notebook code") as HTMLTextAreaElement).value).toContain('"test_fraction": 0.3');
+    fireEvent.change(cell("Split cell"), { target: { value: cell("Split cell").value.replace("seed=42", "seed=7") } });
+    expect(screen.getByLabelText("seed")).toHaveValue(7);
+    expect(screen.queryByText(/Custom code/)).not.toBeInTheDocument();
   });
 
-  it("shows the complete decorated node source as editable code", async () => {
+  it("ignores an out-of-range setting typed into the cell", async () => {
+    render(<SplitChoiceExample />);
+    await screen.findByLabelText("Split cell");
+
+    fireEvent.change(cell("Split cell"), { target: { value: cell("Split cell").value.replace("test_fraction=0.2", "test_fraction=0.9") } });
+
+    expect(screen.getByLabelText("test_fraction")).toHaveValue(0.2);
+  });
+
+  it("marks edited function code as custom", async () => {
+    render(<SplitChoiceExample />);
+    await screen.findByLabelText("Split cell");
+
+    fireEvent.change(cell("Split cell"), { target: { value: cell("Split cell").value.replace("splitter = ", "splitter  = ") } });
+
+    expect(screen.getByText(/Custom code. The promises are still checked/)).toBeInTheDocument();
+  });
+
+  it("lists the files a person writes apart from the YAML Rust reads", async () => {
     const user = userEvent.setup();
     render(<SplitChoiceExample />);
 
-    await user.click(screen.getByRole("tab", { name: "Node code" }));
-    expect(screen.getByRole("link", { name: "Download split.py" })).toHaveAttribute(
-      "href",
-      "/examples/composite-split/split.py",
-    );
-    const source = screen.getByLabelText("Decorated node source");
-    expect(source).not.toHaveAttribute("readonly");
-    expect((source as HTMLTextAreaElement).value).toContain("@method(");
-    expect((source as HTMLTextAreaElement).value).toContain("@operator(");
-    expect((source as HTMLTextAreaElement).value).toContain("def temporal_split(");
+    await user.click(screen.getByRole("tab", { name: "Pack files" }));
+    expect((await screen.findByLabelText("split_method.py source") as HTMLTextAreaElement).value).toContain("@method(");
+
+    await user.click(screen.getByRole("button", { name: "generated/split_method.yaml" }));
+    const yaml = await screen.findByLabelText("generated/split_method.yaml source") as HTMLTextAreaElement;
+    expect(yaml).toHaveAttribute("readonly");
+    expect(yaml.value).toContain("# Generated from the decorated pack. Do not edit.");
   });
 
-  it("synchronizes notebook parameters and implementation back to the node while editing", async () => {
-    const user = userEvent.setup();
+  it("exports the split and chart cells as a plain notebook", () => {
     render(<SplitChoiceExample />);
 
-    const notebook = await screen.findByLabelText("Resolved notebook code") as HTMLTextAreaElement;
-    const changed = notebook.value
-      .replace('"test_fraction": 0.2', '"test_fraction": 0.3')
-      .replace("return train, test", "return train.rechunk(), test.rechunk()");
-    fireEvent.change(notebook, { target: { value: changed } });
-
-    expect(screen.getByLabelText("Test fraction")).toHaveValue(0.3);
-    expect(screen.getByText("Synced Group parameters")).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Node code" }));
-    expect((screen.getByLabelText("Decorated node source") as HTMLTextAreaElement).value)
-      .toContain("return train.rechunk(), test.rechunk()");
-  });
-
-  it("synchronizes a notebook choice immediately", async () => {
-    render(<SplitChoiceExample />);
-
-    const notebook = await screen.findByLabelText("Resolved notebook code") as HTMLTextAreaElement;
-    fireEvent.change(notebook, {
-      target: { value: notebook.value.replace('split_choice = "auto"', 'split_choice = "random"') },
-    });
-
-    expect(screen.getByRole("button", { name: "Random" })).toHaveClass("active");
-    expect(screen.getByText("Random split", { selector: ".split-example-selected" })).toBeInTheDocument();
-    expect((screen.getByLabelText("Resolved notebook code") as HTMLTextAreaElement).value)
-      .toContain("def random_split(");
-  });
-
-  it("exports the current resolved code as a plain Python notebook", async () => {
-    const user = userEvent.setup();
-    render(<SplitChoiceExample />);
-
-    await user.click(screen.getByRole("button", { name: "Random" }));
-    const exportLink = screen.getByRole("link", { name: "Export .ipynb" });
-    const payload = decodeURIComponent(exportLink.getAttribute("href")?.split(",", 2)[1] ?? "");
-    const notebook = JSON.parse(payload) as { metadata: { sprisk: { operator: string } }; cells: { source?: string[] }[] };
-    expect(notebook.metadata.sprisk.operator).toBe("random_split");
-    expect(notebook.cells[1]?.source?.join("")).toContain("def random_split(");
-    expect(notebook.cells[1]?.source?.join("")).not.toContain("from sprisk");
+    const href = screen.getByRole("link", { name: "Export .ipynb" }).getAttribute("href") ?? "";
+    const notebook = JSON.parse(decodeURIComponent(href.split(",", 2)[1] ?? "")) as { cells: { source: string[] }[] };
+    expect(notebook.cells[1]?.source.join("")).toContain("def group_split(");
+    expect(notebook.cells[2]?.source.join("")).toContain("def split_chart(");
   });
 });

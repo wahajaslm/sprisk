@@ -1,15 +1,19 @@
-"""Spike runtime for packs written with decorators. A decorator only records what a function
-declares. The `*_manifest` functions turn those records into today's YAML shapes, so Rust keeps
-reading YAML and never imports pack code."""
+"""Spike runtime for packs written with decorators. The code says most of it: table parameters
+are inputs, the returned dict's keys are outputs, types carry concepts and ranges, docstrings
+describe. A decorator only adds what code cannot say: role, folds, promises. The `*_manifest`
+functions turn all of it into today's YAML shapes, so Rust keeps reading YAML."""
 
+import ast
 import inspect
 import re
+import textwrap
 import types
 import typing
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, Any
 
+import plotly.graph_objects as go
 import polars as pl
 
 Fn = Callable[..., Any]
@@ -23,6 +27,13 @@ class Concept:
     id: str
     kind: str
     description: str
+
+
+@dataclass(frozen=True)
+class Between:
+    minimum: float
+    maximum: float
+    step: float | None = None
 
 
 @dataclass(frozen=True)
@@ -45,23 +56,19 @@ def _record(**declared: Any) -> Callable[[Fn], Fn]:
 
 def operator(
     *,
-    inputs: list[str],
-    outputs: list[str],
     role: str,
-    folds: str,
-    promises: list[Fn],
-    tunables: dict[str, dict[str, float]] | None = None,
+    folds: str | None = None,
+    promises: list[Fn] | None = None,
+    capability_class: str = "transform",
     role_default: bool = False,
     resources: dict[str, Any] | None = None,
 ) -> Callable[[Fn], Fn]:
     return _record(
         kind="operator",
-        inputs=inputs,
-        outputs=outputs,
         role=role,
         folds=folds,
-        promises=promises,
-        tunables=tunables or {},
+        promises=promises or [],
+        capability_class=capability_class,
         role_default=role_default,
         resources=resources or OPERATOR_RESOURCES,
     )
@@ -91,13 +98,18 @@ def decide(fn: Fn, **values: Any) -> Choice:
     return choice
 
 
-def concept_of(annotation: Any) -> Concept | None:
+def _marker[T](annotation: Any, kind: type[T]) -> T | None:
+    """The `kind` marker inside an `Annotated` type, looking through `| None`."""
     if typing.get_origin(annotation) in (typing.Union, types.UnionType):
-        found = [concept_of(arg) for arg in typing.get_args(annotation)]
-        return next((c for c in found if c is not None), None)
+        found = [_marker(arg, kind) for arg in typing.get_args(annotation)]
+        return next((m for m in found if m is not None), None)
     if typing.get_origin(annotation) is Annotated:
-        return next((m for m in annotation.__metadata__ if isinstance(m, Concept)), None)
+        return next((m for m in annotation.__metadata__ if isinstance(m, kind)), None)
     return None
+
+
+def concept_of(annotation: Any) -> Concept | None:
+    return _marker(annotation, Concept)
 
 
 def _json_type(annotation: Any) -> str:
@@ -122,7 +134,6 @@ def _doc(fn: Fn) -> str:
 def _settings(fn: Fn) -> tuple[dict[str, Any], dict[str, str], dict[str, Any]]:
     """A function's non-table parameters as (schema properties, concepts, defaults)."""
     hints = typing.get_type_hints(fn, include_extras=True)
-    tunables = fn.__sprisk__.get("tunables", {})  # type: ignore[attr-defined]
     properties: dict[str, Any] = {}
     concepts: dict[str, str] = {}
     defaults: dict[str, Any] = {}
@@ -137,13 +148,37 @@ def _settings(fn: Fn) -> tuple[dict[str, Any], dict[str, str], dict[str, Any]]:
             # A label is dropped before the step runs, so evidence never reads a test label.
             if concept.kind == "label":
                 prop["x-sprisk-excluded"] = True
-        for key, value in tunables.get(name, {}).items():
-            prop["x-sprisk-step" if key == "step" else key] = value
+        between = _marker(hints[name], Between)
+        if between is not None:
+            prop |= {"minimum": between.minimum, "maximum": between.maximum}
+            if between.step is not None:
+                prop["x-sprisk-step"] = between.step
         if param.default is not inspect.Parameter.empty and param.default is not None:
             prop["default"] = param.default
             defaults[name] = param.default
         properties[name] = prop
     return properties, concepts, defaults
+
+
+def _outputs(fn: Fn) -> list[str]:
+    """The keys of the dict the function returns, read from its code."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Return):
+            if not isinstance(node.value, ast.Dict) or not all(
+                isinstance(k, ast.Constant) and isinstance(k.value, str) for k in node.value.keys
+            ):
+                raise ValueError(f"{fn.__name__} must return a dict literal with named outputs")
+            found.add(tuple(k.value for k in node.value.keys))  # type: ignore[union-attr]
+    if len(found) != 1:
+        raise ValueError(f"{fn.__name__} returns different outputs: {sorted(found)}")
+    return list(found.pop())
+
+
+def _output_kind(fn: Fn) -> str:
+    value = typing.get_args(typing.get_type_hints(fn)["return"])[1]
+    return "figure" if value is go.Figure else "table"
 
 
 def _tables(fn: Fn) -> list[str]:
@@ -164,22 +199,18 @@ def _params_schema(fn: Fn, properties: dict[str, Any]) -> dict[str, Any]:
 
 def operator_manifest(fn: Fn, pack: str, version: str) -> dict[str, Any]:
     declared = fn.__sprisk__  # type: ignore[attr-defined]
-    if _tables(fn) != declared["inputs"]:
-        raise ValueError(
-            f"{fn.__name__} declares inputs {declared['inputs']} but takes tables {_tables(fn)}"
-        )
     properties, concepts, _ = _settings(fn)
     manifest: dict[str, Any] = {
         "schema_version": "sprisk.operator/v1",
         "id": f"{pack}.{fn.__name__}@{version}",
         "title": _title(fn),
-        "capability_class": "transform",
+        "capability_class": declared["capability_class"],
         "role": declared["role"],
         "folds": declared["folds"],
         "description": _doc(fn),
         "entrypoint": f"{fn.__module__}:{fn.__name__}",
-        "inputs": [{"name": n, "kind": "table"} for n in declared["inputs"]],
-        "outputs": [{"name": n, "kind": "table"} for n in declared["outputs"]],
+        "inputs": [{"name": n, "kind": "table"} for n in _tables(fn)],
+        "outputs": [{"name": n, "kind": _output_kind(fn)} for n in _outputs(fn)],
         "concepts": concepts,
         "promises": [p.__name__ for p in declared["promises"]],
         "params_schema": _params_schema(fn, properties),
@@ -187,6 +218,8 @@ def operator_manifest(fn: Fn, pack: str, version: str) -> dict[str, Any]:
         "network": "none",
         "resources": declared["resources"],
     }
+    if declared["folds"] is None:
+        del manifest["folds"]
     if declared["role_default"]:
         manifest["role_default"] = True
     return manifest
@@ -261,16 +294,17 @@ def method_manifest(fn: Fn, pack: str, operator_pack: str, version: str) -> dict
     }
 
 
-def notebook_cell(fn: Fn, settings: dict[str, Any], data: str = "data") -> str:
+def notebook_cell(fn: Fn, settings: dict[str, Any]) -> str:
     """The step as plain Python: the module's library imports, the function without its
-    decorator or concept types, and one call. It replaces each operator's hand-written
-    `as_code`."""
+    decorator or Sprisk types, and one call on the notebook's tables of the same names. It
+    replaces each operator's hand-written `as_code`."""
     module = inspect.getmodule(fn)
     source = inspect.getsource(fn)
     source = source[source.index("def ") :]
     for name, value in vars(module).items():
-        if concept_of(value) is not None:
-            source = re.sub(rf"\b{name}\b", "str", source)
+        if typing.get_origin(value) is Annotated:
+            base = typing.get_args(value)[0].__name__
+            source = re.sub(rf"\b{name}\b", base, source)
     ours = ("from sprisk ", "from concepts ", "from validation", "from .")
     imports = [
         line
@@ -279,6 +313,13 @@ def notebook_cell(fn: Fn, settings: dict[str, Any], data: str = "data") -> str:
         and not line.startswith(ours)
         and re.search(rf"\b{re.escape(line.split()[-1])}\b", source)
     ]
-    args = ", ".join([data, *(f"{k}={v!r}" for k, v in settings.items())])
-    outputs = ", ".join(fn.__sprisk__["outputs"])  # type: ignore[attr-defined]
-    return "\n".join(imports) + f"\n\n\n{source}\n\n{outputs} = {fn.__name__}({args})\n"
+    args = ", ".join([*_tables(fn), *(f"{k}={v!r}" for k, v in settings.items())])
+    outputs = _outputs(fn)
+    call = f"{fn.__name__}({args})"
+    if len(outputs) == 1:
+        run = f"{outputs[0]} = {call}[{outputs[0]!r}]\n{outputs[0]}\n"
+    else:
+        names = ", ".join(outputs)
+        picked = ", ".join(f"step[{n!r}]" for n in outputs)
+        run = f"step = {call}\n{names} = {picked}\n"
+    return "\n".join(imports) + f"\n\n\n{source}\n\n{run}"
