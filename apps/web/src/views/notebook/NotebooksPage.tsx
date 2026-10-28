@@ -88,7 +88,7 @@ export function NotebooksPage() {
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
         {decided.isError && <p role="alert" className="error">The pipeline's decisions could not be read, so steps show by stage only: {decided.error.message}</p>}
         {shownStages.length > 0 && (
-          <SideGroup num={1} label="Stages" meta={shownStages.length}>
+          <SideGroup label="Stages" meta={shownStages.length}>
             <div role="list" aria-label="This pipeline's stages">
               {shownStages.map(({ name, title, nodes }) => (
                 <div key={name} role="listitem">
@@ -99,12 +99,12 @@ export function NotebooksPage() {
           </SideGroup>
         )}
         {shownMine.length > 0 && (
-          <SideGroup num={2} label="Saved notebooks" meta={shownMine.length}>
+          <SideGroup label="Saved notebooks" meta={shownMine.length}>
             <NotebookList label="This pipeline's notebooks" notebooks={shownMine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
           </SideGroup>
         )}
         {shownLoose.length > 0 && (
-          <SideGroup num={3} label="Not in a pipeline yet" meta={shownLoose.length}>
+          <SideGroup label="Not in a pipeline yet" meta={shownLoose.length}>
             <NotebookList label="Not in a pipeline yet" notebooks={shownLoose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
           </SideGroup>
         )}

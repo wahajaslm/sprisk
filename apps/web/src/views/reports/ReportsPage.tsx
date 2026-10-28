@@ -72,15 +72,15 @@ export function ReportsPage() {
         >
           {!question && <p className="muted pad">No question yet. State one on the Objective page.</p>}
           {question && matches(question.objective.value) && (
-            <SideGroup num={1} label="Objective">
+            <SideGroup label="Objective">
               <ListRow title={question.objective.value} meta={`${question.task.value} · ${open} open`} selected={entry?.key === "objective"} onClick={() => setPicked("objective")} />
             </SideGroup>
           )}
           {question &&
             BLOCK_ORDER.map((b) => ({ b, shown: entries.flatMap((e) => (e.kind === "unknown" && e.unknown.blocks === b && matches(e.unknown.question) ? [{ key: e.key, unknown: e.unknown }] : [])) }))
               .filter(({ shown }) => shown.length > 0)
-              .map(({ b, shown }, i) => (
-                <SideGroup key={b} num={i + 2} label={`Before ${BLOCKS[b]}`} meta={shown.length}>
+              .map(({ b, shown }) => (
+                <SideGroup key={b} label={`Before ${BLOCKS[b]}`} meta={shown.length}>
                   {shown.map((e) => (
                     <ListRow key={e.key} title={e.unknown.question} meta="Not answered yet" badge="Open" warn selected={e.key === entry?.key} onClick={() => setPicked(e.key)} />
                   ))}

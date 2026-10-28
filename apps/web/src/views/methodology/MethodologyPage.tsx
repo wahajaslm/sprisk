@@ -84,8 +84,8 @@ export function MethodologyPage() {
             )
           }
         >
-          {all.map((c, i) => (
-            <SideGroup key={c.key} num={i + 1} label={stageName(c.stage)} meta={c.rules.length}>
+          {all.map((c) => (
+            <SideGroup key={c.key} label={stageName(c.stage)} meta={c.rules.length}>
               {c.rules.map((r) => {
                 const item = reviews.get(r.id);
                 return (

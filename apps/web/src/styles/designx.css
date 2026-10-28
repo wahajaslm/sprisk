@@ -71,6 +71,7 @@
 .dx-h-text:hover { color: var(--t-primary) !important; }
 .dx-h-03:hover { background: rgba(var(--ink-rgb), 0.03) !important; }
 .dx-h-04:hover { background: rgba(var(--ink-rgb), 0.04) !important; }
+.side-group + .side-group { padding-top: 6px; border-top: 1px solid rgba(var(--ink-rgb), 0.06); }
 .dx-h-05:hover { background: rgba(var(--ink-rgb), 0.05) !important; }
 .dx-h-06:hover { background: rgba(var(--ink-rgb), 0.06) !important; }
 .dx-h-06t:hover { background: rgba(var(--ink-rgb), 0.06) !important; color: var(--t-primary) !important; }

@@ -118,8 +118,8 @@ export function StepLibrary() {
         (pipelineStages.length === 0 ? (
           <p className="muted pad">No pipeline steps found.</p>
         ) : (
-          pipelineStages.map(({ stage, nodes }, i) => (
-            <SideGroup key={stage} num={i + 1} label={stage} meta={`${nodes.filter((n) => isDone(latest.get(n.id)?.state)).length} / ${nodes.length}`}>
+          pipelineStages.map(({ stage, nodes }) => (
+            <SideGroup key={stage} label={stage} meta={`${nodes.filter((n) => isDone(latest.get(n.id)?.state)).length} / ${nodes.length}`}>
               {nodes.map((node) => {
                 const op = opMap.get(node.operator);
                 const kind: NodeKind = op ? kindOf(op) : "recipe";
@@ -141,8 +141,8 @@ export function StepLibrary() {
         STAGES.map((stage) => newestVersions(operators).filter((op) => stageOf(op) === stage && (needle === "" || `${op.id} ${stepTitle(op.id, op)}`.toLowerCase().includes(needle))))
           .map((inStage, i) => ({ stage: STAGES[i]!, inStage }))
           .filter(({ inStage }) => inStage.length > 0)
-          .map(({ stage, inStage }, i) => (
-            <SideGroup key={stage} num={i + 1} label={STAGE_TITLE[stage]} meta={inStage.length}>
+          .map(({ stage, inStage }) => (
+            <SideGroup key={stage} label={STAGE_TITLE[stage]} meta={inStage.length}>
               {inStage.map((op) => (
                 <ListRow key={op.id} title={stepTitle(op.id, op)} meta={op.capability_class} icon={<KindIcon kind={kindOf(op)} size={12} />} hint={op.description ? `${op.description}\n${op.id}` : op.id} />
               ))}

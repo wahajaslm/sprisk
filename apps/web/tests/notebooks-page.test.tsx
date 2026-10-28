@@ -245,7 +245,7 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     noNotebooks();
     renderWithApi(<NotebooksPage />);
     const side = await screen.findByRole("complementary", { name: "Notebooks" });
-    expect(within(side).getByRole("button", { name: /Stages/ })).toHaveTextContent("01Stages6");
+    expect(within(side).getByRole("button", { name: /Stages/ })).toHaveTextContent("Stages6");
     await userEvent.type(within(side).getByRole("searchbox", { name: "Filter notebooks" }), "spl");
     expect(within(await stages()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Train/test split1 step"]);
   });

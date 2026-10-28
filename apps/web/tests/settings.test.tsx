@@ -89,7 +89,7 @@ describe("settings", () => {
     renderWithApi(<SettingsPage />);
     const side = await screen.findByRole("complementary", { name: "Settings" });
     await userEvent.type(within(side).getByRole("searchbox", { name: "Search settings" }), "da");
-    expect(within(side).getByRole("button", { name: /^01Platform1/ })).toBeInTheDocument();
+    expect(within(side).getByRole("button", { name: /^Platform1/ })).toBeInTheDocument();
     expect(within(side).getByRole("button", { name: /^Data/ })).toBeInTheDocument();
     expect(within(side).queryByRole("button", { name: /^Packs/ })).toBeNull();
   });
