@@ -66,6 +66,7 @@ def time_split(
             time_split,
             when="a time column is named",
             condition="time column named",
+            fallbacks=["first_rows"],
         ),
         "first_rows": option(
             "The first rows train",

@@ -1,70 +1,77 @@
-from typing import Any
-
-from sprisk_workers.errors import MethodError
-
-RANDOM = ("stratified_random", "simple_random")
+from sprisk_validation import group_split, random_split, stratified_split, temporal_split
+from sprisk_workers.authoring import method, option
 
 
-def decide(ctx: Any) -> Any:
-    option, why = _preferred(ctx)
-    failed = ctx.ruled_out(option)
-    if failed is None:
-        return ctx.choose(option, why)
-    # Only rows repeated across a random split have a remedy: keep each item on one side.
-    if option not in RANDOM or ctx.ruled_out("item_groups") is not None:
-        raise MethodError(f"No split left keeps its promise on these rows: {failed}")
-    # Rows repeat across train and test: only keeping each item on one side makes the score fair.
-    return ctx.ask(
-        "item_groups",
-        f"The split broke its promise: {failed} State the question's item column, the one that "
-        "says which item each row is, so each item's rows stay on one side.",
-    )
+@method(
+    id="split_method",
+    decides="split.method",
+    activity="Fair evaluation",
+    applies_when={"task": ["classification", "regression"]},
+    decisions=["data.repeated_items"],
+    columns={
+        "target": "common.target",
+        "event_time": "common.event_time",
+        "item_identity": "common.item_identity",
+    },
+    options={
+        "temporal": option(
+            "Train on earlier rows, test on later ones",
+            temporal_split,
+            when="a time column is named",
+            condition="time column named",
+        ),
+        "item_groups": option(
+            "Keep each item's rows on one side",
+            group_split,
+            when="an item column is named, and no time column",
+            condition="item column ∧ ¬ time column",
+        ),
+        "stratified_random": option(
+            "Random rows, with class shares kept",
+            stratified_split,
+            when="a class target, with no time or item column",
+            condition="class target ∧ ¬ time ∧ ¬ item",
+            # Rows repeated across a random split have one fix: keep each item on one side.
+            fallbacks=["item_groups"],
+        ),
+        "simple_random": option(
+            "Random rows",
+            random_split,
+            when="no time or item column, and no class target",
+            condition="¬ time ∧ ¬ item ∧ ¬ class target",
+            fallbacks=["item_groups"],
+        ),
+    },
+    source=(
+        "Roberts et al. (2017), Ecography 40(8): cross-validation for temporal and grouped "
+        "data; scikit-learn User Guide §3.1: GroupShuffleSplit, train_test_split(stratify=y)."
+    ),
+)
+def split(task, target, event_time, item_identity):  # type: ignore[no-untyped-def]
+    """Train/test split
 
+    How are rows divided into training and test so the score is fair?
 
-def _preferred(ctx: Any) -> tuple[str, str]:
-    if ctx.bound("common.event_time"):
-        return (
+    Shuffling rows across time or across repeated items puts the future or the same item in
+    both train and test. The score then looks better than the model will do on new data.
+    """
+    # A time or item split that breaks its promise has no fair stand-in: a random split
+    # would put the future, or the same item, on both sides. So they list no fallbacks.
+    if event_time:
+        return method.choose(
             "temporal",
-            "A time column orders the rows: train on earlier rows, test on later ones. The split "
-            "leaves no gap at the cutoff, so a label that looks ahead may share its window "
-            "with the first test rows.",
+            reason="A time column orders the rows: train on earlier rows, test on later ones. "
+            "The split leaves no gap at the cutoff, so a label that looks ahead may share its "
+            "window with the first test rows.",
         )
-    if ctx.bound("common.item_identity"):
-        return (
+    if item_identity:
+        return method.choose(
             "item_groups",
-            "Rows of one item stay on one side, so no item is scored on rows the model saw.",
+            reason="Rows of one item stay on one side, so no item is scored on rows the model saw.",
         )
-    if ctx.task == "classification" and ctx.bound("common.target"):
-        return (
+    if task == "classification" and target:
+        return method.choose(
             "stratified_random",
-            "Every row is its own item, and each class keeps its share in train and test.",
+            reason="Every row is its own item, and each class keeps its share in train and test.",
         )
-    return "simple_random", "Every row is its own item."
-
-
-def verify_no_group_overlap(evidence: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]:
-    if evidence["train_groups"] == 0 or evidence["test_groups"] == 0:
-        return "inconclusive", "One side has no groups."
-    if evidence["overlapping"]:
-        shown = ", ".join(evidence["overlapping_groups"][:5])
-        return "fail", f"{evidence['overlapping']} items have rows in both train and test: {shown}"
-    return "pass", (
-        f"No item is in both sides ({evidence['train_groups']} train, "
-        f"{evidence['test_groups']} test items)."
-    )
-
-
-def verify_no_row_in_both(evidence: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]:
-    if evidence["in_both"]:
-        return "fail", (
-            f"{evidence['in_both']} test rows have the same features as a train row: the model "
-            "is scored on rows it learned. Treat repeated rows as one item."
-        )
-    return "pass", f"No test row repeats a train row ({evidence['test_rows']} test rows)."
-
-
-def verify_test_after_train(evidence: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]:
-    latest = evidence["latest_train"]
-    if evidence["not_later_test_rows"]:
-        return "fail", f"{evidence['not_later_test_rows']} test rows are not later than {latest}."
-    return "pass", f"Every test row is later than {latest}, the latest train row."
+    return method.choose("simple_random", reason="Every row is its own item.")

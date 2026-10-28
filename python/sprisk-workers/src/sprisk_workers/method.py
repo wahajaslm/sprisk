@@ -19,7 +19,13 @@ from typing import Any, TextIO, get_args
 from pydantic import ValidationError
 
 from sprisk_contracts import MethodAnswer, MethodRequest, VerificationOutcome, VerificationRequest
-from sprisk_workers.authoring import Binding, Choice, MethodDeclaration, declared_method
+from sprisk_workers.authoring import (
+    Binding,
+    Choice,
+    MethodDeclaration,
+    declared,
+    declared_method,
+)
 from sprisk_workers.errors import MethodError
 
 
@@ -140,7 +146,8 @@ def _arguments(fn: Callable[..., Any], found: MethodDeclaration, ctx: Context) -
 
 def _decide(fn: Callable[..., Any], ctx: Context, request: MethodRequest) -> Outcome:
     """Run a decorated method. A choice whose promise already broke is never taken again:
-    the person is asked to pick one of the options still open (ADR-0071)."""
+    the person is asked to pick one of its fallbacks still open, or, with none, no fair
+    option is left (ADR-0071)."""
     found = declared_method(fn)
     assert found is not None
     choice = fn(**_arguments(fn, found, ctx))
@@ -149,12 +156,28 @@ def _decide(fn: Callable[..., Any], ctx: Context, request: MethodRequest) -> Out
     broken = ctx.ruled_out(choice.option) if choice.option in found.options else None
     if broken is None:
         return ctx.choose(choice.option, choice.reason)
-    still_open = [o for o in found.options if o in {x.root for x in request.options}]
-    if not still_open:
-        raise MethodError(f"{fn.__name__}: every option broke its promise; no option is left")
-    label = found.options[choice.option].label
+    broke = found.options[choice.option]
+    still_open = {x.root for x in request.options}
+    fallbacks = [o for o in broke.fallbacks if o in still_open]
+    if not fallbacks:
+        raise MethodError(
+            f"{broke.label} broke its promise: {broken} No other option is fair here, "
+            "so no option is left."
+        )
+    instead = found.options[fallbacks[0]]
+    needs = declared(instead.operator)
+    assert needs is not None
+    unbound = [
+        concept.split(".")[-1].replace("_", " ")
+        for name, concept in needs.concepts.items()
+        if concept in found.concepts.values()
+        and not ctx.bound(concept)
+        and inspect.signature(instead.operator).parameters[name].default is inspect.Parameter.empty
+    ]
+    named = f" It needs the {' and '.join(unbound)} column named." if unbound else ""
     return ctx.ask(
-        still_open[0], f"{label} broke its promise: {broken} Which way should it go instead?"
+        fallbacks[0],
+        f"{broke.label} broke its promise: {broken} {instead.label} would keep it instead." + named,
     )
 
 

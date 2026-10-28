@@ -1,23 +1,43 @@
+# Method IR compiled from sprisk_validation.random_split:random_split. Do not edit; run `just build-packs`.
 schema_version: sprisk.operator/v1
 id: sprisk.validation.random_split@1.0.0
-title: Random split
 capability_class: transform
+title: Random split
+description: Holds out a random fifth of rows for test, with a fixed seed.
+entrypoint: sprisk_validation.random_split:random_split
+notebook_code: sprisk_validation.random_split:random_split
 role: split
 role_default: true
 folds: plain
-description: Shuffle rows with a fixed seed into train and test.
-entrypoint: sprisk_validation.random_split:random_split
-notebook_code: sprisk_validation.random_split:as_code
-inputs: [{ name: data, kind: table }]
-outputs: [{ name: train, kind: table }, { name: test, kind: table }]
+inputs:
+- name: data
+  kind: table
+outputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
 params_schema:
   type: object
   additionalProperties: false
-  required: [test_fraction, seed]
+  required: []
   properties:
-    test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1, description: "Share of rows held out for testing." }
-    seed: { type: integer, minimum: 0, description: "Fixes the shuffle so runs repeat." }
-    stratify: { type: string, minLength: 1, description: "Keep each class of this column at the same share in train and test. Use the target for classification." }
+    test_fraction:
+      type: number
+      description: Share of rows held out for testing.
+      minimum: 0.05
+      maximum: 0.5
+      x-sprisk-step: 0.05
+      default: 0.2
+    seed:
+      type: integer
+      description: Fixes the shuffle so runs repeat.
+      minimum: 0
+      default: 42
 effects: pure
 network: none
-resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }
+resources:
+  cpu_cores: 1
+  memory_mb: 2048
+  gpu: none
+  timeout_seconds: 600

@@ -52,14 +52,32 @@ def _json_type(fn: Callable[..., Any], name: str, annotation: Any) -> str:
     return JSON_TYPES[annotation]
 
 
+def docstring(fn: Callable[..., Any]) -> tuple[str, dict[str, str]]:
+    """A function's description, and each setting's from its `Args:` section."""
+    text = inspect.getdoc(fn) or ""
+    summary, _, args = text.partition("\nArgs:\n")
+    described: dict[str, str] = {}
+    name = None
+    for line in args.splitlines():
+        head, colon, rest = line.strip().partition(":")
+        if line.startswith("    ") and not line.startswith("        ") and colon:
+            name = head
+            described[name] = rest.strip()
+        elif name is not None and line.strip():
+            described[name] += " " + line.strip()
+    return " ".join(summary.split()), described
+
+
 def _params_schema(
     fn: Callable[..., Any],
     concepts: dict[str, str],
     tunables: dict[str, dict[str, float]],
     kinds: dict[str, str],
+    exclude_labels: bool = False,
 ) -> dict[str, Any]:
     hints = typing.get_type_hints(fn)
     inputs = set(tables(fn))
+    _, described = docstring(fn)
     properties: dict[str, Any] = {}
     required = []
     for name, param in inspect.signature(fn).parameters.items():
@@ -68,10 +86,12 @@ def _params_schema(
         if name not in hints:
             raise ManifestError(f"{fn.__name__}.{name}: has no type annotation")
         prop: dict[str, Any] = {"type": _json_type(fn, name, hints[name])}
+        if name in described:
+            prop["description"] = described.pop(name)
         if name in concepts:
             prop |= {"minLength": 1, "x-sprisk-column": True}
-            # A label is dropped before the step runs, so a check never reads test labels.
-            if kinds.get(concepts[name]) == "label":
+            # A check never reads test labels, so its label column is dropped before it runs.
+            if exclude_labels and kinds.get(concepts[name]) == "label":
                 prop["x-sprisk-excluded"] = True
         for key, value in tunables.get(name, {}).items():
             if key not in RANGE_KEYS:
@@ -82,7 +102,7 @@ def _params_schema(
         elif param.default is not None:
             prop["default"] = param.default
         properties[name] = prop
-    unknown = (set(concepts) | set(tunables)) - set(properties)
+    unknown = (set(concepts) | set(tunables) | set(described)) - set(properties)
     if unknown:
         raise ManifestError(f"{fn.__name__}: {sorted(unknown)} are not settings")
     return {
@@ -118,7 +138,7 @@ def operator_manifest(fn: Callable[..., Any], kinds: dict[str, str] | None = Non
             f"{fn.__name__} uses {missing}, which its notebook cell would not have; "
             "import them or define them inside the function"
         )
-    description = inspect.getdoc(fn)
+    description, _ = docstring(fn)
     if not description:
         raise ManifestError(f"{fn.__name__} has no docstring to describe it")
     ref = f"{fn.__module__}:{fn.__name__}"
@@ -173,15 +193,15 @@ def promise_manifest(fn: Callable[..., Any], role: str, kinds: dict[str, str]) -
     manifest: dict[str, Any] = {
         "schema_version": "sprisk.operator/v1",
         "id": promise_id(fn),
-        "title": found.text,
+        "title": found.title,
         "capability_class": "analyzer",
-        "description": found.text,
+        "description": docstring(fn)[0] or found.text,
         "entrypoint": ref,
         "attach": {"role": role, "side": "output"},
         "produces": {found.evidence: {"fields": fields | VERDICT_FIELDS}},
         "inputs": [{"name": name, "kind": "table"} for name in inputs],
         "outputs": [{"name": "evidence", "kind": "report"}],
-        "params_schema": _params_schema(fn, found.concepts, {}, kinds),
+        "params_schema": _params_schema(fn, found.concepts, {}, kinds, exclude_labels=True),
         "effects": "pure",
         "network": "none",
         "resources": {"cpu_cores": 1, "memory_mb": 2048, "gpu": "none", "timeout_seconds": 600},
@@ -256,8 +276,7 @@ def method_manifest(fn: Callable[..., Any], pack: str) -> Method:
             "role": op.role,
             "operator": f"{_pack(choice.operator)}.{op.id}@{op.version}",
         }
-        if op.concepts:
-            replace["concepts"] = op.concepts
+        # The operator maps its own columns to concepts, so the option does not repeat them.
         replace["settings"] = _defaults(choice.operator)
         if option_id not in reasons:
             raise ManifestError(f"{fn.__name__} never chooses {option_id}")
@@ -265,7 +284,7 @@ def method_manifest(fn: Callable[..., Any], pack: str) -> Method:
             {
                 "id": option_id,
                 "label": choice.label,
-                "description": inspect.getdoc(choice.operator),
+                "description": docstring(choice.operator)[0],
                 "condition": choice.condition,
                 "when": choice.when,
                 "rationale": reasons[option_id],
@@ -326,6 +345,8 @@ def _method_module(path: Path) -> types.ModuleType:
     if spec is None or spec.loader is None:
         raise ManifestError(f"{path}: cannot load")
     module = importlib.util.module_from_spec(spec)
+    # Registered so its functions' source can be read back, for the options' rationales.
+    sys.modules[spec.name] = module
     try:
         spec.loader.exec_module(module)
     except ImportError as e:
@@ -369,7 +390,9 @@ def compile_packs(
                     if roles.setdefault(check, found.role or "") != (found.role or ""):
                         raise ManifestError(f"{check.__name__} checks steps of two roles")
             for check, role in roles.items():
-                name = promise_id(check).split(".")[-1].split("@")[0]
+                promised = declared_promise(check)
+                assert promised is not None
+                name = promised.evidence.rsplit(".", 1)[-1]
                 path = pyproject.parent / "operators" / name / "manifest.yaml"
                 ref = f"{check.__module__}:{check.__name__}"
                 _claim(written, path, _text(ref, promise_manifest(check, role, kinds)), "promise")

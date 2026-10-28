@@ -7,7 +7,8 @@ from typing import Any
 
 import pytest
 
-from sprisk_workers.errors import MethodError
+from sprisk_workers.authoring import method, option
+from sprisk_workers.errors import ManifestError, MethodError
 from sprisk_workers.method import serve
 
 METHOD = "methodology.pack.items@1.0.0"
@@ -293,11 +294,27 @@ def test_a_ruled_out_choice_asks_the_person_to_pick_an_open_option(tmp_path: Pat
     ]
 
     (asked,) = answers(decorated_request(module, options=["first_rows"], ruled_out=ruled_out))
+    # head_split needs no column, so nothing more is asked.
 
     assert (asked["outcome"], asked["option"]) == ("ask", "first_rows")
     assert asked["reason"] == (
         "Train on earlier rows, test on later ones broke its promise: 4 rows are on both. "
-        "Which way should it go instead?"
+        "The first rows train would keep it instead."
+    )
+
+
+def test_a_ruled_out_choice_with_no_fallback_leaves_no_fair_option(tmp_path: Path) -> None:
+    module = write(tmp_path, "method", DECORATED)
+    ruled_out = [{"option": "first_rows", "verification": "no_shared_rows", "detail": "Broken."}]
+
+    (refused,) = answers(
+        decorated_request(module, bound=[], options=["by_time"], ruled_out=ruled_out)
+    )
+
+    assert refused["answer"] == "refused"
+    assert (
+        "The first rows train broke its promise: Broken. No other option is fair"
+        in (refused["error"])
     )
 
 
@@ -311,6 +328,17 @@ def test_a_decorated_method_with_no_open_option_refuses(tmp_path: Path) -> None:
     assert "no option is left" in refused["error"]
 
 
+def test_a_fallback_must_be_one_of_the_method_s_options() -> None:
+    from authored_method import head_split
+
+    with pytest.raises(ManifestError, match=r"option only falls back to \['nowhere'\]"):
+        method(
+            id="odd", decides="x.odd", activity="Test", applies_when={}, source="t",
+            options={"only": option("Only", head_split, when="a", condition="b",
+                                    fallbacks=["nowhere"])},
+        )  # fmt: skip
+
+
 def test_a_decorated_promise_s_verdict_is_its_verification(tmp_path: Path) -> None:
     module = write(tmp_path, "method", DECORATED)
     evidence = {"shared": 2, "examples": [], "status": "fail", "detail": "2 rows are on both."}
@@ -320,3 +348,43 @@ def test_a_decorated_promise_s_verdict_is_its_verification(tmp_path: Path) -> No
     )
 
     assert (found["result"], found["detail"]) == ("fail", "2 rows are on both.")
+
+
+def test_a_fallback_that_needs_an_unbound_column_asks_for_it(tmp_path: Path) -> None:
+    module = write(
+        tmp_path,
+        "method",
+        """
+from authored_method import head_split, time_split
+from sprisk_workers.authoring import method, option
+
+
+@method(
+    id="split_way", decides="split.way", activity="Test", applies_when={}, source="t",
+    columns={"event_time": "common.event_time"},
+    options={
+        "first_rows": option("The first rows train", head_split, when="a", condition="b",
+                             fallbacks=["by_time"]),
+        "by_time": option("By time", time_split, when="c", condition="d"),
+    },
+)
+def split_way(task, event_time):
+    \"\"\"Split way
+
+    Which?
+
+    None.
+    \"\"\"
+    return method.choose("first_rows", reason="Always first rows.")
+""",
+    )
+    ruled_out = [{"option": "first_rows", "verification": "no_shared_rows", "detail": "Broken."}]
+
+    (asked,) = answers(
+        decorated_request(module, bound=[], options=["by_time"], ruled_out=ruled_out)
+    )
+
+    assert (asked["outcome"], asked["option"]) == ("ask", "by_time")
+    assert asked["reason"].endswith(
+        "By time would keep it instead. It needs the event time column named."
+    )

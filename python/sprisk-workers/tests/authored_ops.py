@@ -17,7 +17,13 @@ from sprisk_workers.authoring import operator
 def every_nth(
     data: pl.DataFrame, order_column: str, every: int = 2, note: str | None = None
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Keep every nth row in time order; the others are dropped."""
+    """Keep every nth row in time order; the others are dropped.
+
+    Args:
+        order_column: Rows are kept in this order.
+        every: Keeps one row in this many,
+            starting with the first.
+    """
     ordered = data.sort(order_column)
     picked = pl.int_range(pl.len()) % every == 0
     return ordered.filter(picked), ordered.filter(~picked)

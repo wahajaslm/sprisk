@@ -15,12 +15,14 @@ def decide(ctx: Any) -> Any:
         )
     if found["groups"] == 0:
         return ctx.choose("independent_rows", "No two rows share a title.")
-    # Matching titles only suggest "same item", so a person confirms before anything uses it.
-    return ctx.ask(
+    # Grouping by title errs toward a stricter split, never a leaky one, so it is taken by
+    # rule (ADR-0071): the binding is marked as the method's, and a person may override it.
+    return ctx.choose(
         "group_by_title",
         f"{found['rows_in_groups']} of {found['rows']} rows share a title with another row "
         f"({found['groups']} groups, largest {found['largest_group']}). "
-        "Are rows with matching titles the same item?",
+        "Rows with matching titles are taken as one item: if two items share a title, the "
+        "split only gets stricter, never leaky.",
     )
 
 

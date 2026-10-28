@@ -1,76 +1,101 @@
+# Method IR compiled from split_method/method.py:split. Do not edit; run `just build-packs`.
 schema_version: sprisk.method/v2
 id: methodology.supervised.split_method@1.0.0
 decides: split.method
 name: Train/test split
 activity: Fair evaluation
 question: How are rows divided into training and test so the score is fair?
-pitfall: Shuffling rows across time or across repeated items puts the future or the same item in both train and test. The score then looks better than the model will do on new data.
-applies_when: { task: [classification, regression] }
+pitfall: Shuffling rows across time or across repeated items puts the future or the
+  same item in both train and test. The score then looks better than the model will
+  do on new data.
+applies_when:
+  task:
+  - classification
+  - regression
 needs:
-  concepts: [common.target, common.event_time, common.item_identity]
+  concepts:
+  - common.target
+  - common.event_time
+  - common.item_identity
   evidence: []
-  decisions: [data.repeated_items]
+  decisions:
+  - data.repeated_items
 options:
-  - id: temporal
-    label: Train on earlier rows, test on later ones
-    description: Holds out the latest fifth of rows, by the time column, as the test set.
-    condition: time column named
-    when: a time column is named
-    rationale: Training only on the past keeps later rows from leaking into what the model learns.
-    action:
-      replace:
-        role: split
-        operator: sprisk.validation.temporal_split@1.0.0
-        concepts: { time_column: common.event_time, group_column: common.item_identity }
-        settings: { test_fraction: 0.2 }
-    verify: [test_after_train]
-  - id: item_groups
-    label: Keep each item's rows on one side
-    description: Holds out about a fifth for test, keeping all rows of each item on one side.
-    condition: item column ∧ ¬ time column
-    when: an item column is named, and no time column
-    rationale: No item is scored on rows the model saw.
-    action:
-      replace:
-        role: split
-        operator: sprisk.validation.group_split@1.0.0
-        concepts: { group_column: common.item_identity }
-        settings: { test_fraction: 0.2, seed: 42 }
-    verify: [no_group_overlap]
-  - id: stratified_random
-    label: Random rows, with class shares kept
-    description: Holds out a random fifth of rows for test, keeping each class's share on both sides.
-    condition: class target ∧ ¬ time ∧ ¬ item
-    when: a class target, with no time or item column
-    rationale: Rows are independent, and each class keeps its share in train and test.
-    action:
-      replace:
-        role: split
-        operator: sprisk.validation.random_split@1.0.0
-        concepts: { stratify: common.target }
-        settings: { test_fraction: 0.2, seed: 42 }
-    # The class shares read the test labels, so they are reported with the final score.
-    verify: [no_row_in_both]
-  - id: simple_random
-    label: Random rows
-    description: Holds out a random fifth of rows for test, with a fixed seed.
-    condition: ¬ time ∧ ¬ item ∧ ¬ class target
-    when: no time or item column, and no class target
-    rationale: Rows are independent, so a random draw gives a fair test.
-    action:
-      replace:
-        role: split
-        operator: sprisk.validation.random_split@1.0.0
-        settings: { test_fraction: 0.2, seed: 42 }
-    verify: [no_row_in_both]
+- id: temporal
+  label: Train on earlier rows, test on later ones
+  description: Holds out the latest fifth of rows, by the time column, as the test
+    set.
+  condition: time column named
+  when: a time column is named
+  rationale: 'A time column orders the rows: train on earlier rows, test on later
+    ones. The split leaves no gap at the cutoff, so a label that looks ahead may share
+    its window with the first test rows.'
+  action:
+    replace:
+      role: split
+      operator: sprisk.validation.temporal_split@1.0.0
+      settings:
+        test_fraction: 0.2
+  verify:
+  - test_after_train
+- id: item_groups
+  label: Keep each item's rows on one side
+  description: Holds out about a fifth for test, keeping all rows of each item on
+    one side.
+  condition: "item column \u2227 \xAC time column"
+  when: an item column is named, and no time column
+  rationale: Rows of one item stay on one side, so no item is scored on rows the model
+    saw.
+  action:
+    replace:
+      role: split
+      operator: sprisk.validation.group_split@1.0.0
+      settings:
+        test_fraction: 0.2
+        seed: 42
+  verify:
+  - no_group_overlap
+- id: stratified_random
+  label: Random rows, with class shares kept
+  description: Holds out a random fifth of rows for test, keeping each class's share
+    on both sides.
+  condition: "class target \u2227 \xAC time \u2227 \xAC item"
+  when: a class target, with no time or item column
+  rationale: Every row is its own item, and each class keeps its share in train and
+    test.
+  action:
+    replace:
+      role: split
+      operator: sprisk.validation.stratified_split@1.0.0
+      settings:
+        test_fraction: 0.2
+        seed: 42
+  verify:
+  - no_row_in_both
+- id: simple_random
+  label: Random rows
+  description: Holds out a random fifth of rows for test, with a fixed seed.
+  condition: "\xAC time \u2227 \xAC item \u2227 \xAC class target"
+  when: no time or item column, and no class target
+  rationale: Every row is its own item.
+  action:
+    replace:
+      role: split
+      operator: sprisk.validation.random_split@1.0.0
+      settings:
+        test_fraction: 0.2
+        seed: 42
+  verify:
+  - no_row_in_both
 verifications:
+  test_after_train:
+    needs: evaluation.time_order
+    promise: Every test row is later than the latest train row.
   no_group_overlap:
     needs: evaluation.group_overlap
     promise: No item has rows in both train and test.
   no_row_in_both:
     needs: evaluation.row_overlap
     promise: No test row has the same features as a train row.
-  test_after_train:
-    needs: evaluation.time_order
-    promise: Every test row is later than the latest train row.
-source: "Roberts et al. (2017), Ecography 40(8): cross-validation for temporal and grouped data; scikit-learn User Guide §3.1: GroupShuffleSplit, train_test_split(stratify=y)."
+source: "Roberts et al. (2017), Ecography 40(8): cross-validation for temporal and\
+  \ grouped data; scikit-learn User Guide \xA73.1: GroupShuffleSplit, train_test_split(stratify=y)."

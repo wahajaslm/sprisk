@@ -92,12 +92,15 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.validation.group_split@1.0.0",
         "sprisk.validation.random_split@1.0.0",
         "sprisk.validation.row_overlap@1.0.0",
+        "sprisk.validation.stratified_split@1.0.0",
         "sprisk.validation.temporal_split@1.0.0",
         "sprisk.validation.time_order@1.0.0",
     ]
     split = ops["sprisk.validation.temporal_split@1.0.0"]
     assert split.output_ports == {"train", "test"}
-    assert split.params_schema["required"] == ["time_column", "test_fraction"]
+    # A setting with a default in the function's signature is not required (ADR-0071).
+    assert split.params_schema["required"] == ["time_column"]
+    assert split.params_schema["properties"]["test_fraction"]["default"] == 0.2
 
 
 def test_entrypoint_outside_core_ops_is_refused(tmp_path: Path) -> None:
@@ -200,4 +203,6 @@ def test_no_step_imports_sprisk() -> None:
     assert sources
     for path in sources:
         text = path.read_text()
+        # A decorated step imports only the decorators that describe it (ADR-0071).
+        text = text.replace("from sprisk_workers.authoring import", "")
         assert "from sprisk" not in text and "import sprisk" not in text, path

@@ -633,12 +633,17 @@ async fn a_step_is_written_as_plain_python_with_its_settings_and_names() {
         "inputs": {"data": "load_data"},
         "outputs": {"train": "split_train", "test": "split_test"}
     });
-    let uri = "/operators/sprisk.validation.random_split@1.0.0/notebook_code";
+    let uri = "/operators/sprisk.validation.stratified_split@1.0.0/notebook_code";
     let (status, body) = call(&api.app, "POST", uri, Some(request.clone())).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let code = body["code"].as_str().unwrap();
     assert!(code.contains("train_test_split("), "{code}");
-    assert!(code.contains("stratify=load_data['credit_risk']"), "{code}");
+    assert!(
+        code.contains(
+            "split_train, split_test = stratified_split(load_data, stratify='credit_risk'"
+        ),
+        "{code}"
+    );
 
     // Settings the step does not allow are refused, naming the rule they break.
     let mut bad = request.clone();
@@ -2385,7 +2390,7 @@ async fn scaling_flow_barred(
     flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
     let nodes = flow["nodes"].as_array_mut().unwrap();
     nodes.push(json!({
-        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+        "id":"split", "operator":"sprisk.validation.stratified_split@1.0.0",
         "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"}
     }));
     nodes.push(json!({
@@ -2668,7 +2673,13 @@ async fn a_method_s_files_are_its_manifest_and_module() {
         files["files"][1]["text"]
             .as_str()
             .unwrap()
-            .contains("def verify_no_group_overlap")
+            .contains("@method(")
+    );
+    assert!(
+        files["files"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("# Method IR compiled from split_method/method.py:split.")
     );
 
     let (status, _) = call(
@@ -4081,7 +4092,7 @@ async fn german_credit_flow(api: &Api) {
         "params":{"columns":inputs}
     }));
     nodes.push(json!({
-        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+        "id":"split", "operator":"sprisk.validation.stratified_split@1.0.0",
         "params":{"test_fraction":0.25,"seed":42,"stratify":"credit_risk"}
     }));
     nodes.push(json!({
@@ -4368,8 +4379,10 @@ async fn german_credit_runs_as_stage_notebooks_with_one_chart_per_step() {
     let (status, code) = call(&api.app, "POST", &uri, Some(request)).await;
     assert_eq!(status, StatusCode::OK, "{code}");
     let code = code["code"].as_str().unwrap();
+    // The cell is the operator's own function and one call on the notebook's names (ADR-0071).
+    assert!(code.contains("def stratified_split("), "{code}");
     assert!(
-        code.ends_with("train, test = df[sorted(train_rows)], df[sorted(test_rows)]\n"),
+        code.ends_with("train, test = stratified_split(df, stratify='credit_risk', test_fraction=0.25, seed=42)\n"),
         "{code}"
     );
 }
@@ -4391,7 +4404,7 @@ async fn forest_flow_with(api: &Api, facts: Value) {
     let mut flow = pipeline(&api.csv);
     flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
     flow["nodes"].as_array_mut().unwrap().extend([
-        json!({ "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+        json!({ "id":"split", "operator":"sprisk.validation.stratified_split@1.0.0",
                 "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"} }),
         json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
                 "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
@@ -5152,73 +5165,16 @@ fn relisting_question(id: &str, parent: Option<&str>) -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_splits_by_item() {
+async fn matching_titles_are_grouped_by_rule_and_the_split_keeps_each_item_on_one_side() {
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_relistings()).unwrap();
     let q = relisting_question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
-    // The look: the producers are placed and the first flow runs once, before any rule acts.
-    // No category text is typed several ways, so the spelling stays.
+    // Matching titles group rows into items by rule (ADR-0071): grouping errs toward a stricter
+    // split, never a leaky one, so nothing is asked and the walk runs on.
     let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-relistings")).await;
-    assert_eq!(
-        trail(&detail),
-        [
-            "build",
-            "measure",
-            "run",
-            "decide data.text_spelling keep",
-            "decide data.missing_markers keep",
-            "decide data.type_repair keep",
-            "decide data.join_sources single_source",
-            "decide data.html_text keep",
-            "decide data.column_roles drop_identifiers",
-            "measure",
-            "run",
-            "decide data.exact_duplicates keep",
-            "stop",
-        ],
-        "{detail}"
-    );
-    let steps = detail["steps"].as_array().unwrap();
-    let near = steps[1]["effects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|e| e["operator"] == "sprisk.profile.near_duplicates@1.0.0")
-        .unwrap();
-    assert_eq!(near["kind"], "add_node", "{detail}");
-    assert_eq!(near["params"]["title_column"], "designation", "{detail}");
-    // One list: the only open question is the one the data raised.
-    let stop = &detail["walk"]["stop"];
-    assert_eq!(stop["reason"], "needs_person", "{detail}");
-    let asks = stop["asks"].as_array().unwrap();
-    assert_eq!(asks.len(), 1, "{stop}");
-    assert_eq!(asks[0]["decides"], "data.repeated_items");
-    assert_eq!(asks[0]["method"], "methodology.common.repeated_items@1.0.0");
-    assert_eq!(asks[0]["option"], "group_by_title");
-    assert_eq!(asks[0]["options"].as_array().unwrap().len(), 3, "{stop}");
-    // 15 titles per product type, each written twice: every row shares its title.
-    assert!(
-        asks[0]["question"]
-            .as_str()
-            .unwrap()
-            .starts_with("810 of 810 rows share a title with another row (405 groups, largest 2)."),
-        "{stop}"
-    );
-
-    // The person answers on a revised question, and the walk runs on without asking.
-    let mut answered = relisting_question(
-        "qv_01JABCDEFGHJKMNPQRSTVWXYZ1",
-        Some("qv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
-    );
-    answered["answers"] = json!([{ "decides": "data.repeated_items", "option": "group_by_title" }]);
-    let (status, body) = call(&api.app, "POST", "/question_versions", Some(answered)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut request = walk_request(&[&api.csv], "walk-relistings-answered");
-    request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
-    let detail = walk_to_end(&api, request).await;
     let walked = trail(&detail);
     assert_eq!(
         walked[..13],
@@ -5242,26 +5198,36 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     );
     assert!(
         detail["walk"]["stop"].get("asks").is_none(),
-        "nothing is asked again: {detail}"
+        "nothing is asked: {detail}"
     );
-    assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
+    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
     let steps = detail["steps"].as_array().unwrap();
-    // The answer binds the item to the group column the producer adds, confirmed by a person.
-    assert_eq!(steps[4]["assurance"], "confirmed", "{detail}");
-    // The answer keeps what raised the question: the groups of matching titles.
-    assert_eq!(
-        steps[4]["evidence"][0]["kind"], "data.near_duplicate_groups",
+    let near = steps[1]["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["operator"] == "sprisk.profile.near_duplicates@1.0.0")
+        .unwrap();
+    assert_eq!(near["params"]["title_column"], "designation", "{detail}");
+    // 15 titles per product type, each written twice: every row shares its title.
+    assert!(
+        steps[4]["reason"]
+            .as_str()
+            .unwrap()
+            .starts_with("810 of 810 rows share a title with another row (405 groups, largest 2)."),
         "{detail}"
     );
+    // The method bound the item itself, marked as its own rule, from the groups that raised it.
+    assert_eq!(steps[4]["assurance"], "rule", "{detail}");
     assert_eq!(
-        steps[4]["evidence"][0]["step"], "near_duplicates",
+        steps[4]["evidence"][0]["kind"], "data.near_duplicate_groups",
         "{detail}"
     );
     assert_eq!(
         steps[4]["bindings"],
         json!([{ "schema_version": "sprisk.binding/v1", "concept": "common.item_identity",
                  "source": { "column": "item_group", "step": "near_duplicates" },
-                 "set_by": { "assurance": "confirmed",
+                 "set_by": { "assurance": "rule",
                              "method": "methodology.common.repeated_items@1.0.0" } }])
     );
     // The split method replaces the split through a patch, and promises what it keeps.
@@ -6707,7 +6673,7 @@ async fn word_features_run_from_load_to_evaluate_and_are_refit_in_each_fold() {
     let mut flow = pipeline(&api.csv);
     flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
     flow["nodes"].as_array_mut().unwrap().extend([
-        json!({"id": "split", "operator": "sprisk.validation.random_split@1.0.0",
+        json!({"id": "split", "operator": "sprisk.validation.stratified_split@1.0.0",
                "params": {"test_fraction": 0.25, "seed": 42, "stratify": "prdtypecode"}}),
         json!({"id": "words", "operator": "sprisk.clean.vectorize_text@1.1.0",
                "params": {"columns": ["designation", "description"]}}),

@@ -43,6 +43,7 @@ class PromiseDeclaration:
     fields: dict[str, Any]
     concepts: dict[str, str]
     version: str
+    title: str
 
 
 @dataclass(frozen=True)
@@ -64,12 +65,14 @@ class OperatorDeclaration:
 @dataclass(frozen=True)
 class Option:
     """A methodological choice, and the operator that carries it out. `when` says in plain
-    words when the method takes it; `condition` says the same as a formula."""
+    words when the method takes it; `condition` says the same as a formula. `fallbacks` are
+    the options that may stand in when its promise breaks; none means no fair option is left."""
 
     label: str
     operator: Callable[..., Any]
     when: str
     condition: str
+    fallbacks: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -119,12 +122,19 @@ def promise(
     columns: dict[str, str] | None = None,
     concepts: dict[str, str] | None = None,
     version: str = "1.0.0",
+    title: str | None = None,
 ) -> Callable[[F], F]:
     """`evidence` names what the check measures, e.g. `evaluation.group_overlap`; `fields`
-    its typed values. A promise returns a `Verdict`."""
+    its typed values. A promise returns a `Verdict`. `title` names its evidence step."""
     return _record(
         PromiseDeclaration(
-            id, text, evidence, fields, {**(concepts or {}), **(columns or {})}, version
+            id,
+            text,
+            evidence,
+            fields,
+            {**(concepts or {}), **(columns or {})},
+            version,
+            title or text,
         )
     )
 
@@ -167,8 +177,15 @@ def operator(
     )
 
 
-def option(label: str, operator: Callable[..., Any], *, when: str, condition: str) -> Option:
-    return Option(label, operator, when, condition)
+def option(
+    label: str,
+    operator: Callable[..., Any],
+    *,
+    when: str,
+    condition: str,
+    fallbacks: list[str] | None = None,
+) -> Option:
+    return Option(label, operator, when, condition, tuple(fallbacks or []))
 
 
 class _Method:
@@ -194,6 +211,9 @@ class _Method:
         concept parameter gets a `Binding` when the project binds it, else None. Each option's
         rationale is the reason its `method.choose` gives."""
         for option_id, choice in options.items():
+            unknown = set(choice.fallbacks) - set(options)
+            if unknown:
+                raise ManifestError(f"option {option_id} falls back to {sorted(unknown)}")
             if declared(choice.operator) is None:
                 raise ManifestError(
                     f"option {option_id} names {choice.operator.__name__}, which is not an operator"

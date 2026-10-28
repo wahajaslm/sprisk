@@ -1,0 +1,51 @@
+# Method IR compiled from sprisk_validation.stratified_split:stratified_split. Do not edit; run `just build-packs`.
+schema_version: sprisk.operator/v1
+id: sprisk.validation.stratified_split@1.0.0
+capability_class: transform
+title: Stratified split
+description: Holds out a random fifth of rows for test, keeping each class's share
+  on both sides.
+entrypoint: sprisk_validation.stratified_split:stratified_split
+notebook_code: sprisk_validation.stratified_split:stratified_split
+role: split
+folds: plain
+concepts:
+  stratify: common.target
+inputs:
+- name: data
+  kind: table
+outputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
+params_schema:
+  type: object
+  additionalProperties: false
+  required:
+  - stratify
+  properties:
+    stratify:
+      type: string
+      description: Each class of this column keeps the same share in train and test.
+      minLength: 1
+      x-sprisk-column: true
+    test_fraction:
+      type: number
+      description: Share of rows held out for testing.
+      minimum: 0.05
+      maximum: 0.5
+      x-sprisk-step: 0.05
+      default: 0.2
+    seed:
+      type: integer
+      description: Fixes the shuffle so runs repeat.
+      minimum: 0
+      default: 42
+effects: pure
+network: none
+resources:
+  cpu_cores: 1
+  memory_mb: 2048
+  gpu: none
+  timeout_seconds: 600

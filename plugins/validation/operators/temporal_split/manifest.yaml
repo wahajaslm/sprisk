@@ -1,22 +1,53 @@
+# Method IR compiled from sprisk_validation.temporal_split:temporal_split. Do not edit; run `just build-packs`.
 schema_version: sprisk.operator/v1
 id: sprisk.validation.temporal_split@1.0.0
-title: Temporal split
 capability_class: transform
+title: Temporal split
+description: Holds out the latest fifth of rows, by the time column, as the test set.
+entrypoint: sprisk_validation.temporal_split:temporal_split
+notebook_code: sprisk_validation.temporal_split:temporal_split
 role: split
 folds: time
-description: Split by time. Every train row is strictly earlier than every test row.
-entrypoint: sprisk_validation.temporal_split:temporal_split
-notebook_code: sprisk_validation.temporal_split:as_code
-inputs: [{ name: data, kind: table }]
-outputs: [{ name: train, kind: table }, { name: test, kind: table }]
+concepts:
+  time_column: common.event_time
+  group_column: common.item_identity
+inputs:
+- name: data
+  kind: table
+outputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
 params_schema:
   type: object
   additionalProperties: false
-  required: [time_column, test_fraction]
+  required:
+  - time_column
   properties:
-    time_column: { type: string, minLength: 1, description: "Rows are ordered by this column; the latest rows become the test set." }
-    test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1, description: "Share of the latest rows held out for testing." }
-    group_column: { type: string, minLength: 1, description: "Entity identifier. Train drops every entity that also appears in test, so none is on both sides." }
+    time_column:
+      type: string
+      description: Rows are ordered by this column; the latest rows become the test
+        set.
+      minLength: 1
+      x-sprisk-column: true
+    test_fraction:
+      type: number
+      description: Share of the latest rows held out for testing.
+      minimum: 0.05
+      maximum: 0.5
+      x-sprisk-step: 0.05
+      default: 0.2
+    group_column:
+      type: string
+      description: Entity identifier. Train drops every entity that also appears in
+        test, so none is on both sides.
+      minLength: 1
+      x-sprisk-column: true
 effects: pure
 network: none
-resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }
+resources:
+  cpu_cores: 1
+  memory_mb: 2048
+  gpu: none
+  timeout_seconds: 600

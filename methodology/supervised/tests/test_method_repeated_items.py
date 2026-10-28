@@ -1,5 +1,6 @@
-"""Whether the same item appears in more than one row (ADR-0063): matching titles suggest it,
-and a person confirms before anything relies on it."""
+"""Whether the same item appears in more than one row (ADR-0063): matching titles group rows
+into items by rule (ADR-0071). The binding is marked as the method's, shown, and a person may
+override it."""
 
 from method_harness import decide
 
@@ -13,11 +14,14 @@ def groups(groups: int, rows_in_groups: int = 201) -> dict[str, dict[str, int]]:
     }
 
 
-def test_matching_titles_are_asked_about_never_assumed() -> None:
+def test_matching_titles_group_rows_into_items_by_rule() -> None:
     d = decide(METHOD, evidence=groups(83), bound=["common.item_title"])
-    assert (d["outcome"], d["option"]) == ("ask", "group_by_title")
+    assert (d["outcome"], d["option"]) == ("choose", "group_by_title")
     assert d["reason"].startswith("201 of 596 rows share a title")
-    assert d["reason"].endswith("Are rows with matching titles the same item?")
+    assert d["reason"].endswith(
+        "Rows with matching titles are taken as one item: if two items share a title, the "
+        "split only gets stricter, never leaky."
+    )
 
 
 def test_no_shared_title_makes_every_row_its_own_item() -> None:

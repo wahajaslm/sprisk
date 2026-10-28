@@ -14,7 +14,7 @@ nodes:
   - { id: mass_by_species, operator: sprisk.profile.chart@1.0.0, params: { kind: box, x: Species, y: "Body Mass (g)" } }
   - { id: flipper_vs_mass, operator: sprisk.profile.chart@1.0.0, params: { kind: scatter, x: "Flipper Length (mm)", y: "Body Mass (g)" } }
   - { id: has_sex, operator: sprisk.clean.drop_missing@1.0.0, params: { columns: [Sex] } }
-  - { id: split, operator: sprisk.validation.random_split@1.0.0, params: { test_fraction: 0.25, seed: 42, stratify: Species } }
+  - { id: split, operator: sprisk.validation.stratified_split@1.0.0, params: { test_fraction: 0.25, seed: 42, stratify: Species } }
   - { id: island_and_sex, operator: sprisk.clean.encode@1.0.0, params: { columns: [Island, Sex] } }
   - { id: baseline, operator: sprisk.ml.dummy_baseline@3.0.0, params: { target: Species, task: classification } }
   - { id: forest, operator: sprisk.ml.random_forest@3.0.0, params: { target: Species, task: classification, seed: 42 } }

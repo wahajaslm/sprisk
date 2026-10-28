@@ -1,22 +1,49 @@
+# Method IR compiled from sprisk_validation.temporal_split:test_after_train. Do not edit; run `just build-packs`.
 schema_version: sprisk.operator/v1
 id: sprisk.validation.time_order@1.0.0
-title: Time order check
 capability_class: analyzer
-description: Counts the test rows not later than the latest train row, the evidence that a temporal split tests on later rows only (ADR-0064).
-entrypoint: sprisk_validation.split_evidence:time_order
-attach: { role: split, side: output }
-concepts: { time_column: common.event_time }
+title: Time order check
+description: Counts the test rows not later than the latest train row, the evidence
+  that a temporal split trains only on the past.
+entrypoint: sprisk_validation.temporal_split:test_after_train
+attach:
+  role: split
+  side: output
+concepts:
+  time_column: common.event_time
 produces:
   evaluation.time_order:
-    fields: { not_later_test_rows: integer, latest_train: string, earliest_test: string, train_rows: integer, test_rows: integer }
-inputs: [{ name: train, kind: table }, { name: test, kind: table }]
-outputs: [{ name: evidence, kind: report }]
+    fields:
+      not_later_test_rows: integer
+      latest_train: string
+      earliest_test: string
+      train_rows: integer
+      test_rows: integer
+      status: string
+      detail: string
+inputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
+outputs:
+- name: evidence
+  kind: report
 params_schema:
   type: object
   additionalProperties: false
-  required: [time_column]
+  required:
+  - time_column
   properties:
-    time_column: { type: string, minLength: 1, x-sprisk-column: true, description: "The column that orders the rows." }
+    time_column:
+      type: string
+      description: The column that orders the rows.
+      minLength: 1
+      x-sprisk-column: true
 effects: pure
 network: none
-resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }
+resources:
+  cpu_cores: 1
+  memory_mb: 2048
+  gpu: none
+  timeout_seconds: 600

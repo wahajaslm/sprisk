@@ -1,22 +1,49 @@
+# Method IR compiled from sprisk_validation.random_split:no_row_in_both. Do not edit; run `just build-packs`.
 schema_version: sprisk.operator/v1
 id: sprisk.validation.row_overlap@1.0.0
-title: Row leakage check
 capability_class: analyzer
-description: Counts the test rows whose features match a train row, the evidence that a random split leaves no row on both sides. The target is dropped first, so no test label is read (ADR-0064).
-entrypoint: sprisk_validation.split_evidence:row_overlap
-attach: { role: split, side: output }
-concepts: { target: common.target }
+title: Row leakage check
+description: Counts the test rows whose features match a train row, the evidence that
+  a random split leaves no row on both sides. The target is dropped first, so no test
+  label is read (ADR-0064).
+entrypoint: sprisk_validation.random_split:no_row_in_both
+attach:
+  role: split
+  side: output
+concepts:
+  target: common.target
 produces:
   evaluation.row_overlap:
-    fields: { in_both: integer, train_rows: integer, test_rows: integer }
-inputs: [{ name: train, kind: table }, { name: test, kind: table }]
-outputs: [{ name: evidence, kind: report }]
+    fields:
+      in_both: integer
+      train_rows: integer
+      test_rows: integer
+      status: string
+      detail: string
+inputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
+outputs:
+- name: evidence
+  kind: report
 params_schema:
   type: object
   additionalProperties: false
-  required: [target]
+  required:
+  - target
   properties:
-    target: { type: string, minLength: 1, x-sprisk-column: true, x-sprisk-excluded: true, description: "The column the model predicts, dropped before the rows are compared." }
+    target:
+      type: string
+      description: The column the model predicts, dropped before the rows are compared.
+      minLength: 1
+      x-sprisk-column: true
+      x-sprisk-excluded: true
 effects: pure
 network: none
-resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }
+resources:
+  cpu_cores: 1
+  memory_mb: 2048
+  gpu: none
+  timeout_seconds: 600

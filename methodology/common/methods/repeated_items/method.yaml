@@ -13,8 +13,8 @@ options:
   - id: group_by_title
     label: Treat rows with matching titles as one item
     description: Takes rows with matching titles as one item, which later steps such as the split use.
-    condition: titles match ∧ person confirms
-    when: rows share a title, and a person confirms
+    condition: titles match
+    when: rows share a title
     rationale: Keeping one item's rows together stops it landing on both sides of the split.
     action:
       bind: { concept: common.item_identity, evidence: data.near_duplicate_groups, column: item_group }

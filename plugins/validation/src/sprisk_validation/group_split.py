@@ -1,13 +1,79 @@
-from typing import Any
-
 import polars as pl
 from sklearn.model_selection import GroupShuffleSplit
 
+from sprisk_workers.authoring import Verdict, operator, promise
 
+# Enough ids for a person to look one up; the count says how many there are.
+SHOWN = 20
+
+
+@promise(
+    id="no_group_overlap",
+    text="No item has rows in both train and test.",
+    evidence="evaluation.group_overlap",
+    fields={
+        "overlapping": int,
+        "overlapping_groups": list[str],
+        "train_groups": int,
+        "test_groups": int,
+    },
+    columns={"group_column": "common.item_identity"},
+    title="Group leakage check",
+)
+def no_group_overlap(train: pl.DataFrame, test: pl.DataFrame, group_column: str) -> Verdict:
+    """Counts the groups with rows in both train and test, the evidence that a group split
+    keeps each item on one side (ADR-0063).
+
+    Args:
+        group_column: The column that names each row's item.
+    """
+    learned = train[group_column].drop_nulls().unique()
+    scored = test[group_column].drop_nulls().unique()
+    both = learned.filter(learned.is_in(scored.implode())).sort()
+    named = [str(g) for g in both.head(SHOWN).to_list()]
+    evidence = {
+        "overlapping": both.len(),
+        "overlapping_groups": named,
+        "train_groups": learned.len(),
+        "test_groups": scored.len(),
+    }
+    if learned.is_empty() or scored.is_empty():
+        return Verdict("inconclusive", "One side has no groups.", evidence)
+    if both.len():
+        shown = ", ".join(named[:5])
+        return Verdict(
+            "fail", f"{both.len()} items have rows in both train and test: {shown}", evidence
+        )
+    return Verdict(
+        "pass",
+        f"No item is in both sides ({learned.len()} train, {scored.len()} test items).",
+        evidence,
+    )
+
+
+@operator(
+    id="group_split",
+    inputs=["data"],
+    outputs=["train", "test"],
+    role="split",
+    folds="group",
+    columns={"group_column": "common.item_identity"},
+    tunables={
+        "test_fraction": {"minimum": 0.05, "maximum": 0.5, "step": 0.05},
+        "seed": {"minimum": 0},
+    },
+    promises=[no_group_overlap],
+)
 def group_split(
-    data: pl.DataFrame, group_column: str, test_fraction: float, seed: int
-) -> dict[str, pl.DataFrame]:
-    """Hold complete groups out, with deterministic membership for a fixed seed."""
+    data: pl.DataFrame, group_column: str, test_fraction: float = 0.2, seed: int = 42
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Holds out about a fifth for test, keeping all rows of each item on one side.
+
+    Args:
+        group_column: Entity or group identifier kept wholly in one partition.
+        test_fraction: Approximate share of groups held out for testing.
+        seed: Fixes group selection so runs repeat.
+    """
     groups = data[group_column]
     if groups.null_count():
         raise ValueError(
@@ -20,23 +86,4 @@ def group_split(
     train, test = data[sorted(train_rows)], data[sorted(test_rows)]
     if train.is_empty() or test.is_empty():
         raise ValueError(f"split gave {train.height} train and {test.height} test rows")
-    return {"train": train, "test": test}
-
-
-def as_code(settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]) -> str:
-    """This step as plain Python for a notebook cell (ADR-0055); a test runs it against the
-    step. Helper names start with the step's outputs, so they never replace a person's."""
-    data, train, test = inputs["data"], outputs["train"], outputs["test"]
-    group = settings["group_column"]
-    return (
-        "from sklearn.model_selection import GroupShuffleSplit\n"
-        "\n"
-        "# Whole groups go to one side: no group is in both train and test.\n"
-        f"{train}_rows, {test}_rows = next(\n"
-        "    GroupShuffleSplit(\n"
-        f"        n_splits=1, test_size={settings['test_fraction']!r}, "
-        f"random_state={settings['seed']!r}\n"
-        f"    ).split(range({data}.height), groups={data}[{group!r}].to_list())\n"
-        ")\n"
-        f"{train}, {test} = {data}[sorted({train}_rows)], {data}[sorted({test}_rows)]\n"
-    )
+    return train, test

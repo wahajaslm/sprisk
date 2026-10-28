@@ -50,9 +50,11 @@ def test_a_decorated_operator_compiles_to_its_manifest() -> None:
         "additionalProperties": False,
         "required": ["order_column"],
         "properties": {
-            "order_column": {"type": "string", "minLength": 1, "x-sprisk-column": True},
-            "every": {"type": "integer", "minimum": 2, "maximum": 10, "x-sprisk-step": 1,
-                      "default": 2},
+            "order_column": {"type": "string", "description": "Rows are kept in this order.",
+                             "minLength": 1, "x-sprisk-column": True},
+            "every": {"type": "integer",
+                      "description": "Keeps one row in this many, starting with the first.",
+                      "minimum": 2, "maximum": 10, "x-sprisk-step": 1, "default": 2},
             "note": {"type": "string"},
         },
     }  # fmt: skip
@@ -121,10 +123,18 @@ def test_an_edited_function_body_is_custom_code() -> None:
 OPS = '''
 import polars as pl
 
-from sprisk_workers.authoring import operator
+from sprisk_workers.authoring import Verdict, operator, promise
 
 
-@operator(id="first_rows", inputs=["data"], outputs=["out"], role="split", folds="plain")
+@promise(id="kept_apart", text="Kept apart.", evidence="evaluation.apart", fields={"n": int})
+def kept_apart(train: pl.DataFrame, test: pl.DataFrame) -> Verdict:
+    return Verdict("pass", "Apart.", {"n": 0})
+
+
+@operator(
+    id="first_rows", inputs=["data"], outputs=["out"], role="split", folds="plain",
+    promises=[kept_apart],
+)
 def first_rows(data: pl.DataFrame, n: int = 5) -> pl.DataFrame:
     """The first rows."""
     return data.head(n)
@@ -150,18 +160,21 @@ def test_the_build_writes_each_manifest_next_to_its_pack(pack: Path) -> None:
     written = compile_packs([pack], trusted=("acme_pack",))
 
     path = pack / "acme" / "operators" / "first_rows" / "manifest.yaml"
-    assert list(written) == [path]
+    check = pack / "acme" / "operators" / "apart" / "manifest.yaml"
+    assert list(written) == [path, check]
     assert written[path].startswith("# Method IR compiled from acme_pack.first_rows:first_rows.")
     assert "id: acme.pack.first_rows@1.0.0" in written[path]
+    assert "id: acme.pack.apart@1.0.0" in written[check]
 
 
 def test_stale_lists_missing_changed_and_orphaned_manifests(pack: Path) -> None:
     written = compile_packs([pack], trusted=("acme_pack",))
-    path = next(iter(written))
-    assert stale(written, [pack]) == [path]
+    path, check = written
+    assert stale(written, [pack]) == [check, path]
 
-    path.parent.mkdir(parents=True)
-    path.write_text(written[path])
+    for each in written:
+        each.parent.mkdir(parents=True)
+        each.write_text(written[each])
     assert stale(written, [pack]) == []
 
     path.write_text(written[path].replace("The first rows.", "Changed by hand."))
@@ -280,7 +293,6 @@ def test_a_method_compiles_to_its_options_promises_and_needs() -> None:
                 "replace": {
                     "role": "split",
                     "operator": "authored.method.time_split@1.0.0",
-                    "concepts": {"time_column": "common.event_time"},
                     "settings": {"test_fraction": 0.2},
                 }
             },
@@ -351,3 +363,11 @@ def test_a_method_file_holds_one_method() -> None:
         ManifestError, match="authored_two_methods holds 2 methods; a method file holds one"
     ):
         method_manifest(authored_two_methods.first, "methodology.test")
+
+
+def test_an_operator_keeps_its_label_column_and_only_a_promise_drops_it() -> None:
+    kinds = {"common.target": "label"}
+    split = operator_manifest(authored_method.head_split, kinds)
+    assert all("x-sprisk-excluded" not in p for p in split.params_schema["properties"].values())
+    check = promise_manifest(authored_method.no_shared_rows, "split", kinds)
+    assert check.params_schema["properties"]["label"]["x-sprisk-excluded"] is True

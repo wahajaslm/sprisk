@@ -242,7 +242,11 @@ def test_the_gate_never_fails_the_split_the_method_chooses(
     option = next(o for o in method_options() if o["id"] == chosen["option"])
     replace = option["action"]["replace"]
     params = dict(replace.get("settings", {}))
-    params.update({p: columns[c] for p, c in replace.get("concepts", {}).items() if c in columns})
+    # As the engine applies an option: the operator maps its own columns, the option the rest.
+    operator = OPERATORS[replace["operator"]]
+    mapped = {k: v.root for k, v in (operator.concepts or {}).items()}
+    mapped |= replace.get("concepts", {})
+    params.update({p: columns[c] for p, c in mapped.items() if c in columns})
     result = check((replace["operator"], params), question(**facts))
     assert result.verdict != "fail", f"{option['id']}: {result.rationale}"
 
