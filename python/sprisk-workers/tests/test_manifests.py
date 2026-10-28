@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from sprisk_workers.errors import ManifestError
 from sprisk_workers.manifests import load_operators
@@ -74,7 +75,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.ml.feature_importance@2.0.0",
         "sprisk.ml.linear_model@3.0.0",
         "sprisk.ml.random_forest@3.0.0",
-        "sprisk.ml.select_model@5.0.0",
+        "sprisk.ml.select_model@6.0.0",
         "sprisk.profile.chart@1.0.0",
         "sprisk.profile.column_roles@1.0.0",
         "sprisk.profile.distributions@1.0.0",
@@ -195,14 +196,29 @@ def test_a_models_estimator_loads_beside_its_entrypoint(tmp_path: Path) -> None:
 
 # The code step runs the user's code; its own module is the worker's runner for it (ADR-0022).
 RUNNERS = {"sprisk_code"}  # methodology packs live outside plugins/ and are runners too
+# The source profiler is a process Rust starts with a contract request, not a step.
+RUNNER_MODULES = {"sprisk_profile/source.py"}
 
 
 def test_no_step_imports_sprisk() -> None:
     """Steps are plain Polars / scikit-learn code (ADR-0022); the worker does the plumbing."""
-    sources = [p for p in PLUGINS.glob("*/src/*/*.py") if p.parent.name not in RUNNERS]
+    sources = [
+        p
+        for p in PLUGINS.glob("*/src/*/*.py")
+        if p.parent.name not in RUNNERS and f"{p.parent.name}/{p.name}" not in RUNNER_MODULES
+    ]
     assert sources
     for path in sources:
         text = path.read_text()
         # A decorated step imports only the decorators that describe it (ADR-0071).
         text = text.replace("from sprisk_workers.authoring import", "")
         assert "from sprisk" not in text and "import sprisk" not in text, path
+
+
+def test_every_shipped_operator_names_its_stage() -> None:
+    """The UI places a step by its operator's stage; it never guesses one from the id."""
+    roots = [PLUGINS, PLUGINS.parent / "methodology"]
+    manifests = [m for root in roots for m in root.glob("*/operators/*/manifest.yaml")]
+    assert manifests
+    unstaged = [m for m in manifests if "stage" not in yaml.safe_load(m.read_text())]
+    assert unstaged == []

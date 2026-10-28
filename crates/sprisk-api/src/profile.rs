@@ -43,6 +43,24 @@ impl Profiler {
     }
 }
 
+/// The variables the cloud stores read their credentials from, as Rust's `object_store` does
+/// (ADR-0067). Only the source profiler gets them: it must read the bucket.
+const STORE_ENV: &[&str] = &[
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    "AWS_PROFILE",
+    "AWS_ENDPOINT_URL",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "AZURE_STORAGE_ACCOUNT_NAME",
+    "AZURE_STORAGE_ACCOUNT_KEY",
+    "AZURE_CLIENT_ID",
+    "AZURE_CLIENT_SECRET",
+    "AZURE_TENANT_ID",
+];
+
 /// The command that profiles a registered data source in place
 /// (`python -m sprisk_profile.source`, ADR-0067), how long it may take, and how many at once.
 #[derive(Clone, Debug)]
@@ -50,15 +68,10 @@ pub struct SourceProfiler(BoundedProcess);
 
 impl SourceProfiler {
     pub fn new(command: Vec<String>, timeout: Duration, at_once: usize) -> Self {
-        Self(BoundedProcess::new(
-            "source profiler",
-            command,
-            timeout,
-            at_once,
-        ))
+        Self(BoundedProcess::new("source profiler", command, timeout, at_once).passing(STORE_ENV))
     }
 
-    /// The profile of the first rows of the request's files, checked against the contract.
+    /// The profile of a bounded sample of the request's files, checked against the contract.
     pub async fn profile(
         &self,
         request: &SourceProfileRequest,

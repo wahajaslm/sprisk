@@ -24,6 +24,8 @@ pub struct BoundedProcess {
     command: Vec<String>,
     timeout: Duration,
     running: Arc<Semaphore>,
+    /// Variables this process needs beyond `PASSED_ENV`, such as a store's credentials.
+    also_passed: &'static [&'static str],
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -48,7 +50,14 @@ impl BoundedProcess {
             command,
             timeout,
             running: Arc::new(Semaphore::new(at_once)),
+            also_passed: &[],
         }
+    }
+
+    /// The same process, also given `names` from the server's environment.
+    pub fn passing(mut self, names: &'static [&'static str]) -> Self {
+        self.also_passed = names;
+        self
     }
 
     /// Writes `input` to the process and returns what it printed.
@@ -68,6 +77,7 @@ impl BoundedProcess {
     async fn run_once(&self, extra: &[String], input: Vec<u8>) -> Result<String, ProcessError> {
         let failed = |e: std::io::Error| ProcessError::Failed(e.to_string());
         let mut child = cleared_command(&self.command)?
+            .envs(passed(self.also_passed))
             .args(extra)
             .spawn()
             .map_err(failed)?;
@@ -110,16 +120,21 @@ pub(crate) fn cleared_command(command: &[String]) -> Result<Command, ProcessErro
     cleared
         .args(args)
         .env_clear()
-        .envs(
-            PASSED_ENV
-                .iter()
-                .filter_map(|k| Some((k, std::env::var_os(k)?))),
-        )
+        .envs(passed(PASSED_ENV))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     Ok(cleared)
+}
+
+/// Each of `names` that the server's environment sets, with its value.
+fn passed(
+    names: &'static [&'static str],
+) -> impl Iterator<Item = (&'static str, std::ffi::OsString)> {
+    names
+        .iter()
+        .filter_map(|k| Some((*k, std::env::var_os(k)?)))
 }
 
 #[cfg(test)]
@@ -137,5 +152,17 @@ mod tests {
             .collect();
         assert!(!names.is_empty());
         assert!(names.iter().all(|n| PASSED_ENV.contains(n)), "{names:?}");
+    }
+
+    /// Cargo sets CARGO_PKG_NAME for a test run, so it stands in for a store's credential.
+    #[tokio::test]
+    async fn a_process_given_more_variables_gets_those_too() {
+        let env = BoundedProcess::new("test", vec!["env".into()], Duration::from_secs(5), 1)
+            .passing(&["CARGO_PKG_NAME"]);
+        let printed = env.run(Vec::new()).await.unwrap_or_default();
+        assert!(
+            printed.lines().any(|l| l == "CARGO_PKG_NAME=sprisk-api"),
+            "{printed}"
+        );
     }
 }

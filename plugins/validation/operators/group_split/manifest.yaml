@@ -7,6 +7,7 @@ description: Holds out about a fifth for test, keeping all rows of each item on 
   side.
 entrypoint: sprisk_validation.group_split:group_split
 notebook_code: sprisk_validation.group_split:group_split
+stage: split
 role: split
 folds: group
 concepts:

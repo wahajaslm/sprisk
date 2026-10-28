@@ -55,6 +55,7 @@ def no_group_overlap(train: pl.DataFrame, test: pl.DataFrame, group_column: str)
     inputs=["data"],
     outputs=["train", "test"],
     role="split",
+    stage="split",
     folds="group",
     columns={"group_column": "common.item_identity"},
     tunables={

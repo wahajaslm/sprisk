@@ -13,14 +13,14 @@ const RULES = [
   rule(C("dupes"), "data", ["drop", "keep"]),
   rule(S("split"), "split", ["random", "time"]),
   rule(S("fill"), "cleaning", ["median", "mean", "drop"]),
-  rule(S("pick"), "models", [], { selection: "shortlist" }),
+  rule(S("pick"), "models", []),
   rule(S("loop"), "evaluation", ["finish", "again"]),
   rule(U("algo"), "models", ["kmeans", "dbscan"]),
 ];
 // The loop rule's "again" route reopens the cleaning stage.
 (RULES[5] as unknown as { alternatives: { action: object }[] }).alternatives[1]!.action = { type: "reopen", params: { stage: "cleaning" } };
 
-const layout = (reviews = new Map(), path = false) => mapLayout(RULES, reviews, { path });
+const layout = (decided = new Map(), path = false) => mapLayout(RULES, decided, { path });
 type L = ReturnType<typeof layout>;
 const node = (l: L, id: string) => l.nodes.find((n) => n.id === id)!;
 const route = (l: L, id: string) => l.routes.find((r) => r.id === id)!;
@@ -35,9 +35,8 @@ describe("methodology map canvas", () => {
     expect(xs).toEqual([...xs].sort((a, b) => a - b));
   });
 
-  it("marks a decision by its level: the data settles it, a shortlist is tried, a person is asked", () => {
+  it("marks a decision by its level: the data settles it, or a person is asked", () => {
     expect(levelOf(RULES[1]!)).toBe("rule");
-    expect(levelOf(RULES[4]!)).toBe("try");
     expect(levelOf(RULES[0]!)).toBe("ask");
   });
 
@@ -95,7 +94,7 @@ describe("methodology map canvas", () => {
   });
 
   it("with the pipeline path on, marks only the routes the flow's rules chose", () => {
-    const chose = { rule: S("split"), status: "settled", subject_node_id: "split", reason: "r", recommended_alternative_id: "time" } as never;
+    const chose = { option: "time", reason: "r", step: "split" };
     const l = layout(new Map([[S("split"), chose]]), true);
     expect(l.routes.filter((r) => r.chosen && r.from !== "fork").map((r) => r.id)).toEqual([`${S("split")}#time`]);
     expect(layout(new Map([[S("split"), chose]]), false).routes.some((r) => r.chosen)).toBe(false);

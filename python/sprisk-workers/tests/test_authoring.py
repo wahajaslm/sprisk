@@ -135,7 +135,7 @@ def kept_apart(train: pl.DataFrame, test: pl.DataFrame) -> Verdict:
 
 @operator(
     id="first_rows", inputs=["data"], outputs=["out"], role="split", folds="plain",
-    promises=[kept_apart],
+    promises=[kept_apart], stage="split",
 )
 def first_rows(data: pl.DataFrame, n: int = 5) -> pl.DataFrame:
     """The first rows."""
@@ -167,6 +167,8 @@ def test_the_build_writes_each_manifest_next_to_its_pack(pack: Path) -> None:
     assert written[path].startswith("# Method IR compiled from acme_pack.first_rows:first_rows.")
     assert "id: acme.pack.first_rows@1.0.0" in written[path]
     assert "id: acme.pack.apart@1.0.0" in written[check]
+    # The check step is in its operator's stage.
+    assert "\nstage: split\n" in written[path] and "\nstage: split\n" in written[check]
 
 
 def test_stale_lists_missing_changed_and_orphaned_manifests(pack: Path) -> None:

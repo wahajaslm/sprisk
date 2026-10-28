@@ -7,6 +7,7 @@ description: Holds out a random fifth of rows for test, keeping each class's sha
   on both sides.
 entrypoint: sprisk_validation.stratified_split:stratified_split
 notebook_code: sprisk_validation.stratified_split:stratified_split
+stage: split
 role: split
 folds: plain
 concepts:

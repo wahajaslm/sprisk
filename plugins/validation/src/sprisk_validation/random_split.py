@@ -43,6 +43,7 @@ def no_row_in_both(train: pl.DataFrame, test: pl.DataFrame, target: str) -> Verd
     inputs=["data"],
     outputs=["train", "test"],
     role="split",
+    stage="split",
     folds="plain",
     role_default=True,
     tunables={

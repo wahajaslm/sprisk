@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { parse } from "@sprisk/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import local from "../../../tests/contract/dataset_version/valid/local-csv.json";
 import questionJson from "../../../tests/contract/question_version/valid/classification-all-fields.json";
 import walking from "../../../tests/contract/walk/valid/walking.json";
 import asking from "../../../tests/contract/walk/valid/stopped-with-asks.json";
@@ -25,15 +26,25 @@ const WALK = trail.walk.id;
 const started = { ...walking, id: WALK };
 const stillWalking = { walk: started, steps: [] };
 
-async function startWith(path: string) {
-  await userEvent.type(screen.getByLabelText("Source files"), path);
+const listings = { ...local, id: "dsv_01JABCDEFGHJKMNPQRSTVWXY01", name: "listings.csv" };
+const labels = { ...local, id: "dsv_01JABCDEFGHJKMNPQRSTVWXY02", name: "labels.csv" };
+
+function withSources() {
+  server.use(http.get("/api/dataset_versions", () => HttpResponse.json([listings, labels])));
+}
+
+async function startWith(...names: string[]) {
+  for (const name of names) await userEvent.click(await screen.findByRole("checkbox", { name: new RegExp(name) }));
   await userEvent.click(screen.getByRole("button", { name: "Start auto run" }));
 }
 
 describe("StartWalk", () => {
-  beforeEach(() => useSelection.setState({ nav: "Objective", pipelineVersionId: undefined }));
+  beforeEach(() => {
+    useSelection.setState({ nav: "Objective", pipelineVersionId: undefined });
+    withSources();
+  });
 
-  it("starts a walk in the local project on the question, with each typed source path and a bounded budget", async () => {
+  it("starts a walk in the local project on the question, with the picked sources in the order picked and a bounded budget", async () => {
     let sent: Record<string, unknown> | undefined;
     server.use(
       http.post("/api/walks", async ({ request }) => {
@@ -44,24 +55,26 @@ describe("StartWalk", () => {
     );
     renderWithApi(<StartWalk question={question} />);
 
-    await startWith("standin.csv{enter}  labels.csv  {enter}");
+    await startWith("labels.csv", "listings.csv");
 
     expect(await screen.findByText("Auto run in progress")).toBeInTheDocument();
     expect(sent).toMatchObject({
       project_id: LOCAL_PROJECT,
       question_version_id: question.id,
-      sources: ["standin.csv", "labels.csv"],
+      dataset_version_ids: [labels.id, listings.id],
     });
     expect(sent?.idempotency_key).toMatch(/^walk-/);
     expect(sent?.max_actions).toBeGreaterThan(0);
     expect(sent?.max_wall_seconds).toBeGreaterThan(0);
   });
 
-  it("cannot start without a source path", async () => {
+  it("cannot start without a picked source", async () => {
     renderWithApi(<StartWalk question={question} />);
 
+    const listed = await screen.findByRole("checkbox", { name: /listings\.csv/ });
     expect(screen.getByRole("button", { name: "Start auto run" })).toBeDisabled();
-    await userEvent.type(screen.getByLabelText("Source files"), "   ");
+    await userEvent.click(listed);
+    await userEvent.click(listed);
     expect(screen.getByRole("button", { name: "Start auto run" })).toBeDisabled();
   });
 
@@ -73,7 +86,7 @@ describe("StartWalk", () => {
     );
     renderWithApi(<StartWalk question={question} />);
 
-    await startWith("standin.csv");
+    await startWith("listings.csv");
 
     expect(await screen.findByText("invalid_walk: the question has no target")).toBeInTheDocument();
   });
@@ -87,7 +100,7 @@ describe("StartWalk", () => {
     );
     renderWithApi(<StartWalk question={question} />);
 
-    await startWith("standin.csv");
+    await startWith("listings.csv");
 
     expect(await screen.findByText(`Auto run ${WALK} cannot be read: not_found: no such walk`)).toBeInTheDocument();
   });
@@ -100,7 +113,7 @@ describe("StartWalk", () => {
     );
     renderWithApi(<StartWalk question={question} />);
 
-    await startWith("standin.csv");
+    await startWith("listings.csv");
 
     expect(await screen.findByText("Needs your answer", {}, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.getByText(trail.walk.stop.detail)).toBeInTheDocument();
@@ -114,7 +127,7 @@ describe("StartWalk", () => {
     );
     renderWithApi(<StartWalk question={question} />);
 
-    await startWith("standin.csv");
+    await startWith("listings.csv");
     await userEvent.click(await screen.findByRole("button", { name: "Open in pipeline" }));
 
     await waitFor(() => expect(useSelection.getState().nav).toBe("Flow"));
@@ -148,7 +161,7 @@ describe("StartWalk", () => {
     );
     renderWithApi(<StartWalk question={question} />);
 
-    await startWith("standin.csv");
+    await startWith("listings.csv");
 
     const [method, fact] = asking.stop.asks;
     if (!method || !fact) throw new Error("the fixture asks two questions");
@@ -167,7 +180,7 @@ describe("StartWalk", () => {
       answers: [{ decides: "data.repeated_items", option: "independent_rows" }],
       success_bar: question.success_bar,
     });
-    expect(walks[1]).toMatchObject({ question_version_id: revision?.id, sources: ["standin.csv"] });
+    expect(walks[1]).toMatchObject({ question_version_id: revision?.id, dataset_version_ids: [listings.id] });
     expect(await screen.findByText("Auto run in progress")).toBeInTheDocument();
   });
 

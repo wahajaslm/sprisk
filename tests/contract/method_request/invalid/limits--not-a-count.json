@@ -1,0 +1,44 @@
+{
+  "schema_version": "sprisk.method_request/v1",
+  "module": "/packs/supervised/methods/loop_back/method.py",
+  "method": "methodology.supervised.loop_back@1.0.0",
+  "needs": {
+    "concepts": [],
+    "evidence": [
+      "models.comparison"
+    ],
+    "decisions": [
+      "models.estimator_selection"
+    ],
+    "statements": [
+      "success_bar"
+    ]
+  },
+  "options": [
+    "proceed",
+    "stop"
+  ],
+  "task": "classification",
+  "evidence": {
+    "models.comparison": {
+      "metric": "balanced_accuracy",
+      "score": 0.8,
+      "baseline_score": 0.5,
+      "beats_baseline": true,
+      "looks": 1
+    }
+  },
+  "decisions": {
+    "models.estimator_selection": "ml_linear_model"
+  },
+  "bound": [],
+  "statements": {
+    "success_bar": {
+      "metric": "balanced_accuracy",
+      "score": 0.7
+    }
+  },
+  "limits": {
+    "max_looks": 2.5
+  }
+}

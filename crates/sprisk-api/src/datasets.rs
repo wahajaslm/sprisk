@@ -76,8 +76,8 @@ pub(crate) async fn get_dataset_version(
     Ok(Json(state.store.get_dataset_version(&id(&raw)?).await?))
 }
 
-/// `GET /dataset_versions/{id}/profile`: the first rows profiled in place, made once per
-/// fingerprint and profiler code. The files are listed again first: data that changed since
+/// `GET /dataset_versions/{id}/profile`: a bounded sample profiled in place, local or in an
+/// object store, made once per fingerprint and profiler code. The files are listed again first: data that changed since
 /// it was registered is a different version, so it is refused, not profiled.
 pub(crate) async fn get_dataset_version_profile(
     State(state): State<AppState>,
@@ -86,15 +86,6 @@ pub(crate) async fn get_dataset_version_profile(
 ) -> Result<Json<DatasetProfile>, ApiError> {
     let version = state.store.get_dataset_version(&id(&raw)?).await?;
     let location = parse_location(&version.location).map_err(ApiError::Source)?;
-    if let Location::Remote(_) = location {
-        return Err(ApiError::BadRequest {
-            code: "profile_not_local",
-            message: format!(
-                "{} is in an object store; only local sources can be profiled yet",
-                version.location.as_str()
-            ),
-        });
-    }
     let fingerprint = version.fingerprint.as_str();
     let code = state.profiler.code();
     let target = query.get("target").map(String::as_str);
@@ -127,6 +118,45 @@ pub(crate) async fn get_dataset_version_profile(
         .save_profile(fingerprint, code, target, &made)
         .await?;
     Ok(Json(made))
+}
+
+/// The one local file dataset version `id` holds, resolved and inside the data roots, for a
+/// walk to load (ADR-0069). A version that names no single local file, or whose files changed
+/// since it was registered, is refused: a flow loads one file by path until it can load a
+/// version itself.
+pub(crate) async fn loadable_file(
+    state: &AppState,
+    id: &sprisk_contracts::DatasetVersionId,
+) -> Result<String, ApiError> {
+    let version = match state.store.get_dataset_version(id).await {
+        Err(sprisk_store::StoreError::NotFound { .. }) => {
+            return Err(ApiError::BadRequest {
+                code: "unknown_dataset_version",
+                message: format!("dataset version {} does not exist", id.as_str()),
+            });
+        }
+        other => other?,
+    };
+    let location = parse_location(&version.location).map_err(ApiError::Source)?;
+    let not_loadable = |why: &str| ApiError::BadRequest {
+        code: "dataset_not_loadable",
+        message: format!(
+            "dataset version {} ({}) {why}; a walk reads one local file for now",
+            id.as_str(),
+            version.location.as_str()
+        ),
+    };
+    if let Location::Remote(_) = location {
+        return Err(not_loadable("is in an object store"));
+    }
+    let (_, _, listed) = list(state, &location).await?;
+    if listed.fingerprint != version.fingerprint.as_str() {
+        return Err(ApiError::SourceChanged(version.location.to_string()));
+    }
+    match <[_; 1]>::try_from(listed.files) {
+        Ok([file]) => Ok(file.path),
+        Err(files) => Err(not_loadable(&format!("holds {} files", files.len()))),
+    }
 }
 
 /// The location as kept (a local path as its canonical `file://` URI), its name and its files.

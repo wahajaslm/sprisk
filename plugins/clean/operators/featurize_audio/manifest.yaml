@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.featurize_audio@1.0.0
 title: Librosa audio features
 capability_class: transform
+stage: clean
 description: "Uses librosa to append MFCC, chroma, spectral, energy, zero-crossing and tempo features to optional text features. Missing or unreadable assets become zero rows and are reported."
 entrypoint: sprisk_clean.audio_assets:featurize_audio
 fits_on_train: true

@@ -148,7 +148,7 @@ describe("the question conversation on the Objective page", () => {
       success_bar: { value: { metric: "balanced_accuracy", score: 0.75 }, origin: "explicit" },
       interpretability: { value: "high", origin: "explicit" },
     });
-    expect(walk).toMatchObject({ question_version_id: saved?.id, sources: ["/data/diabetes.csv"] });
+    expect(walk).toMatchObject({ question_version_id: saved?.id, dataset_version_ids: [source.id] });
     expect(await screen.findByText("Auto run in progress")).toBeInTheDocument();
   });
 

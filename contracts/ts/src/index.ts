@@ -16,7 +16,6 @@ export interface Entities {
   QuestionVersion: C.QuestionVersion;
   MethodologyCheck: C.MethodologyCheck;
   DecisionProposal: C.DecisionProposal;
-  MethodologyReview: C.MethodologyReview;
   ApplyMethodologyDecision: C.ApplyMethodologyDecision;
   MethodologyDecision: C.MethodologyDecision;
   AppliedMethodologyDecision: C.AppliedMethodologyDecision;
@@ -39,12 +38,8 @@ export interface Entities {
   OperatorSource: C.OperatorSource;
   MethodologyRule: C.MethodologyRule;
   MethodologyRuleSource: C.MethodologyRuleSource;
-  RuleObservation: C.RuleObservation;
-  RuleRequest: C.RuleRequest;
-  RuleAnswer: C.RuleAnswer;
   MethodRequest: C.MethodRequest;
   MethodAnswer: C.MethodAnswer;
-  RuleDecision: C.RuleDecision;
   FigureSet: C.FigureSet;
   LoadedTable: C.LoadedTable;
   DatasetProfile: C.DatasetProfile;

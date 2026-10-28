@@ -76,12 +76,10 @@ pub(crate) fn read_concepts(
     Ok(())
 }
 
-/// What a pack's methods may rely on: its concepts, the registered operators and the
-/// decisions the old rules make.
+/// What a pack's methods may rely on: its concepts and the registered operators.
 pub(crate) struct Provided<'a> {
     pub concepts: &'a BTreeMap<String, ConceptEntry>,
     pub operators: BTreeMap<String, &'a Operator>,
-    pub rule_decisions: BTreeSet<String>,
 }
 
 /// Refuses what no walk could satisfy, then returns the methods in decision order: a method
@@ -99,7 +97,6 @@ pub(crate) fn check(
     let decided: BTreeSet<String> = methods
         .iter()
         .map(|m| m.method.decides.to_string())
-        .chain(provided.rule_decisions.iter().cloned())
         .collect();
     for entry in &methods {
         check_method(&entry.method, provided, &decided)
@@ -124,8 +121,12 @@ fn check_operator(operator: &Operator, provided: &Provided) -> Result<(), Catalo
             "produces evidence, so it needs an output named {EVIDENCE_PORT}"
         )));
     }
-    // The engine adds a producer only where its manifest says it attaches.
-    if !operator.produces.is_empty() && operator.attach.is_none() {
+    // The engine adds a producer only where its manifest says it attaches. A select step is
+    // never added by it: a comparison runs one, and the walk reads what it found there.
+    if !operator.produces.is_empty()
+        && operator.attach.is_none()
+        && operator.role != Some(OperatorRole::Select)
+    {
         return Err(refuse("produces evidence, so it needs an attach".into()));
     }
     // A producer on a split's outputs that reads the test rows is a look at them: it may read
@@ -195,6 +196,25 @@ fn check_method(
             read.as_str()
         ));
     }
+    // The data flow draws a step before the model in the lane of each input it changes.
+    let before_model = method
+        .options
+        .iter()
+        .filter_map(|o| o.action.as_ref()?.insert.as_ref())
+        .any(|i| i.before == OperatorRole::Model);
+    match (before_model, method.changes.is_some()) {
+        (true, false) => {
+            return Err(
+                "inserts a step before the model, so it says which inputs it changes".into(),
+            );
+        }
+        (false, true) => {
+            return Err(
+                "says which inputs it changes, but inserts no step before the model".into(),
+            );
+        }
+        _ => {}
+    }
     for option in &method.options {
         let in_option = |p: String| format!("option {}: {p}", option.id.as_str());
         if let Some(name) = option.verify.iter().find(|v| {
@@ -211,6 +231,15 @@ fn check_method(
         let Some(action) = &option.action else {
             continue;
         };
+        let changes = action.bind.is_some()
+            || action.replace.is_some()
+            || action.insert.is_some()
+            || action.set.is_some();
+        if action.stop.is_some() && changes {
+            return Err(in_option(
+                "stops the walk, so it changes nothing in the flow".into(),
+            ));
+        }
         if let Some(bind) = &action.bind {
             known_concept(bind.concept.as_str(), provided).map_err(in_option)?;
             if !method.needs.evidence.contains(&bind.evidence) {

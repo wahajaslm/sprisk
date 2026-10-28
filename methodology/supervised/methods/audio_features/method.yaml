@@ -6,6 +6,7 @@ activity: Features
 question: Are the rows' clips turned into features for the model?
 pitfall: A row with no readable clip gets all-zero descriptors, which the model reads as silence. Descriptors that learn from all rows would let test clips shape the features.
 applies_when: { task: [classification, regression], assets: [audio] }
+changes: [audio]
 needs:
   concepts: []
   evidence: [audio.asset_quality]

@@ -387,6 +387,12 @@ describe("datasets", () => {
     expect(screen.getByText(/including held-out test rows/)).toHaveTextContent("not to choose features, transforms or models");
   });
 
+  it("says when a large Parquet source was profiled on row groups picked at random", async () => {
+    const sampled = { ...profile, total_rows: 5_000_000, profiled_rows: 1_000_000, sampled_row_groups: { seed: 0, chosen: 8, of: 40 } };
+    serve(undefined, () => HttpResponse.json(sampled));
+    expect(await screen.findByText(/Profiled 1,000,000 of 5,000,000 rows, from 8 of 40 row groups picked at random\./)).toBeInTheDocument();
+  });
+
   it("shows another dataset when it is picked", async () => {
     const asked = serve();
     await userEvent.click(await screen.findByRole("button", { name: /^penguins\.csv/ }));

@@ -189,6 +189,20 @@ export type DatasetVersionId = string;
  */
 export type DataFormat = "csv" | "parquet";
 /**
+ * `<node_id>.<port_name>`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PortRef".
+ */
+export type PortRef = string;
+/**
+ * What a port carries. A table is Parquet; a matrix is rows by named number columns, stored sparse (SciPy CSR in .npz, ADR-0058): row i is row i of the table it was made from.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PortKind".
+ */
+export type PortKind = "table" | "matrix" | "model" | "metrics" | "diagnostics" | "report" | "figure";
+/**
  * methodology.<pack>.<method>@<semver>
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -237,6 +251,13 @@ export type MethodOptionId = string;
 export type OperatorRole =
   "source" | "split" | "model" | "score" | "score_shares" | "cross_validate" | "select" | "row_filter";
 /**
+ * The walk stops once this option is taken (ADR-0063 slice 6), with the method's reason as its detail. limitation: a limit the walk cannot go past, such as no lift over the baseline. uncovered: a change the walk cannot make yet, such as reopening the features.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodStop".
+ */
+export type MethodStop = "limitation" | "uncovered";
+/**
  * A verification a method declares, the name of its verify_<name>() function.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -277,7 +298,7 @@ export type MethodAssurance = "confirmed" | "rule";
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodAnswer".
  */
-export type MethodAnswer = MethodDecided | MethodRefused | MethodVerified;
+export type MethodAnswer = MethodDecided | MethodShortlisted | MethodRefused | MethodVerified;
 /**
  * What verify_<name>() found. pass: the promise holds. fail: it does not. inconclusive: the evidence cannot say, such as one side with no groups. Never stale: only the control plane knows what changed since.
  *
@@ -335,13 +356,6 @@ export type EvidenceFieldType = "integer" | "number" | "boolean" | "string" | "s
  */
 export type MethodologyRuleRef = string;
 /**
- * The rule session's one JSON line per RuleRequest, tagged by `answer`: the rule's decision, or why the rule refused its observation. Any other failure ends the session.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "RuleAnswer".
- */
-export type RuleAnswer = RuleDecided | RuleRefused;
-/**
  * Stages in decision order (ADR-0059): the split comes before cleaning, since cleaning rules measure train rows.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -350,7 +364,7 @@ export type RuleAnswer = RuleDecided | RuleRefused;
 export type MethodologyStage =
   "question" | "data" | "split" | "cleaning" | "features" | "models" | "evaluation" | "reporting";
 /**
- * What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); reopen changes nothing in the flow: recommended, it makes the review item `reopen` for the stage its params name (ADR-0059). The others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.
+ * What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); reopen changes nothing in the flow: it names the stage its params give (ADR-0059). The others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "RuleActionType".
@@ -392,7 +406,7 @@ export type GraphEffect =
       params: Params;
       before: NodeId;
       /**
-       * A step that joins: the output feeding its `other` input, a source table no step read before (ADR-0059). Absent for a step with one input.
+       * `<node_id>.<port_name>`.
        */
       other?: string;
     }
@@ -412,12 +426,12 @@ export type GraphEffect =
       from: PortRef;
     };
 /**
- * `<node_id>.<port_name>`.
+ * Immutable record of one decision made through Apply: a rule's alternative, or a method's option (ADR-0064).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "PortRef".
+ * via the `definition` "MethodologyDecision".
  */
-export type PortRef = string;
+export type MethodologyDecision = MethodologyDecisionByRule | MethodologyDecisionByMethod;
 /**
  * Pinned rule: <pack>.<rule>@<semver>.
  *
@@ -425,21 +439,6 @@ export type PortRef = string;
  * via the `definition` "CheckRef".
  */
 export type CheckRef = string;
-/**
- * settled: the flow matches the rule's decision. proposal: the rule wants a change. needs_fact: a person must state a fact. needs_run: it measures train rows the flow has not produced. waiting: an earlier open item changes what it reads. no_subject: no step for it to decide yet. not_applicable: the rule does not apply to this step. reopen: cross-validation results say the stage in `reopens` must change; it stays open until the flow does (ADR-0059).
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "MethodologyReviewStatus".
- */
-export type MethodologyReviewStatus =
-  "settled" | "proposal" | "needs_fact" | "needs_run" | "waiting" | "no_subject" | "not_applicable" | "reopen";
-/**
- * Immutable record of one decision made through Apply: a rule's alternative, or a method's option (ADR-0064).
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "MethodologyDecision".
- */
-export type MethodologyDecision = MethodologyDecisionByRule | MethodologyDecisionByMethod;
 /**
  * Stable within a notebook across versions, as in Jupyter's nbformat 4.5.
  *
@@ -501,13 +500,6 @@ export type CapabilityClass =
   | "sink"
   | "custom_code";
 /**
- * What a port carries. A table is Parquet; a matrix is rows by named number columns, stored sparse (SciPy CSR in .npz, ADR-0058): row i is row i of the table it was made from.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "PortKind".
- */
-export type PortKind = "table" | "matrix" | "model" | "metrics" | "diagnostics" | "report" | "figure";
-/**
  * pure: same inputs give same outputs, cacheable. nondeterministic: not replayable. side_effecting: changes the outside world; never auto-retried.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -532,12 +524,12 @@ export type Entrypoint = string;
  */
 export type ModelFamily = "tree_ensemble" | "linear" | "distance_based" | "density_based";
 /**
- * A flow's stages in order; each is one notebook (ADR-0055). Load reads the data and looks at all rows; Explore looks at the training rows, after the split.
+ * A flow's stages in working order; each is one notebook (ADR-0055, ADR-0065). Load reads the data, Explore looks at all of it, Clean fixes what needs no fitting, Split sets the test rows aside.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "Stage".
  */
-export type Stage = "load" | "split" | "explore" | "clean" | "model" | "evaluate";
+export type Stage = "load" | "explore" | "clean" | "split" | "model" | "evaluate";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "ReportId".
@@ -618,12 +610,23 @@ export type StudyStatus = "running" | "completed" | "budget_reached" | "failed";
  */
 export type TrialState = "not_started" | "running" | "succeeded" | "failed" | "cancelled";
 /**
- * Local CSV or Parquet files, inside an allowed data folder, read as file_source steps. The first holds the rows to predict on; any other is joined to it by a rule.
+ * Registered dataset versions, at least one, in order (ADR-0069). The first holds the rows to predict on; any other is joined to it by a method. Each must be one local CSV or Parquet file, unchanged since it was registered.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkDatasets".
+ */
+export type WalkDatasets = DatasetVersionId[];
+/**
+ * Local CSV or Parquet files, inside an allowed data folder, read as file_source steps: the files the walk's dataset versions resolve to. The first holds the rows to predict on; any other is joined to it by a rule.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "WalkSources".
  */
 export type WalkSources = string[];
+/**
+ * Registered dataset versions, at least one, in order (ADR-0069). The first holds the rows to predict on; any other is joined to it by a method. Each must be one local CSV or Parquet file, unchanged since it was registered.
+ */
+export type WalkDatasets1 = DatasetVersionId[];
 /**
  * walking: it has more to do. stopped: it ended, for the reason in `stop`.
  *
@@ -920,6 +923,17 @@ export interface ProfilePlanSection {
   reason: string;
 }
 /**
+ * Which row groups a sampled profile read: `chosen` of the source's `of` row groups, picked with `seed`, so the same files give the same sample.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SampledRowGroups".
+ */
+export interface SampledRowGroups {
+  seed: number;
+  chosen: number;
+  of: number;
+}
+/**
  * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038; GET /dataset_versions/{id}/profile, ADR-0067), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bins or the 30 most common values, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -932,9 +946,10 @@ export interface DatasetProfile {
   total_rows?: number;
   total_columns: number;
   /**
-   * Rows the profile covers: all of them, or the first 1,000,000 of a larger table.
+   * Rows the profile covers: all of them, or 1,000,000 of a larger table, from its first rows or from the row groups sampled_row_groups names.
    */
   profiled_rows: number;
+  sampled_row_groups?: SampledRowGroups1;
   /**
    * Rows in each band of the missing-value map; the last band may hold fewer.
    */
@@ -960,6 +975,14 @@ export interface DatasetProfile {
    * @maxItems 60
    */
   findings?: ProfileFinding[];
+}
+/**
+ * Set when a Parquet source larger than the sample was profiled on whole row groups chosen at random (ADR-0067). Absent: the profile covers the first rows, or all of them.
+ */
+export interface SampledRowGroups1 {
+  seed: number;
+  chosen: number;
+  of: number;
 }
 /**
  * Two columns and the profiled rows where both are empty.
@@ -2085,9 +2108,59 @@ export interface SourceProfileRequest {
    */
   target?: string;
   /**
-   * At least one. Local paths, in order.
+   * At least one, in order: resolved local paths, or object-store URIs (s3://, gs://, az://) read with the credentials in the environment.
    */
   files: string[];
+}
+/**
+ * A pipeline version as Rust compiled it (arch doc §9, ADR-0070): its steps in run order, each with its resolved ports. Gate B builds its graph from this, never from the manifests. Carries only what Gate B reads today.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionPlan".
+ */
+export interface ExecutionPlan {
+  schema_version: "sprisk.execution_plan/v1";
+  pipeline_version_id: PipelineVersionId;
+  /**
+   * At least one, in run order.
+   */
+  steps: ExecutionStep[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionStep".
+ */
+export interface ExecutionStep {
+  node_id: NodeId;
+  operator: OperatorRef;
+  /**
+   * Each connected input, by port name.
+   */
+  inputs: ExecutionInput[];
+  /**
+   * Every output port, a code step's named ones included (ADR-0031).
+   */
+  outputs: ExecutionOutput[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionInput".
+ */
+export interface ExecutionInput {
+  port: PortName;
+  from: PortRef;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionOutput".
+ */
+export interface ExecutionOutput {
+  name: PortName;
+  kind: PortKind;
+  /**
+   * The input ports whose rows this output holds: every input, except that a fits_on_train step's train outputs hold only its train input (ADR-0018).
+   */
+  rows_from: PortName[];
 }
 /**
  * A method's method.yaml (ADR-0063): the decision it owns, what it needs, its options and what each option promises. Its method.py holds decide() and one verify_<name>() per verification.
@@ -2116,7 +2189,21 @@ export interface Method {
    */
   pitfall: string;
   applies_when?: MethodAppliesWhen;
+  /**
+   * Its decide() answers with a shortlist, not one option: the engine compares those options on the same folds and takes the winner by ADR-0050 (one-standard-error rule, baseline test). Each option replaces one step. Absent: false.
+   */
+  compare?: boolean;
+  /**
+   * The kinds of model input its step changes, each a lane in the data flow; a step changing two kinds is where those lanes meet. Absent: its step works on the whole table, or it adds no step.
+   *
+   * @minItems 1
+   */
+  changes?: [
+    "numbers" | "categories" | "dates" | "text" | "image" | "audio",
+    ...("numbers" | "categories" | "dates" | "text" | "image" | "audio")[]
+  ];
   needs: MethodNeeds;
+  limits?: MethodLimits;
   options: MethodOption[];
   /**
    * Promises an option can make, by name. An option lists the ones it makes in verify.
@@ -2158,6 +2245,15 @@ export interface MethodNeeds {
   statements?: QuestionStatement[];
 }
 /**
+ * Fixed counts the method decides by, by name, such as the most looks at the folds (ADR-0063 slice 6); not a step's settings. decide() reads them; the engine reads one it enforces itself. Absent: none.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodLimits".
+ */
+export interface MethodLimits {
+  [k: string]: number;
+}
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodOption".
  */
@@ -2197,6 +2293,7 @@ export interface MethodAction {
   replace?: MethodReplace;
   insert?: MethodInsert;
   set?: MethodSet;
+  stop?: MethodStop;
 }
 /**
  * Binds a concept to a column that the producer of an evidence kind adds.
@@ -2365,6 +2462,7 @@ export interface MethodRequest {
    */
   ruled_out?: RuledOutOption[];
   statements?: MethodStatements1;
+  limits?: MethodLimits1;
 }
 /**
  * Each needed kind that was measured. A needed kind left out cannot be measured, because its producer reads a concept no binding names.
@@ -2397,6 +2495,12 @@ export interface MethodStatements1 {
   costs?: Costs;
   interpretability?: Interpretability;
   success_bar?: SuccessBar;
+}
+/**
+ * Fixed counts the method decides by, by name, such as the most looks at the folds (ADR-0063 slice 6); not a step's settings. decide() reads them; the engine reads one it enforces itself. Absent: none.
+ */
+export interface MethodLimits1 {
+  [k: string]: number;
 }
 /**
  * Rust to the method session, one JSON line per promise to check (ADR-0063): the method module Rust picked from the loaded catalog, the verification's name, the fields of the one evidence kind it needs, as the step's producer measured them, and its settings. verify_<name>() may read nothing else.
@@ -2458,6 +2562,26 @@ export interface MethodDecided {
   option: MethodOptionId;
   /**
    * Why, for a person. For ask, the question itself.
+   */
+  reason: string;
+}
+/**
+ * A compared method's decide() (`compare: true`, ADR-0063 D3): the options worth comparing. The engine compares them on the same folds and takes the winner; decide() never picks it.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodShortlisted".
+ */
+export interface MethodShortlisted {
+  answer: "shortlisted";
+  method: MethodRef;
+  /**
+   * Two or more of the method's options, in its own order: a comparison needs something to compare.
+   *
+   * @minItems 2
+   */
+  shortlist: [MethodOptionId, MethodOptionId, ...MethodOptionId[]];
+  /**
+   * Why these options, and why any other was left out, for a person.
    */
   reason: string;
 }
@@ -2588,134 +2712,6 @@ export interface EvidenceSet1 {
   [k: string]: EvidenceFields;
 }
 /**
- * What a rule's decide() reads (ADR-0042): confirmed question facts and measured profile values, never raw rows, plus its settings. Sent by Rust to the Python rule runner.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "RuleObservation".
- */
-export interface RuleObservation {
-  schema_version: "sprisk.rule_observation/v1";
-  rule: MethodologyRuleRef;
-  /**
-   * Facts by name: question facts (question.time_column), facts read from the flow (flow.model_families), and the step's own text settings (step.method). A fact that lists several values joins them, sorted, with ', '.
-   */
-  facts: {
-    [k: string]: Fact;
-  };
-  /**
-   * Measured profile values by name. A list holds dataset text, such as the values of a column that do not read as numbers.
-   */
-  profile: {
-    [k: string]:
-      | number
-      | string
-      | boolean
-      | []
-      | [string]
-      | [string, string]
-      | [string, string, string]
-      | [string, string, string, string]
-      | [string, string, string, string, string]
-      | [string, string, string, string, string, string]
-      | [string, string, string, string, string, string, string]
-      | [string, string, string, string, string, string, string, string]
-      | [string, string, string, string, string, string, string, string, string]
-      | [string, string, string, string, string, string, string, string, string, string];
-  };
-  /**
-   * The rule's settings: policy thresholds with any overrides.
-   */
-  settings: {
-    [k: string]: unknown;
-  };
-}
-/**
- * What a rule's decide() returns (ADR-0042). Rust builds graph effects from it with the manifest's actions; it never runs as code.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "RuleDecision".
- */
-export interface RuleDecision {
-  schema_version: "sprisk.rule_decision/v1";
-  rule: MethodologyRuleRef;
-  /**
-   * The one alternative a recommend rule picks; absent for a shortlist rule.
-   */
-  recommended_alternative_id?: string;
-  /**
-   * The alternatives a shortlist rule puts forward to compare; absent for a recommend rule (ADR-0044).
-   */
-  shortlist?: string[];
-  /**
-   * @minItems 1
-   */
-  alternatives: [
-    {
-      id: string;
-      applicability: "applicable" | "needs_fact" | "not_applicable";
-      reason: string;
-      params?: Params6;
-    },
-    ...{
-      id: string;
-      applicability: "applicable" | "needs_fact" | "not_applicable";
-      reason: string;
-      params?: Params6;
-    }[]
-  ];
-  evidence: MethodologyEvidence[];
-}
-/**
- * Concrete params for the manifest action's operator; present when applicable.
- */
-export interface Params6 {
-  [k: string]: unknown;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "MethodologyEvidence".
- */
-export interface MethodologyEvidence {
-  kind: "question_fact" | "profile_fact" | "flow_fact" | "policy" | "user_reason";
-  label: string;
-  value: string;
-  origin: Origin;
-  artifact_id?: ArtifactId;
-}
-/**
- * Rust to the rule session (`python -m sprisk_workers.rule`), one JSON line per decision (ADR-0059): the rule module Rust picked from the loaded catalog, and its observation. One session serves a whole review.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "RuleRequest".
- */
-export interface RuleRequest {
-  schema_version: "sprisk.rule_request/v1";
-  /**
-   * Path of the rule's rule.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the rule process on the same machine, never stored.
-   */
-  module: string;
-  observation: RuleObservation;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "RuleDecided".
- */
-export interface RuleDecided {
-  answer: "decided";
-  decision: RuleDecision;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "RuleRefused".
- */
-export interface RuleRefused {
-  answer: "refused";
-  /**
-   * The rule's own error (a broken observation, a module with no decide). It may name local paths, so it goes to the log, not to a client.
-   */
-  error: string;
-}
-/**
  * The declarative manifest of one methodology rule package (ADR-0042), loaded from methodology/<pack>/rules/<rule>/rule.yaml. Served read-only by GET /methodology_rules.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -2727,25 +2723,13 @@ export interface MethodologyRule {
   name: string;
   stage: MethodologyStage;
   /**
-   * recommend (the default): decide() picks one alternative. shortlist: it puts forward the registry's models worth comparing (ADR-0044).
-   */
-  selection?: "recommend" | "shortlist";
-  /**
-   * draft: a design with no rule.py, never run; its condition and observes are notes. active: has rule.py, applies_to, reads and examples, and no notes (ADR-0045).
+   * draft: a decision not built yet, never run; its condition and observes are notes. active: a method shown on the map in its own words (ADR-0063 slice 6); a rule.yaml is always a draft.
    */
   status: "draft" | "active";
-  /**
-   * Operators, without version, whose steps this active rule decides. Rust routes from it (ADR-0045).
-   */
-  applies_to?: string[];
   /**
    * Facts this active rule may read, by name from the fact catalog, e.g. question.target or column.*.kurtosis; * stands for a column or setting name. Rust sends only these (ADR-0045).
    */
   reads?: string[];
-  /**
-   * Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045).
-   */
-  examples?: RuleExample[];
   /**
    * The decision as a person asks it, e.g. How should missing values be filled? Shown on the Methodology page; nothing that decides reads it. Required on an active rule (ADR-0045 amendment).
    */
@@ -2782,18 +2766,18 @@ export interface MethodologyRule {
     [k: string]: unknown;
   };
   /**
-   * A recommend rule's menu. A shortlist rule has none: its candidates come from the registry (ADR-0044).
+   * The options, as people read them.
    */
   alternatives: {
     id: string;
     label: string;
     description: string;
     /**
-     * A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045).
+     * A draft rule's design note on when this applies.
      */
     condition?: string;
     /**
-     * In a few words, when the rule takes this route, e.g. the column is skewed. Shown beside the example that picks it; nothing that decides reads it. Required on an active rule's alternatives (ADR-0045 amendment).
+     * In a few words, when the rule takes this route, e.g. the column is skewed. For people; nothing that decides reads it (ADR-0045 amendment).
      */
     when?: string;
     rationale: string;
@@ -2826,44 +2810,7 @@ export interface MethodologyRule {
   };
 }
 /**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "RuleExample".
- */
-export interface RuleExample {
-  /**
-   * Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }. A measured fact may also be a list of dataset text.
-   */
-  given: {
-    [k: string]:
-      | string
-      | number
-      | []
-      | [string]
-      | [string, string]
-      | [string, string, string]
-      | [string, string, string, string]
-      | [string, string, string, string, string]
-      | [string, string, string, string, string, string]
-      | [string, string, string, string, string, string, string]
-      | [string, string, string, string, string, string, string, string]
-      | [string, string, string, string, string, string, string, string, string]
-      | [string, string, string, string, string, string, string, string, string, string]
-      | {
-          value: string;
-          origin: Origin;
-        };
-  };
-  /**
-   * What a recommend rule picks.
-   */
-  picks?: string;
-  /**
-   * What a shortlist rule puts forward.
-   */
-  shortlist?: string[];
-}
-/**
- * Read-only files of one rule package: its manifest and, when present, its Python decide() module. Served by GET /methodology_rules/{id}/source; the API reads only files inside the rule's folder.
+ * Read-only files of one draft rule: its manifest. Served by GET /methodology_rules/{id}/source; the API reads only files inside the rule's folder.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodologyRuleSource".
@@ -2894,6 +2841,17 @@ export interface MethodologyRuleSource {
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyEvidence".
+ */
+export interface MethodologyEvidence {
+  kind: "question_fact" | "profile_fact" | "flow_fact" | "policy" | "user_reason";
+  label: string;
+  value: string;
+  origin: Origin;
+  artifact_id?: ArtifactId;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodologyAlternative".
  */
 export interface MethodologyAlternative {
@@ -2913,7 +2871,10 @@ export interface MethodologyAlternative {
 export interface DecisionProposal {
   schema_version: "sprisk.decision_proposal/v1";
   id: MethodologyProposalId;
-  rule: CheckRef;
+  /**
+   * The compared method whose options it offers a person (ADR-0063 D3); a rule's id in proposals made before slice 6.
+   */
+  rule: string;
   question_version_id: QuestionVersionId;
   pipeline_version_id: PipelineVersionId;
   subject_node_id: NodeId;
@@ -2924,43 +2885,11 @@ export interface DecisionProposal {
   alternatives: [MethodologyAlternative, ...MethodologyAlternative[]];
   recommended_alternative_id?: string;
   /**
-   * The alternatives a shortlist rule puts forward to compare (ADR-0044).
+   * The options worth comparing, as the compared method shortlisted them (ADR-0044, ADR-0063 D3).
    */
   shortlist?: string[];
   fingerprint: ContentHash;
   created_at: Timestamp;
-}
-/**
- * Every applicable rule's status on one pipeline version, in decision order (ADR-0059). Read-only: it stores nothing.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "MethodologyReview".
- */
-export interface MethodologyReview {
-  schema_version: "sprisk.methodology_review/v1";
-  pipeline_version_id: PipelineVersionId;
-  items: MethodologyReviewItem[];
-  /**
-   * Indexes into items of the open items with nothing open before them.
-   */
-  next: number[];
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "MethodologyReviewItem".
- */
-export interface MethodologyReviewItem {
-  rule: CheckRef;
-  decides: string;
-  stage: MethodologyStage;
-  subject_node_id?: NodeId;
-  status: MethodologyReviewStatus;
-  reason: string;
-  recommended_alternative_id?: string;
-  /**
-   * Stages in decision order (ADR-0059): the split comes before cleaning, since cleaning rules measure train rows.
-   */
-  reopens?: "question" | "data" | "split" | "cleaning" | "features" | "models" | "evaluation" | "reporting";
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -3047,6 +2976,10 @@ export interface MethodologyDecisionByMethod {
    */
   effects?: GraphEffect[];
   /**
+   * The SelectionDecision a compared method's option won by (ADR-0063 D3, ADR-0050). Absent for any other method.
+   */
+  selection_id?: string;
+  /**
    * The bindings the option made. Absent: none.
    */
   bindings?: Binding[];
@@ -3109,6 +3042,10 @@ export interface PipelineVersion {
    * The shortlist proposal whose models this version cross-validates (ADR-0046). A comparison is a side version, not an edit: it has no parent_id, so the proposal stays applicable. Absent on every other version.
    */
   compares?: string;
+  /**
+   * methodology.<pack>.<method>@<semver>
+   */
+  compares_method?: string;
   nodes: Node[];
   edges: Edge[];
   created_at: Timestamp;
@@ -3134,7 +3071,7 @@ export interface Node {
   /**
    * The stage notebook this step's cell is in (ADR-0055). Omitted: the stage its operator implies.
    */
-  stage?: "load" | "split" | "explore" | "clean" | "model" | "evaluate";
+  stage?: "load" | "explore" | "clean" | "split" | "model" | "evaluate";
   notes?: NodeNotes;
   /**
    * The variable each output port goes by in the notebook, by port (ADR-0055). Omitted: the port names.
@@ -3454,6 +3391,10 @@ export interface Operator {
    * True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows.
    */
   fits_on_train?: boolean;
+  /**
+   * The stage a step of this operator is in, unless its node says another (ADR-0055). Absent: the UI shows it with other steps.
+   */
+  stage?: "load" | "explore" | "clean" | "split" | "model" | "evaluate";
   /**
    * The one job a step does in a flow, so methods place and replace steps by role, and the engine builds a step of a role from its default operator, never by name (ADR-0064). score: scores a model on rows. score_shares: compares the class shares of train and test at the final score. cross_validate: scores a candidate on folds. select: chooses among compared candidates. row_filter: only drops rows.
    */
@@ -4124,7 +4065,7 @@ export interface Trial {
    * Pinned operator: dotted name @ semver, e.g. sprisk.eval.binary_classification@1.0.0.
    */
   operator: string;
-  settings: Params7;
+  settings: Params6;
   state: TrialState;
   /**
    * Its attempts, oldest first.
@@ -4138,7 +4079,7 @@ export interface Trial {
 /**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
  */
-export interface Params7 {
+export interface Params6 {
   [k: string]: unknown;
 }
 /**
@@ -4162,7 +4103,7 @@ export interface CreateWalk {
   idempotency_key: string;
   project_id: ProjectId;
   question_version_id: QuestionVersionId;
-  sources: WalkSources;
+  dataset_version_ids: WalkDatasets;
   /**
    * Most actions (applies, runs, comparisons) the walk may take.
    */
@@ -4184,6 +4125,7 @@ export interface Walk {
   project_id: ProjectId;
   question_version_id: QuestionVersionId;
   sources: WalkSources;
+  dataset_version_ids?: WalkDatasets1;
   /**
    * Each source's SHA-256 when the walk began, in the order of `sources`. Every round checks them: a source that changed stops the walk. Absent on walks made before they were recorded, and on one that stopped before building anything.
    */

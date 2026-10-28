@@ -2,6 +2,7 @@ import type { QuestionVersion, WalkAsk, WalkStopReason } from "@sprisk/contracts
 import { useState } from "react";
 import { ulid } from "ulid";
 
+import { useDatasetVersions } from "../../api/datasets.ts";
 import { useSaveQuestionVersion } from "../../api/questions.ts";
 import { useStartWalk, useWalk } from "../../api/walks.ts";
 import { Button } from "../../components/ui/Button.tsx";
@@ -27,22 +28,24 @@ const STOPPED: Record<WalkStopReason, string> = {
   error: "Stopped by an error",
 };
 
-/** Starts the engine on this question and the files a person names, then follows it. When the
+/** Starts the engine on this question and the registered sources a person picks, in the order
+ * picked: the first holds the rows to predict on (ADR-0069). It then follows the walk. When the
  * walk's look stops with questions, they are answered here in one revision, and the walk starts
  * again on it (ADR-0063 amendment). A `draft` is not saved yet: starting saves it first, so the
  * person confirms the record the walk starts on (ADR-0068). */
-export function StartWalk({ question, draft = false, initialSources = [] }: {
+export function StartWalk({ question, draft = false, initialDatasets = [] }: {
   question: QuestionVersion;
   draft?: boolean;
-  initialSources?: string[];
+  initialDatasets?: string[];
 }) {
-  const [sourceText, setSourceText] = useState(initialSources.join("\n"));
+  const [picked, setPicked] = useState(initialDatasets);
+  const registered = useDatasetVersions();
   const [unsaved, setUnsaved] = useState(draft);
   const startWalk = useStartWalk();
   const saveQuestion = useSaveQuestionVersion();
   const walk = useWalk(startWalk.data?.id);
   const { selectPipelineVersion, setNav } = useSelection();
-  const sources = sourceText.split("\n").map((s) => s.trim()).filter((s) => s !== "");
+  const toggle = (id: string) => setPicked((now) => (now.includes(id) ? now.filter((p) => p !== id) : [...now, id]));
   const detail = walk.data;
   const head = detail?.walk.head_pipeline_version_id;
   const missing = beforeWalk(question);
@@ -52,7 +55,7 @@ export function StartWalk({ question, draft = false, initialSources = [] }: {
     startWalk.mutate({
       project_id: LOCAL_PROJECT,
       question_version_id: questionId,
-      sources,
+      dataset_version_ids: picked,
       max_actions: MAX_ACTIONS,
       max_wall_seconds: MAX_WALL_SECONDS,
     });
@@ -74,22 +77,24 @@ export function StartWalk({ question, draft = false, initialSources = [] }: {
 
   return (
     <section className="start-walk" aria-label="Start an auto run">
-      <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
-        <span>Source files</span>
-        <textarea
-          className="ds-textarea"
-          rows={2}
-          value={sourceText}
-          onChange={(e) => setSourceText(e.target.value)}
-          placeholder="One path per line, e.g. data/x_train.csv"
-        />
-      </label>
+      <fieldset style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)", border: 0, padding: 0, margin: 0 }}>
+        <legend>Data sources (the first picked holds the rows to predict on)</legend>
+        {registered.isError && <p role="alert" className="error" style={{ margin: 0 }}>{registered.error.message}</p>}
+        {registered.data?.length === 0 && <p style={{ margin: 0 }}>No data source yet. Add one on the Datasets page.</p>}
+        {registered.data?.map((source) => (
+          <label key={source.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={picked.includes(source.id)} onChange={() => toggle(source.id)} />
+            {source.name}
+            {picked.includes(source.id) && <span style={{ color: "var(--text-muted)" }}>#{picked.indexOf(source.id) + 1}</span>}
+          </label>
+        ))}
+      </fieldset>
       {missing.length > 0 && <p style={{ margin: 0 }}>State before the auto run: {missing.join(", ")}.</p>}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Button
           variant="primary"
           size="sm"
-          disabled={sources.length === 0 || missing.length > 0 || startWalk.isPending || saveQuestion.isPending}
+          disabled={picked.length === 0 || missing.length > 0 || startWalk.isPending || saveQuestion.isPending}
           onClick={begin}
         >
           Start auto run

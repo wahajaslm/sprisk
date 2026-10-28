@@ -99,15 +99,15 @@ Most important first.
 
 1. **M4 experiments:** studies, trials, budgets, grid and random search and recall guardrails exist (ADR-0052), proven end to end on German credit. Open:
    - Costs and decision thresholds work after a random split only (ADR-0053); time and group splits need inner threshold folds that keep time order or whole groups.
-   - Costs set by hand on a model step after a time or group split are not refused yet; only comparisons and the decision threshold rule refuse them.
+   - Costs on a model step after a time or group split are refused when the flow runs (`costs_after_ordered_split`), as comparisons and the decision threshold method refuse them.
    - Search is over finite lists only: no adaptive search or continuous ranges.
 2. **Checks cite decisions for the split only.** Other Gate B checks do not link to the decision that set a step.
 3. **Encoding:** no standalone one-hot step, and the `categorical_encoding` rule is a draft (SCI-03, SCI-05).
 4. **Data contracts:** no column-type contract finding or point-in-time check (DATA-01, DATA-02).
 5. **Reopen and trace:** nothing tests reopening the workbench and following question → decision → version → run → check → comparison.
-6. **Gate B graph walk:** the Python checks rebuild the graph with networkx. They should read port facts the compiler provides, so port rules live in one place.
-   - `split_leakage` treats clustering steps (kmeans, gmm, dbscan) as plain transforms, so one fit on unsplit rows upstream of a model is not caught.
+6. **Gate B graph walk:** `split_leakage` builds its graph from the `ExecutionPlan` Rust compiled (ADR-0070), and catches a clustering step fit on unsplit rows upstream of a model. Open:
    - With evaluators present, its pass does not look at other steps that read the test rows.
+   - `code_leakage` still reads fitting steps from the manifests, not the plan.
 7. **Run events:** clients poll; there is no outbox or event stream.
 8. **Certification:** fit scope is proven by tests only; no runtime scope evidence (SCI-02, SCI-08).
 9. **In-app help:** operators and rules carry one-line descriptions only. Help pages for each step and rule can draw on the course in `knowledge/`, written in our own words.

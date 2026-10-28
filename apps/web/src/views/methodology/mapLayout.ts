@@ -1,18 +1,18 @@
-import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
+import type { MethodologyRule } from "@sprisk/contracts";
 
 import { chapters } from "./flowGraph.ts";
-import { LANE_NOTE } from "./ruleTree.ts";
+import { LANE_NOTE, type OnFlow } from "./ruleTree.ts";
 
 /** The canvas, in its own units: decisions left to right on three lines, the shared trunk in
  * the middle, the supervised branch above and the unsupervised branch below. */
 export const MAP = { left: 150, step: 200, stageGap: 48, trunk: 520, above: 290, below: 800, height: 960, routeDy: 36, forkDy: 90, label: 16 } as const;
 
-/** How a decision is settled, from its rule: a shortlist is tried on the same folds; a decision
- * on the question that reads only what a person states is asked; any other the data settles. */
-export type Level = "rule" | "try" | "ask";
+/** How a decision is settled, from its rule: a decision on the question that reads only what a
+ * person states is asked; any other the data settles. */
+export type Level = "rule" | "ask";
 
 export type MapNode =
-  | { kind: "decision"; id: string; rule: MethodologyRule; level: Level; x: number; y: number; lines: string[]; lift: number; review: MethodologyReviewItem | undefined; onPath: boolean }
+  | { kind: "decision"; id: string; rule: MethodologyRule; level: Level; x: number; y: number; lines: string[]; lift: number; decided: OnFlow | undefined; onPath: boolean }
   | { kind: "fork"; id: "fork"; x: number; y: number; lines: string[]; lift: number; onPath: boolean }
   | { kind: "end"; id: string; x: number; y: number; lines: string[]; lift: number; onPath: boolean };
 
@@ -31,7 +31,6 @@ const LIFT = 40;
 const MEASURED = /^(column|input|target|rows|flow|step|candidate|cv|join)\b/;
 
 export function levelOf(rule: MethodologyRule): Level {
-  if (rule.selection === "shortlist") return "try";
   const asked = rule.decides.startsWith("question.") && (rule.reads ?? []).every((r) => !MEASURED.test(r));
   return asked ? "ask" : "rule";
 }
@@ -56,12 +55,12 @@ export function wrap(text: string, max: number): string[] {
  * marked by its level, each route a dot halfway to the next decision, a fork on whether the
  * question has a target, and the one scoring of the test rows at the end of each branch. With
  * `path`, the routes the selected flow's rules chose are marked `chosen`. */
-export function mapLayout(rules: MethodologyRule[], reviews: Map<string, MethodologyReviewItem>, { path }: { path: boolean }): MapLayout {
+export function mapLayout(rules: MethodologyRule[], decided: Map<string, OnFlow>, { path }: { path: boolean }): MapLayout {
   const all = chapters(rules);
   const shared = all.filter((c) => c.lane === undefined);
   const laneNames = [...new Set(all.flatMap((c) => (c.lane ? [c.lane] : [])))];
   const yOf = (lane: string | undefined) => (lane === undefined ? MAP.trunk : lane === laneNames[0] ? MAP.above : MAP.below);
-  const onPath = (rule: MethodologyRule) => reviews.get(rule.id)?.subject_node_id !== undefined;
+  const onPath = (rule: MethodologyRule) => decided.get(rule.id)?.step !== undefined;
   const nodes: MapNode[] = [];
   const bands: MapBand[] = [];
   const place = new Map<string, { x: number; y: number }>();
@@ -74,7 +73,7 @@ export function mapLayout(rules: MethodologyRule[], reviews: Map<string, Methodo
     const first = cx;
     for (const rule of c.rules) {
       place.set(rule.id, { x: cx, y });
-      nodes.push({ kind: "decision", id: rule.id, rule, level: levelOf(rule), x: cx, y, lines: wrap(rule.question ?? rule.name, 22), lift: LIFT, review: reviews.get(rule.id), onPath: onPath(rule) });
+      nodes.push({ kind: "decision", id: rule.id, rule, level: levelOf(rule), x: cx, y, lines: wrap(rule.question ?? rule.name, 22), lift: LIFT, decided: decided.get(rule.id), onPath: onPath(rule) });
       cx += MAP.step;
     }
     const zone = c.lane === undefined ? { top: 60, height: 880 } : c.lane === laneNames[0] ? { top: 60, height: 400 } : { top: 590, height: 350 };
@@ -114,7 +113,7 @@ export function mapLayout(rules: MethodologyRule[], reviews: Map<string, Methodo
     const from = place.get(rule.id)!;
     const to = place.get(next)!;
     const dx = Math.round((to.x - from.x) / 2);
-    const review = reviews.get(rule.id);
+    const chosen = decided.get(rule.id);
     const options = rule.alternatives;
     if (options.length === 0) {
       routes.push({ id: `${rule.id}#best`, from: rule.id, to: next, x: from.x + dx, y: from.y, name: "best on the same folds", label: "best on the same folds", title: "The shortlist's models are compared on the same folds; the best one wins.", loop: false, chosen: path && onPath(rule) });
@@ -134,7 +133,7 @@ export function mapLayout(rules: MethodologyRule[], reviews: Map<string, Methodo
         label: short(route.label),
         title: `${route.label}: ${route.when ?? route.rationale}`,
         loop: back !== undefined,
-        chosen: path && onPath(rule) && review?.recommended_alternative_id === route.id,
+        chosen: path && onPath(rule) && chosen?.option === route.id,
       });
     });
   };

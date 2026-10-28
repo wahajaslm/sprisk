@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.column_roles@1.0.0
 title: Column roles
 capability_class: analyzer
+stage: explore
 description: Names the columns that only name rows, and counts the rows that copy an earlier one in every other column (ADR-0063).
 entrypoint: sprisk_profile.column_roles:column_roles
 # Every row, before the split: it reads structure, never the label's values.

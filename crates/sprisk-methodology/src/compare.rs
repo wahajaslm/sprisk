@@ -9,8 +9,7 @@ use petgraph::graph::DiGraph;
 use petgraph::visit::Dfs;
 use serde_json::json;
 use sprisk_contracts::{
-    BaselineRole, DecisionProposal, Edge, GraphEffect, Guardrail, MethodologyAlternative,
-    MethodologyAlternativeApplicability, MethodologyRule, Node, Operator, OperatorRole,
+    BaselineRole, DecisionProposal, Edge, GraphEffect, Guardrail, Node, Operator, OperatorRole,
     PipelineVersion, PipelineVersionId, PortKind, SelectionMetric, SplitFolds, StudyStrategy,
     TaskType, parse,
 };
@@ -44,19 +43,81 @@ pub struct Comparison {
     pub edges: Vec<Edge>,
 }
 
-/// The comparison of `proposal`'s shortlist on `base`, its flow. The registry gives each
-/// candidate's operator, so the baseline is the one model with no family, and the steps the
-/// comparison builds, by role.
+/// The models a comparison compares on one model step, from a rule's shortlist proposal or a
+/// compared method's options (ADR-0063 D3), and the options left off, each with why.
+pub struct Candidates<'c> {
+    pub subject: &'c str,
+    pub models: Vec<Candidate<'c>>,
+    pub left_out: Vec<(String, String)>,
+}
+
+/// One model a comparison fits: its operator and its settings on the model step.
+pub struct Candidate<'c> {
+    pub id: &'c str,
+    pub operator: &'c str,
+    pub params: &'c serde_json::Map<String, serde_json::Value>,
+}
+
+impl<'p> Candidates<'p> {
+    /// `proposal`'s shortlist: each shortlisted alternative replaces the model step.
+    pub fn of_proposal(proposal: &'p DecisionProposal) -> Result<Self, ResolveError> {
+        if proposal.shortlist.is_empty() {
+            return Err(ResolveError::Selection(format!(
+                "proposal {} has no shortlist to compare",
+                proposal.id.as_str()
+            )));
+        }
+        let models = proposal
+            .shortlist
+            .iter()
+            .map(|id| {
+                let (operator, params) = candidate(proposal, id.as_str())?;
+                Ok(Candidate {
+                    id: id.as_str(),
+                    operator,
+                    params,
+                })
+            })
+            .collect::<Result<_, ResolveError>>()?;
+        let left_out = proposal
+            .alternatives
+            .iter()
+            .filter(|a| {
+                !proposal
+                    .shortlist
+                    .iter()
+                    .any(|s| s.as_str() == a.id.as_str())
+            })
+            .map(|a| (a.id.to_string(), a.reason.to_string()))
+            .collect();
+        Ok(Self {
+            subject: proposal.subject_node_id.as_str(),
+            models,
+            left_out,
+        })
+    }
+}
+
+/// The comparison of `candidates` on `base`, its flow. The registry gives each candidate's
+/// operator, so the baseline is the one model with no family, and the steps the comparison
+/// builds, by role.
 pub fn comparison(
     base: &PipelineVersion,
-    proposal: &DecisionProposal,
+    candidates: &Candidates,
     scoring: Scoring,
     keeps_train: impl Fn(&Node) -> bool,
     registry: &Registry,
 ) -> Result<Comparison, ResolveError> {
     let operator_of = |operator: &str| registry.get(operator);
     let is_split = |n: &Node| is_split(registry, n);
-    let shortlist = shortlist(base, proposal, scoring, is_split, keeps_train, &operator_of)?;
+    let shortlist = shortlist(
+        base,
+        candidates,
+        scoring,
+        is_split,
+        keeps_train,
+        &operator_of,
+    )?;
     build(base, &shortlist, &Study::default(), registry)
 }
 
@@ -70,12 +131,12 @@ pub struct StudySearch<'s> {
     pub earlier_looks: &'s [PipelineVersionId],
 }
 
-/// A study of `proposal`'s shortlist (ADR-0052): a model whose manifest declares a search
-/// gets one trial per setting the strategy lists, tuned on inner folds; any other gets one
-/// trial at the flow's settings. Every trial scores the recall each guardrail names.
+/// A study of `candidates` (ADR-0052): a model whose manifest declares a search gets one
+/// trial per setting the strategy lists, tuned on inner folds; any other gets one trial at
+/// the flow's settings. Every trial scores the recall each guardrail names.
 pub fn study_comparison(
     base: &PipelineVersion,
-    proposal: &DecisionProposal,
+    candidates: &Candidates,
     scoring: Scoring,
     keeps_train: impl Fn(&Node) -> bool,
     registry: &Registry,
@@ -83,7 +144,14 @@ pub fn study_comparison(
 ) -> Result<Comparison, ResolveError> {
     let operator_of = |operator: &str| registry.get(operator);
     let is_split = |n: &Node| is_split(registry, n);
-    let mut shortlist = shortlist(base, proposal, scoring, is_split, keeps_train, &operator_of)?;
+    let mut shortlist = shortlist(
+        base,
+        candidates,
+        scoring,
+        is_split,
+        keeps_train,
+        &operator_of,
+    )?;
     let searches: Vec<_> = shortlist
         .trials
         .iter()
@@ -158,38 +226,24 @@ struct Shortlist<'p> {
     trials: Vec<Trial>,
     baseline: Baseline,
     not_compared: Vec<serde_json::Value>,
+    look: i64,
 }
 
 fn shortlist<'p, 'a>(
     base: &'p PipelineVersion,
-    proposal: &DecisionProposal,
+    candidates: &Candidates,
     scoring: Scoring,
     is_split: impl Fn(&Node) -> bool,
     keeps_train: impl Fn(&Node) -> bool,
     operator_of: &impl Fn(&str) -> Option<&'a Operator>,
 ) -> Result<Shortlist<'p>, ResolveError> {
-    if proposal.shortlist.is_empty() {
-        return Err(ResolveError::Selection(format!(
-            "proposal {} has no shortlist to compare",
-            proposal.id.as_str()
-        )));
-    }
-    let metric = metric_of(scoring, step_of(base, proposal.subject_node_id.as_str())?)?;
-    let chain = train_rows_chain(
-        base,
-        proposal.subject_node_id.as_str(),
-        is_split,
-        keeps_train,
-    )?;
+    let subject = candidates.subject;
+    let metric = metric_of(scoring, step_of(base, subject)?)?;
+    let chain = train_rows_chain(base, subject, is_split, keeps_train)?;
     let (split, between) = chain
         .split_last()
         .ok_or_else(|| ResolveError::NotTrainRows("no split feeds the model".into()))?;
-    words_as_the_flow_reads(
-        base,
-        proposal.subject_node_id.as_str(),
-        between,
-        operator_of,
-    )?;
+    words_as_the_flow_reads(base, subject, between, operator_of)?;
     // Every step between the split and the model fits on train (the walk above refuses any
     // other), so each fold refits them, in flow order, before the candidate (ADR-0050).
     let prepare = between
@@ -200,9 +254,12 @@ fn shortlist<'p, 'a>(
 
     let mut trials = Vec::new();
     let mut baselines = Vec::new();
-    for id in &proposal.shortlist {
-        let id = id.as_str();
-        let (operator, params) = candidate(proposal, id)?;
+    for &Candidate {
+        id,
+        operator,
+        params,
+    } in &candidates.models
+    {
         let model = operator_of(operator)
             .ok_or_else(|| ResolveError::UnknownOperator(operator.to_owned()))?
             .model
@@ -230,13 +287,12 @@ fn shortlist<'p, 'a>(
             baselines.len()
         )));
     };
-    let not_compared = proposal
-        .alternatives
+    let not_compared = candidates
+        .left_out
         .iter()
-        .filter(|a| !proposal.shortlist.iter().any(|s| s.as_str() == a.id.as_str()))
-        .map(|a| {
-            json!({ "id": a.id.as_str(), "reason": format!("Not on the shortlist: {}", a.reason.as_str()) })
-        })
+        .map(
+            |(id, reason)| json!({ "id": id, "reason": format!("Not on the shortlist: {reason}") }),
+        )
         .collect();
     Ok(Shortlist {
         split,
@@ -247,99 +303,8 @@ fn shortlist<'p, 'a>(
             role: BaselineRole::Floor,
         },
         not_compared,
+        look: scoring.look,
     })
-}
-
-/// The comparison of the ways `proposal` offers of doing its preparation step (ADR-0050):
-/// each alternative that can be refit within each fold is one trial of the flow's model,
-/// unchanged, with the step replaced or removed. The rule's recommendation is the reference:
-/// it stands unless another beats it. `rule` is the proposal's manifest, which says where an
-/// alternative without an effect would act.
-pub fn preparation_comparison(
-    base: &PipelineVersion,
-    proposal: &DecisionProposal,
-    rule: &MethodologyRule,
-    scoring: Scoring,
-    keeps_train: impl Fn(&Node) -> bool,
-    registry: &Registry,
-) -> Result<Comparison, ResolveError> {
-    let operator_of = |operator: &str| registry.get(operator);
-    let is_split = |n: &Node| is_split(registry, n);
-    let reference = proposal
-        .recommended_alternative_id
-        .as_ref()
-        .map(|r| r.as_str())
-        .ok_or_else(|| {
-            ResolveError::Selection(format!(
-                "proposal {} recommends nothing to compare against",
-                proposal.id.as_str()
-            ))
-        })?;
-    let subject = proposal.subject_node_id.as_str();
-    let (model, chain) = model_after(base, subject, &is_split, &keeps_train, &operator_of)?;
-    let metric = metric_of(scoring, model)?;
-    refits_as_flow_runs(model)?;
-    let (split, between) = chain
-        .split_last()
-        .ok_or_else(|| ResolveError::NotTrainRows("no split feeds the model".into()))?;
-    words_as_the_flow_reads(base, model.id.as_str(), between, &operator_of)?;
-
-    let mut trials = Vec::new();
-    let mut not_compared = Vec::new();
-    let mut reference_unmeasured = None;
-    for alternative in &proposal.alternatives {
-        let id = alternative.id.as_str();
-        let measured = measured_step(rule, alternative, &operator_of);
-        let step = match measured {
-            Ok(step) => step,
-            Err(why) if id == reference => {
-                reference_unmeasured = Some(why);
-                continue;
-            }
-            Err(why) => {
-                not_compared.push(json!({ "id": id, "reason": why }));
-                continue;
-            }
-        };
-        let mut prepare = Vec::new();
-        for at in between.iter().rev() {
-            if *at != subject {
-                prepare.push(as_prepared(step_of(base, at)?)?);
-            } else if let Some(replaced) = &step {
-                prepare.push(replaced.clone());
-            }
-        }
-        trials.push(Trial {
-            id: id.to_owned(),
-            model: model.operator.to_string(),
-            model_params: model.params.clone().into(),
-            prepare,
-            // Removing the step is simplest; every way of keeping it ranks the same (ADR-0050).
-            complexity: u64::from(step.is_some()),
-            inner_folds: false,
-        });
-    }
-    if let Some(why) = reference_unmeasured {
-        return Err(ResolveError::NothingToCompare(format!(
-            "the recommendation {reference} cannot be measured here: {why}"
-        )));
-    }
-    if trials.len() < 2 {
-        return Err(ResolveError::NothingToCompare(format!(
-            "only the recommendation {reference} can be measured here; there is nothing to compare it with"
-        )));
-    }
-    let shortlist = Shortlist {
-        split,
-        metric,
-        trials,
-        baseline: Baseline {
-            id: reference.to_owned(),
-            role: BaselineRole::Reference,
-        },
-        not_compared,
-    };
-    build(base, &shortlist, &Study::default(), registry)
 }
 
 /// One cross-validate step: `model` refit after `prepare` on each fold; with `inner_folds`,
@@ -387,6 +352,7 @@ fn build(
         trials,
         baseline,
         not_compared,
+        look,
     } = shortlist;
     let split = *split;
     // Folds must keep what the split keeps apart: time order, or whole groups (ADR-0050).
@@ -445,7 +411,8 @@ fn build(
     let mut select = json!({
         "trials": trials.iter().map(|t| &t.id).collect::<Vec<_>>(),
         "baseline": baseline.id, "baseline_role": baseline.role,
-        "metric": metric, "complexity": complexity, "not_compared": not_compared
+        "metric": metric, "complexity": complexity, "not_compared": not_compared,
+        "looks": look
     });
     if !study.tuned.is_empty() {
         select["tuned"] = json!(study.tuned);
@@ -518,18 +485,20 @@ pub fn trial_steps(comparison: &PipelineVersion) -> Result<Vec<TrialStep<'_>>, R
 }
 
 /// What a comparison scores by (ADR-0059): the question's task, and the metric a person
-/// stated with the success bar, if any.
+/// stated with the success bar, if any. `look` is which look at the folds it is, counting it,
+/// which its select step reports (ADR-0063 D4).
 #[derive(Clone, Copy, Debug)]
 pub struct Scoring {
     pub task: TaskType,
     pub stated: Option<SelectionMetric>,
+    pub look: i64,
 }
 
 /// Fixed before any score is seen (ADR-0044): expected cost when the `model` step states
 /// misclassification costs (ADR-0053), whatever the bar's metric; else the metric a person
 /// stated with the success bar (ADR-0059) when it fits the task, else the task's.
 fn metric_of(scoring: Scoring, model: &Node) -> Result<&'static str, ResolveError> {
-    let Scoring { task, stated } = scoring;
+    let Scoring { task, stated, .. } = scoring;
     use SelectionMetric::{BalancedAccuracy, ExpectedCost, Rmse, WeightedF1};
     let costed = model.params.contains_key("costs");
     let refuse = |why: String| Err(ResolveError::Selection(why));
@@ -550,94 +519,6 @@ fn metric_of(scoring: Scoring, model: &Node) -> Result<&'static str, ResolveErro
             refuse(format!("a {task} question is not compared by {other}"))
         }
         (other, false, _) => refuse(format!("a {other} question has no metric to compare by")),
-    }
-}
-
-/// The one model whose train rows come through `subject` from a split, and that walk.
-fn model_after<'p, 'a>(
-    base: &'p PipelineVersion,
-    subject: &str,
-    is_split: &impl Fn(&Node) -> bool,
-    keeps_train: &impl Fn(&Node) -> bool,
-    operator_of: &impl Fn(&str) -> Option<&'a Operator>,
-) -> Result<(&'p Node, Vec<&'p str>), ResolveError> {
-    let mut found = Vec::new();
-    for node in &base.nodes {
-        let is_model = operator_of(node.operator.as_str()).is_some_and(|o| o.model.is_some());
-        if !is_model {
-            continue;
-        }
-        // A model whose rows do not trace to a split is not one this step prepares for.
-        let Ok(chain) = train_rows_chain(base, node.id.as_str(), is_split, keeps_train) else {
-            continue;
-        };
-        if chain[..chain.len() - 1].contains(&subject) {
-            found.push((node, chain));
-        }
-    }
-    match found.len() {
-        1 => Ok(found.remove(0)),
-        0 => Err(ResolveError::NothingToCompare(format!(
-            "step {subject} is not between a split and a model on the train rows"
-        ))),
-        n => Err(ResolveError::NothingToCompare(format!(
-            "step {subject} prepares the train rows of {n} models; it is compared for one model at a time"
-        ))),
-    }
-}
-
-/// What an alternative puts in its step's place within each fold: another step, or nothing
-/// when it removes the step. Err says why it cannot be refit within each fold.
-fn measured_step<'a>(
-    rule: &MethodologyRule,
-    alternative: &MethodologyAlternative,
-    operator_of: &impl Fn(&str) -> Option<&'a Operator>,
-) -> Result<Option<serde_json::Value>, String> {
-    let declared = rule
-        .alternatives
-        .iter()
-        .find(|a| a.id.as_str() == alternative.id.as_str());
-    let before_split = declared.is_some_and(|a| {
-        a.action
-            .placement
-            .as_ref()
-            .is_some_and(|p| p.as_str() == "before_split")
-    });
-    if before_split {
-        return Err("It acts before the split, on train and test rows together, so it cannot be refit within each fold.".into());
-    }
-    // A rule's verdict stands whatever effect a proposal carries: what it rejects is not scored.
-    let reason = alternative.reason.as_str();
-    match alternative.applicability {
-        MethodologyAlternativeApplicability::NotApplicable => {
-            return Err(format!("Not applicable here: {reason}"));
-        }
-        MethodologyAlternativeApplicability::NeedsFact => {
-            return Err(format!("Needs a fact first: {reason}"));
-        }
-        MethodologyAlternativeApplicability::Applicable => {}
-    }
-    match &alternative.effect {
-        None => Err("The rule builds no step for it yet.".into()),
-        Some(GraphEffect::RemoveNode { .. }) => Ok(None),
-        Some(GraphEffect::InsertNode { .. } | GraphEffect::AddNode { .. }) => {
-            Err("A comparison does not measure an added step yet (ADR-0057).".into())
-        }
-        // Rules never rewire a step; only the engine's evidence placement does (ADR-0063).
-        Some(GraphEffect::SetInput { .. }) => Err("A comparison does not rewire steps.".into()),
-        Some(GraphEffect::ReplaceNode {
-            operator, params, ..
-        }) => {
-            let fits =
-                operator_of(operator.as_str()).is_some_and(|o| o.fits_on_train == Some(true));
-            if !fits {
-                return Err(format!(
-                    "{} does not fit on the train rows and keep train and test apart, so it cannot be refit within each fold.",
-                    operator.as_str()
-                ));
-            }
-            Ok(Some(json!({ "operator": operator, "params": params })))
-        }
     }
 }
 

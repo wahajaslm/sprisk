@@ -25,30 +25,9 @@ const pipeline: PipelineVersion = {
   created_at: "2026-10-21T10:00:00Z",
 };
 
-function render(appliesTo: string[], status: "active" | "draft" = "active") {
-  server.use(http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, status, applies_to: appliesTo }])));
-  renderWithApi(<MethodologyTab pipeline={pipeline} nodeId="model" checks={{ status: "none" }} />);
-}
-
 describe("methodology on a step", () => {
-  it("is in the Methodology tab when an active rule decides the step's operator", async () => {
-    render(["sprisk.ml.linear_model"]);
-    expect(await screen.findByRole("region", { name: shortlistRule.name })).toBeInTheDocument();
-  });
-
-  it("shows one decision per rule that decides the step, in workflow order, titled by the rule", async () => {
-    const threshold = { ...shortlistRule, id: "methodology.supervised.decision_threshold@1.0.0", name: "Decision Threshold",
-      stage: "evaluation", decides: "evaluation.decision_threshold", selection: undefined };
-    server.use(http.get("/api/methodology_rules", () =>
-      HttpResponse.json([threshold, { ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }].map((r) => ({ ...r, applies_to: ["sprisk.ml.linear_model"] })))));
-    renderWithApi(<MethodologyTab pipeline={pipeline} nodeId="model" checks={{ status: "none" }} />);
-    const panels = await screen.findAllByRole("region", { name: /Model Shortlist|Decision Threshold/ });
-    expect(panels.map((p) => p.getAttribute("aria-label"))).toEqual(["Model Shortlist", "Decision Threshold"]);
-  });
-
-  it("says what every step is and what it measured, with or without a rule", async () => {
+  it("says what every step is and what it measured", async () => {
     const described = { ...model, description: "Fits a linear model on the training rows." };
-    server.use(http.get("/api/methodology_rules", () => HttpResponse.json([])));
     renderWithApi(<MethodologyTab pipeline={pipeline} nodeId="model" checks={{ status: "none" }} operator={described} />);
     expect(await screen.findByText("Fits a linear model on the training rows.")).toBeInTheDocument();
     expect(screen.getByText(stepType(pipeline.nodes[0]!, described))).toBeInTheDocument();
@@ -56,13 +35,13 @@ describe("methodology on a step", () => {
     expect(screen.getByText("0 steps")).toBeInTheDocument();
   });
 
-  it("says so when no active rule decides the step", async () => {
-    render(["sprisk.ml.random_forest"]);
-    expect(await screen.findByText("No methodology rule decides this step.")).toBeInTheDocument();
+  it("says so when no method decided the step", async () => {
+    renderWithApi(<MethodologyTab pipeline={pipeline} nodeId="model" checks={{ status: "none" }} />);
+    expect(await screen.findByText("No method decided this step.")).toBeInTheDocument();
   });
 
   it("is no longer in the Parameters tab, which holds only the step's settings", async () => {
-    server.use(http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])));
+    server.use(http.get("/api/methodology_rules", () => HttpResponse.json([shortlistRule])));
     renderWithApi(<ParametersTab pipeline={pipeline} nodeId="model" operator={model} found={{ status: "none", reason: "" }} />);
     await screen.findByLabelText(/target/);
     expect(screen.queryByRole("region", { name: shortlistRule.name })).not.toBeInTheDocument();

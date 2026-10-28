@@ -6,6 +6,7 @@ activity: Features
 question: How are numbers put on one scale before the model?
 pitfall: Mean and SD scaling on data with heavy tails squeezes most values into a narrow band. Scaling fit on all rows lets test rows shape the train rows.
 applies_when: { task: [classification, regression] }
+changes: [numbers]
 needs:
   concepts: []
   evidence: [features.scaling]

@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.group_rare@1.0.0
 title: Rare category grouping
 capability_class: transform
+stage: clean
 description: Categories under a share of the train rows become "other", in each text column. At most max_categories values stay, counting "other". A category seen only in test rows becomes "other" too.
 entrypoint: sprisk_clean.group_rare:group_rare
 fits_on_train: true

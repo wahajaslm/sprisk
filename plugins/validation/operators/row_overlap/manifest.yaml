@@ -7,6 +7,7 @@ description: Counts the test rows whose features match a train row, the evidence
   a random split leaves no row on both sides. The target is dropped first, so no test
   label is read (ADR-0064).
 entrypoint: sprisk_validation.random_split:no_row_in_both
+stage: split
 attach:
   role: split
   side: output

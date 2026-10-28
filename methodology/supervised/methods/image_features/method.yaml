@@ -6,6 +6,7 @@ activity: Features
 question: Are the rows' images turned into features for the model?
 pitfall: A row with no readable image gets an all-zero vector, which the model reads as a real image. Fitting an image model on all rows would let test images shape the features.
 applies_when: { task: [classification, regression], assets: [image] }
+changes: [image]
 needs:
   concepts: []
   evidence: [images.asset_quality]

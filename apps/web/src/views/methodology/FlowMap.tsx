@@ -1,16 +1,14 @@
 import "@xyflow/react/dist/style.css";
 
 import { Background, BackgroundVariant, Handle, type NodeProps, Position, ReactFlow } from "@xyflow/react";
-import type { MethodologyReviewItem } from "@sprisk/contracts";
 import { useMemo } from "react";
 
 import { type Chapter, type FlowNode, SIZE, stageFlow } from "./flowGraph.ts";
-import { STATUS_LABEL } from "./MethodologyMap.tsx";
-import { lookedAt } from "./ruleTree.ts";
+import { DECIDED, lookedAt, type OnFlow } from "./ruleTree.ts";
 
 type Props = {
   chapter: Chapter;
-  reviews: Map<string, MethodologyReviewItem>;
+  decided: Map<string, OnFlow>;
   path: boolean;
   from: string;
   to: string;
@@ -21,8 +19,8 @@ type Props = {
 
 /** One stage of the methodology as a flow diagram, read top to bottom: circles are steps,
  * diamonds the decisions between them, and each route's circle says why it is taken. */
-export function FlowMap({ chapter, reviews, path, from, to, picked, onPick }: Props) {
-  const flow = useMemo(() => stageFlow(chapter, reviews, { path, from, to }), [chapter, reviews, path, from, to]);
+export function FlowMap({ chapter, decided, path, from, to, picked, onPick }: Props) {
+  const flow = useMemo(() => stageFlow(chapter, decided, { path, from, to }), [chapter, decided, path, from, to]);
   const nodes = flow.nodes.map((n) => (n.type === "decision" || n.type === "step" ? { ...n, selected: n.id === picked } : n));
   return (
     <div className="mth-map mth-flow" role="region" aria-label="Methodology flow">
@@ -72,10 +70,10 @@ function TerminalNode({ data }: NodeProps<Extract<FlowNode, { type: "terminal" }
 }
 
 function DecisionNode({ data, selected }: NodeProps<Extract<FlowNode, { type: "decision" }>>) {
-  const { rule, review } = data;
+  const { rule, decided } = data;
   return (
     // nopan: a click on a decision picks it; it never starts a pan of the map.
-    <button type="button" className={`mth-flow-node decision nopan ${review?.status ?? ""}${rule.status === "draft" ? " draft" : ""}${data.dimmed ? " dimmed" : ""}`} aria-pressed={selected} aria-label={rule.name} title={rule.decides}>
+    <button type="button" className={`mth-flow-node decision nopan ${decided ? "settled" : ""}${rule.status === "draft" ? " draft" : ""}${data.dimmed ? " dimmed" : ""}`} aria-pressed={selected} aria-label={rule.name} title={rule.decides}>
       <span className="mth-flow-diamond" />
       <span className="mth-flow-side">
         <span className="mth-flow-name">
@@ -85,7 +83,7 @@ function DecisionNode({ data, selected }: NodeProps<Extract<FlowNode, { type: "d
         <span className="mth-flow-meta">
           {rule.decides}
           {rule.status === "draft" && " · draft"}
-          {review && <span className={`mth-flow-status ${review.status}`}> · {STATUS_LABEL[review.status]}</span>}
+          {decided && <span className="mth-flow-status settled"> · {DECIDED}</span>}
         </span>
       </span>
       <Ports />

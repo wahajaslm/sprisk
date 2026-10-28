@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.io.file_source@1.0.0
 title: File source
 capability_class: source
+stage: load
 role: source
 role_default: true
 description: Read a local CSV or Parquet file into a Parquet table.

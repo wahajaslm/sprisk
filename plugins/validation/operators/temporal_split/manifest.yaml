@@ -6,6 +6,7 @@ title: Temporal split
 description: Holds out the latest fifth of rows, by the time column, as the test set.
 entrypoint: sprisk_validation.temporal_split:temporal_split
 notebook_code: sprisk_validation.temporal_split:temporal_split
+stage: split
 role: split
 folds: time
 concepts:

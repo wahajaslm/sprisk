@@ -1,4 +1,4 @@
-import type { MethodologyReviewItem, MethodologyRule, MethodologyStage } from "@sprisk/contracts";
+import type { FlowDecision, MethodologyRule, MethodologyStage } from "@sprisk/contracts";
 import type { Edge, Node } from "@xyflow/react";
 
 /** Decision order (ADR-0059): the split comes before cleaning, since cleaning measures train rows. */
@@ -45,7 +45,7 @@ export type TreeNode =
   | Node<{ count: number }, "root">
   | Node<{ lane: string; code: string; dimmed: boolean }, "lane">
   | Node<{ stage: MethodologyStage; count: number; code: string; dimmed: boolean }, "stage">
-  | Node<{ rule: MethodologyRule; review: MethodologyReviewItem | undefined; code: string; dimmed: boolean }, "rule">
+  | Node<{ rule: MethodologyRule; decided: OnFlow | undefined; code: string; dimmed: boolean }, "rule">
   | Node<{ route: MethodologyRule["alternatives"][number]; reason: RouteReason; code: string; picked: boolean; dimmed: boolean }, "route">;
 
 /** The pack a rule comes from (`methodology/<pack>/`), named in its id. */
@@ -53,8 +53,8 @@ export const packOf = (rule: MethodologyRule) => rule.id.split(".")[1] ?? "";
 
 const routeHeight = (reason: RouteReason) => 24 + Math.min(WHEN_LINES, Math.ceil((reason.text.length + 9) / WHEN_CHARS)) * WHEN_LINE + 6;
 
-export function routeReason(rule: MethodologyRule, route: MethodologyRule["alternatives"][number], review: MethodologyReviewItem | undefined): RouteReason {
-  if (review?.recommended_alternative_id === route.id) return { kind: "because", text: review.reason };
+export function routeReason(rule: MethodologyRule, route: MethodologyRule["alternatives"][number], decided: OnFlow | undefined): RouteReason {
+  if (decided?.option === route.id) return { kind: "because", text: decided.reason };
   if (route.when) return { kind: "when", text: withSettings(route.when, rule.policy_thresholds) };
   const when = routeWhen(rule, route.id);
   return when ? { kind: "when", text: when } : { kind: "why", text: route.rationale };
@@ -112,23 +112,23 @@ const words = (name: string) => MEASURE[name] ?? name.replace(/[._]/g, " ");
  * decision order on one line, each fanning out into its decisions, each decision into its
  * routes, and the routes join into the next stage. Every node is numbered: stage "4",
  * decision "4.1", route "4.1a". A tree of fixed shape is placed directly, without a layout
- * engine. `reviews` holds the selected flow's review per rule: the route it recommends is
- * picked. With `path`, the flow's path is marked (`data.onPath`): its lane, up to the last stage
+ * engine. `decided` holds what the selected flow's walk decided per method: the route it took
+ * is picked. With `path`, the flow's path is marked (`data.onPath`): its lane, up to the last stage
  * it reaches, through the decisions it has a step for and the routes it takes, and straight on
  * (a "skip" link) from a stage it takes no route in. All else is dimmed. View state only. */
 /** Where a route's branches meet it: the middle of its label line, which the stylesheet puts
  * 16px from its top (8px padding, then a 15px line). */
 export const ROUTE_LINE = 16;
 
-export function ruleTree(rules: MethodologyRule[], reviews: Map<string, MethodologyReviewItem>, { path }: { path: boolean }): { nodes: TreeNode[]; edges: Edge[] } {
+export function ruleTree(rules: MethodologyRule[], decided: Map<string, OnFlow>, { path }: { path: boolean }): { nodes: TreeNode[]; edges: Edge[] } {
   const nodes: TreeNode[] = [];
   const edges: Edge<{ onPath: boolean; kind: Kind }>[] = [];
-  const onPath = (rule: MethodologyRule) => reviews.get(rule.id)?.subject_node_id !== undefined;
+  const onPath = (rule: MethodologyRule) => decided.get(rule.id)?.step !== undefined;
   const link = (tails: Tail[], target: string, reach: boolean, label?: string) => {
     for (const tail of tails) edges.push({ id: `${tail.id}>${target}`, source: tail.id, target, data: { onPath: tail.lit && reach, kind: tail.kind }, ...(label ? { label } : {}) });
   };
   const fanHeight = (mine: MethodologyRule[]) =>
-    mine.reduce((h, rule) => h + Math.max(HEIGHT, rule.alternatives.reduce((r, a) => r + routeHeight(routeReason(rule, a, reviews.get(rule.id))) + ROUTE_GAP, -ROUTE_GAP)) + RULE_GAP, -RULE_GAP);
+    mine.reduce((h, rule) => h + Math.max(HEIGHT, rule.alternatives.reduce((r, a) => r + routeHeight(routeReason(rule, a, decided.get(rule.id))) + ROUTE_GAP, -ROUTE_GAP)) + RULE_GAP, -RULE_GAP);
 
   /** Places one stage centred on `centre` at `x`: its node, then its fan. Returns the tails the
    * next stage is reached from and the x after it. */
@@ -141,16 +141,16 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
     const next: Tail[] = [];
     let y = centre - fanHeight(mine) / 2;
     mine.forEach((rule, k) => {
-      const review = reviews.get(rule.id);
+      const chosen = decided.get(rule.id);
       const ruleOnPath = onPath(rule);
       const ruleCode = `${code}.${k + 1}`;
       edges.push({ id: `${stageId}>${rule.id}`, source: stageId, target: rule.id, data: { onPath: reach && ruleOnPath, kind: "branch" } });
       const top = y;
       const lines = rule.alternatives.map((route, i) => {
         const id = `${rule.id}#${route.id}`;
-        const reason = routeReason(rule, route, review);
+        const reason = routeReason(rule, route, chosen);
         const height = routeHeight(reason);
-        const picked = review?.recommended_alternative_id === route.id;
+        const picked = chosen?.option === route.id;
         const taken = ruleOnPath && picked;
         nodes.push({ id, type: "route", position: { x: x + SIZE.rule.width + GAP, y }, width: SIZE.route.width, height, data: { route, reason, code: `${ruleCode}${String.fromCharCode(97 + i)}`, picked, dimmed: path && !taken } });
         edges.push({ id: `${rule.id}>${id}`, source: rule.id, target: id, data: { onPath: reach && taken, kind: "branch" } });
@@ -166,7 +166,7 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
         y += HEIGHT + ROUTE_GAP;
       }
       const middle = (lines[0]! + lines[lines.length - 1]!) / 2;
-      nodes.push({ id: rule.id, type: "rule", position: { x, y: middle - HEIGHT / 2 }, width: SIZE.rule.width, height: HEIGHT, data: { rule, review, code: ruleCode, dimmed: path && !ruleOnPath } });
+      nodes.push({ id: rule.id, type: "rule", position: { x, y: middle - HEIGHT / 2 }, width: SIZE.rule.width, height: HEIGHT, data: { rule, decided: chosen, code: ruleCode, dimmed: path && !ruleOnPath } });
       y = Math.max(y, top + HEIGHT + ROUTE_GAP) - ROUTE_GAP + RULE_GAP;
     });
     x += SIZE.rule.width + GAP + SIZE.route.width + GAP;
@@ -215,53 +215,19 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
   return { nodes, edges };
 }
 
-const OPEN: MethodologyReviewItem["status"][] = ["proposal", "needs_fact", "needs_run", "waiting", "reopen"];
+/** What the selected flow's walk decided for one method (ADR-0063): the option it took, why,
+ * and the first step it shaped, when it shaped one. */
+export type OnFlow = { option: string; reason: string; step: string | undefined };
 
-/** Whether a review status leaves work to do before the map is complete. */
-export const isOpen = (status: MethodologyReviewItem["status"]) => OPEN.includes(status);
+/** How a method the flow's walk decided is labelled. */
+export const DECIDED = "Decided";
 
-/** One review item per rule, for its node: a rule deciding several steps shows its first open
- * item, where work is needed, or its first item when none is open. */
-export function reviewByRule(items: MethodologyReviewItem[]): Map<string, MethodologyReviewItem> {
-  const byRule = new Map<string, MethodologyReviewItem>();
-  for (const item of items) {
-    const shown = byRule.get(item.rule);
-    if (!shown || (!isOpen(shown.status) && isOpen(item.status))) byRule.set(item.rule, item);
-  }
-  return byRule;
+/** The flow's decisions by method id, the id the map shows the method under. */
+export function decidedOnFlow(decisions: FlowDecision[]): Map<string, OnFlow> {
+  return new Map(decisions.map((d) => [d.method, { option: d.option, reason: d.reason, step: d.steps[0] }]));
 }
 
-/** A fact's name as people read it: `question.time_column` → "time column",
- * `column.age.missing_share` → "age missing share". */
-const factName = (name: string) =>
-  name
-    .replace(/^(question|flow|step|candidate)\./, "")
-    .replace(/^(input\.)?column\./, "")
-    .replace(/[._]/g, " ");
-
-type Given = NonNullable<MethodologyRule["examples"]>[number]["given"][string];
-
-/** An example's fact value as text: a list of dataset values joined, a fact with its origin
- * shown as its value only. */
-export const givenText = (value: Given): string =>
-  Array.isArray(value) ? value.join(", ") : typeof value === "object" ? value.value : String(value);
-
-/** When a route is taken. A draft's route has its written condition. An active rule's logic is
- * its decide() alone (ADR-0045), so its route shows the first tested example that picks it, in
- * plain words, leaving out the target's name, which never decides a route. */
+/** When a route is taken, as its condition says. */
 export function routeWhen(rule: MethodologyRule, routeId: string): string | undefined {
-  const route = rule.alternatives.find((a) => a.id === routeId);
-  if (route?.condition) return route.condition;
-  const example = (rule.examples ?? []).find((e) => e.picks === routeId);
-  if (!example) return undefined;
-  return Object.entries(example.given)
-    .filter(([name]) => name !== "question.target")
-    .map(([name, value]) => `${factName(name)} = ${givenText(value)}`)
-    .join(" · ");
-}
-
-/** Which steps a decision activates on: the operators it decides, without pack and version. */
-export function activation(rule: MethodologyRule): string | undefined {
-  const steps = (rule.applies_to ?? []).map((op) => op.split(".").slice(2).join(" ").replace(/_/g, " "));
-  return steps.length ? `on ${steps.join(" or ")} steps` : undefined;
+  return rule.alternatives.find((a) => a.id === routeId)?.condition;
 }

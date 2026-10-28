@@ -16,7 +16,7 @@ from sprisk_contracts import (
     PipelineVersion,
     QuestionVersion,
 )
-from sprisk_supervised.split_design import CHECK, split_design
+from sprisk_supervised.split_design import split_design
 from sprisk_supervised.split_leakage import CheckInputError
 
 CONTRACT = Path(__file__).parents[3] / "tests" / "contract"
@@ -69,11 +69,10 @@ def new_ids() -> Callable[[], str]:
     return lambda: next(ids)
 
 
-def decision(**fields: str) -> MethodologyDecision:
-    """The applied fixture as a temporal split decision of this rule, with `fields` replaced."""
-    raw = json.loads((CONTRACT / "methodology_decision/valid/applied.json").read_text())
-    chosen = {**raw, "rule": CHECK, "alternative_id": "temporal", "subject_node_id": "split"}
-    return MethodologyDecision.model_validate_json(json.dumps({**chosen, **fields}))
+def decision(fixture: str = "by-method-changes-steps.json") -> MethodologyDecision:
+    """A decision fixture under DECISION_ID; by default the split method's."""
+    raw = json.loads((CONTRACT / "methodology_decision/valid" / fixture).read_text())
+    return MethodologyDecision.model_validate_json(json.dumps({**raw, "id": DECISION_ID}))
 
 
 def check(
@@ -163,40 +162,21 @@ def test_a_pipeline_without_a_split_is_not_assessed() -> None:
 
 def test_the_check_names_the_decision_that_chose_the_split() -> None:
     result = check(TEMPORAL, question(**CONFIRMED_TIME), (decision(),), decided=True)
+    assert result.check.root == "methodology.supervised.split_design@1.0.0"
     assert result.methodology_decision_id is not None
     assert result.methodology_decision_id.root == DECISION_ID
 
 
 @pytest.mark.parametrize(
-    "sent",
-    [
-        (),
-        (decision(rule="methodology.supervised.missingness@1.0.0"),),
-        (decision(subject_node_id="other"),),
-    ],
-    ids=["not sent", "another rule", "another node"],
+    "sent", [(), (decision("applied.json"),)], ids=["not sent", "a rule's decision"]
 )
-def test_a_split_citing_a_decision_that_is_not_its_own_is_bad_input(
+def test_a_split_citing_a_decision_no_method_made_is_bad_input(
     sent: tuple[MethodologyDecision, ...],
 ) -> None:
+    """No rule decides a split any more (ADR-0063 slice 6): only a method's decision can."""
     with pytest.raises(CheckInputError) as e:
         check(TEMPORAL, question(**CONFIRMED_TIME), sent, decided=True)
     assert DECISION_ID in str(e.value)
-
-
-def test_a_split_changed_after_its_decision_fails_and_says_so() -> None:
-    chose_random = decision(alternative_id="simple_random")
-    result = check(TEMPORAL, question(**CONFIRMED_TIME), (chose_random,), decided=True)
-    assert result.verdict == "fail"
-    assert "simple_random" in result.rationale
-    assert result.methodology_decision_id is not None
-
-
-def test_a_renamed_split_that_folds_as_its_decision_chose_has_not_drifted() -> None:
-    chose_temporal = decision(alternative_id="temporal")
-    later = (LATER, TEMPORAL[1])
-    result = check(later, question(**CONFIRMED_TIME), (chose_temporal,), decided=True)
-    assert result.verdict == "pass", result.rationale
 
 
 def test_a_step_with_an_unknown_operator_is_bad_input() -> None:
@@ -205,13 +185,8 @@ def test_a_step_with_an_unknown_operator_is_bad_input() -> None:
 
 
 def test_a_split_a_method_decided_is_judged_on_the_question_alone() -> None:
-    raw = json.loads(
-        (CONTRACT / "methodology_decision/valid/by-method-changes-steps.json").read_text()
-    )
-    by_method = MethodologyDecision.model_validate_json(json.dumps({**raw, "id": DECISION_ID}))
-    result = check(TEMPORAL, question(**CONFIRMED_TIME), (by_method,), decided=True)
-    assert result.verdict == "pass"
-    assert result.methodology_decision_id is None
+    result = check(RANDOM, question(**CONFIRMED_TIME), (decision(),), decided=True)
+    assert result.verdict == "fail"
 
 
 # The concept each confirmed question fact binds (ADR-0063 amendment).
@@ -294,10 +269,7 @@ def test_a_binding_takes_the_place_of_the_fact_for_its_concept() -> None:
 
 
 def test_a_split_a_method_made_without_a_fact_points_to_the_methods_promises() -> None:
-    raw = json.loads(
-        (CONTRACT / "methodology_decision/valid/by-method-changes-steps.json").read_text()
-    )
-    by_method = MethodologyDecision.model_validate_json(json.dumps({**raw, "id": DECISION_ID}))
+    by_method = decision()
     by_item = (GROUP[0], {**GROUP[1], "group_column": "item_group"})
     result = check(by_item, question(), (by_method,), decided=True)
     assert result.verdict == "not_assessed"
@@ -309,10 +281,7 @@ def test_a_split_a_method_made_without_a_fact_points_to_the_methods_promises() -
 def test_a_split_a_method_made_is_still_judged_when_the_question_binds_the_item(
     split: tuple[str, dict[str, Any]], verdict: str
 ) -> None:
-    raw = json.loads(
-        (CONTRACT / "methodology_decision/valid/by-method-changes-steps.json").read_text()
-    )
-    by_method = MethodologyDecision.model_validate_json(json.dumps({**raw, "id": DECISION_ID}))
+    by_method = decision()
     asked = question(bindings=[bound("common.item_identity", "patient")])
     assert check(split, asked, (by_method,), decided=True).verdict == verdict
 

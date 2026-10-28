@@ -1,4 +1,4 @@
-import type { ColumnProfile, ColumnRole, DatasetProfile, DatasetVersion, Fact, QuestionVersion, SelectionMetric } from "@sprisk/contracts";
+import type { ColumnProfile, ColumnRole, DatasetProfile, Fact, QuestionVersion, SelectionMetric } from "@sprisk/contracts";
 
 /** The question conversation (ADR-0068): one ledger slot at a time, in a fixed order, with
  * choices built from the dataset profile. Plain code reads every answer; a model never fills a
@@ -242,18 +242,4 @@ export function toQuestion(chat: Chat, id: string, investigationId: string, crea
     acceptance_criteria: [],
     created_at: createdAt,
   };
-}
-
-/** The walk reads file paths: a single local CSV or Parquet file on this machine can be filled
- * in for the person. Anything else, including a location that cannot be read as a path, is not. */
-export function localFile(source: Pick<DatasetVersion, "location" | "file_count">): string[] {
-  if (source.file_count !== 1 || !/\.(csv|parquet)$/i.test(source.location)) return [];
-  const url = new URL(source.location);
-  if (url.protocol !== "file:" || url.host !== "") return [];
-  try {
-    return [decodeURIComponent(url.pathname)];
-  } catch (error) {
-    if (error instanceof URIError) return [];
-    throw error;
-  }
 }

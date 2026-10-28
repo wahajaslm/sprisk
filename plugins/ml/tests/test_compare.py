@@ -14,7 +14,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
 
 from sprisk_clean.vectorize_text import vectorize_text
 from sprisk_contracts import SelectionDecision
-from sprisk_ml.compare import cross_validate, select_model
+from sprisk_ml.compare import cross_validate, select_and_measure, select_model
 from sprisk_ml.models import (
     dummy_baseline_estimator,
     linear_model_estimator,
@@ -626,8 +626,58 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     out.mkdir()
     params = {"trials": [BASE, "ml_lm"], "baseline": BASE, "metric": "balanced_accuracy"}
     params |= {"complexity": {BASE: 0, "ml_lm": 1}, "baseline_role": "floor", "not_compared": []}
-    [decision] = operators["sprisk.ml.select_model@5.0.0"].run(params, cross_validated, out)
-    assert SelectionDecision.model_validate_json(decision.path.read_text()).winner == "ml_lm"
+    written = operators["sprisk.ml.select_model@6.0.0"].run(
+        params | {"looks": 1}, cross_validated, out
+    )
+    by_port = {o.port: o.path for o in written}
+    assert SelectionDecision.model_validate_json(by_port["decision"].read_text()).winner == "ml_lm"
+    measured = json.loads(by_port["evidence"].read_text())["models.comparison"]
+    assert measured["beats_baseline"] is True
+    assert measured["looks"] == 1
+
+
+def test_the_select_step_measures_the_winner_against_the_baseline() -> None:
+    trials = {
+        BASE: trial([0.5, 0.5, 0.5, 0.5, 0.5]),
+        "ml_linear_model": trial([0.8, 0.82, 0.79, 0.81, 0.8]),
+    }
+    settings = {"complexity": COMPLEXITY, "baseline_role": "floor", "not_compared": []}
+    chosen = select_and_measure(
+        trials, baseline=BASE, metric="balanced_accuracy", looks=2, **settings
+    )
+    assert chosen["decision"]["winner"] == "ml_linear_model"
+    assert chosen["evidence"] == {
+        "models.comparison": {
+            "metric": "balanced_accuracy",
+            "score": pytest.approx(0.804),
+            "baseline_score": 0.5,
+            "beats_baseline": True,
+            "looks": 2,
+        }
+    }
+
+
+def test_a_select_step_with_only_the_baseline_is_refused() -> None:
+    settings = {"complexity": COMPLEXITY, "baseline_role": "floor", "not_compared": []}
+    with pytest.raises(ValueError, match="nothing but the baseline"):
+        select_and_measure(
+            {BASE: trial([0.5] * 5)}, baseline=BASE, metric="balanced_accuracy", looks=1, **settings
+        )
+
+
+def test_with_no_winner_the_select_step_measures_the_best_model_that_did_not_beat_it() -> None:
+    trials = {
+        BASE: trial([1.0, 1.0, 1.0, 1.0, 1.0], "rmse"),
+        "ml_linear_model": trial([1.01, 0.99, 1.0, 1.02, 0.98], "rmse"),
+        "ml_random_forest": trial([0.99, 1.0, 0.98, 1.01, 0.99], "rmse"),
+    }
+    settings = {"complexity": COMPLEXITY, "baseline_role": "floor", "not_compared": []}
+    chosen = select_and_measure(trials, baseline=BASE, metric="rmse", looks=1, **settings)
+    assert "winner" not in chosen["decision"]
+    measured = chosen["evidence"]["models.comparison"]
+    # Lower is better for RMSE: the forest's mean is the best of the models.
+    assert measured["score"] == pytest.approx(0.994)
+    assert measured["beats_baseline"] is False
 
 
 def test_a_time_ordered_comparison_says_its_test_is_a_rough_guide() -> None:

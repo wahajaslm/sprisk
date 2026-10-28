@@ -27,5 +27,7 @@ def target_shape(train: pl.DataFrame, target: str) -> dict[str, Any]:
             "numeric": numeric,
             "whole_numbers": whole,
             "rarest_share": float(shares.min()),  # type: ignore[arg-type]
-        }
+        },
+        # On its own, so a person's model selection can give the shortlist the same count.
+        "data.train_rows": {"rows": train.height},
     }

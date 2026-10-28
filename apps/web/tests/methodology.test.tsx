@@ -1,4 +1,4 @@
-import { parse, type Method, type MethodologyReviewItem, type MethodologyRule, type MethodologyRuleSource } from "@sprisk/contracts";
+import { parse, type Method, type MethodologyRule, type MethodologyRuleSource } from "@sprisk/contracts";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -9,9 +9,10 @@ import multicollinearity from "../../../tests/contract/methodology_rule/valid/mu
 import repeatedItems from "../../../tests/contract/method/valid/binds-a-concept.json";
 import splitMethod from "../../../tests/contract/method/valid/split-method.json";
 import { useSelection } from "../src/workbench/selection.ts";
+import { dataFlow } from "../src/views/methodology/dataFlow.ts";
 import { decisionFlow } from "../src/views/methodology/decisionFlow.ts";
 import { MethodologyPage } from "../src/views/methodology/MethodologyPage.tsx";
-import { ruleTree, STAGES } from "../src/views/methodology/ruleTree.ts";
+import { type OnFlow, ruleTree, STAGES } from "../src/views/methodology/ruleTree.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -46,31 +47,43 @@ function serve(rules: MethodologyRule[]) {
   );
 }
 
+/** The selected flow's decisions, as a walk made them (ADR-0063). */
+function decidedOnFlow(decisions: object[]) {
+  server.use(
+    http.get("/api/pipeline_versions/:id/decisions", ({ params }) =>
+      HttpResponse.json({ schema_version: "sprisk.flow_decisions/v2", pipeline_version_id: params.id, walk_id: "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0", decisions }),
+    ),
+  );
+}
+
+/** The split decided on the flow's split step, for `reason`. */
+const splitDecided = (reason: string) => ({
+  decides: split.decides,
+  method: split.id,
+  name: split.name,
+  activity: "Fair evaluation",
+  question: "How are rows divided?",
+  option: split.alternatives[0]!.id,
+  label: split.alternatives[0]!.label,
+  reason,
+  assurance: "rule",
+  steps: ["split"],
+  promises: [],
+});
+
 describe("methodology page", () => {
-  it("shows the selected flow's status on each decision, what is next, and why", async () => {
+  it("shows what the selected flow's walk decided, and why", async () => {
     serve([features, split]);
-    server.use(
-      http.get("/api/pipeline_versions/:id/methodology/review", () =>
-        HttpResponse.json({
-          schema_version: "sprisk.methodology_review/v1",
-          pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-          items: [
-            { rule: split.id, decides: "split.method", stage: "split", subject_node_id: "split", status: "proposal", reason: "Keeps each class's share the same in train and test.", recommended_alternative_id: split.alternatives[0]!.id },
-            { rule: features.id, decides: features.decides, stage: "features", status: "waiting", reason: "Waits for split.method, which is still open." },
-          ],
-          next: [0],
-        }),
-      ),
-    );
+    decidedOnFlow([splitDecided("Keeps each class's share the same in train and test.")]);
     useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
     renderWithApi(<MethodologyPage />);
     await showTree();
 
-    expect(await screen.findByLabelText("Pipeline review")).toHaveTextContent("2 open on this pipeline. Next: split.method (proposal)");
+    expect(await screen.findByLabelText("Pipeline decisions")).toHaveTextContent("1 decision on this pipeline.");
     const map = screen.getByRole("region", { name: "Methodology map" });
     const card = within(map).getByRole("button", { name: split.name });
-    expect(within(card).getByText(/Proposal/)).toBeInTheDocument();
-    expect(within(within(map).getByRole("button", { name: features.name })).getByText(/Waiting/)).toBeInTheDocument();
+    expect(within(card).getByText(/Decided/)).toBeInTheDocument();
+    expect(within(within(map).getByRole("button", { name: features.name })).queryByText(/Decided/)).toBeNull();
 
     expect(card).not.toHaveClass("dimmed");
     await userEvent.click(screen.getByRole("switch", { name: "Pipeline path" }));
@@ -111,15 +124,15 @@ describe("methodology page", () => {
     const [first, second] = features.alternatives;
     const { condition: _unused, ...unconditioned } = second!;
     const plain = { ...features, alternatives: [first!, unconditioned] };
-    const reasons = (reviews: Map<string, MethodologyReviewItem>) =>
-      ruleTree([plain], reviews, { path: false }).nodes.flatMap((n) => (n.type === "route" ? [n.data.reason] : []));
+    const reasons = (decided: Map<string, OnFlow>) =>
+      ruleTree([plain], decided, { path: false }).nodes.flatMap((n) => (n.type === "route" ? [n.data.reason] : []));
 
     expect(reasons(new Map())).toEqual([
       { kind: "when", text: first!.condition },
       { kind: "why", text: second!.rationale },
     ]);
-    const review: MethodologyReviewItem = { rule: plain.id, decides: plain.decides, stage: plain.stage, subject_node_id: "model", status: "proposal", reason: "age and income correlate at 0.93.", recommended_alternative_id: second!.id };
-    expect(reasons(new Map([[plain.id, review]]))[1]).toEqual({ kind: "because", text: "age and income correlate at 0.93." });
+    const decided: OnFlow = { option: second!.id, reason: "age and income correlate at 0.93.", step: "model" };
+    expect(reasons(new Map([[plain.id, decided]]))[1]).toEqual({ kind: "because", text: "age and income correlate at 0.93." });
   });
 
   it("labels the fork into each lane with what sends a question down it", () => {
@@ -194,7 +207,7 @@ describe("methodology page", () => {
     expect(within(map).queryByRole("button", { name: new RegExp(features.name) })).not.toBeInTheDocument();
     await userEvent.click(rule);
     expect(rule).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("region", { name: splitting.name })).toHaveTextContent("Chosen by rule");
+    expect(screen.getByRole("region", { name: splitting.name })).toHaveTextContent("Chosen on this pipeline");
   });
 
   it("shows the transit canvas of the active rules when asked, where a decision or a route is picked by a click", async () => {
@@ -243,53 +256,6 @@ describe("methodology page", () => {
     expect(within(detail).getByText("Pairwise Correlation Pruning")).toBeInTheDocument();
   });
 
-  it("shows an active rule's inputs and examples, and explains its routes by its examples, not design notes", async () => {
-    const plain = ({ condition: _, ...a }: MethodologyRule["alternatives"][number]) => a;
-    const { observes: _notes, ...withoutNotes } = split;
-    const active: MethodologyRule = {
-      ...withoutNotes,
-      status: "active",
-      applies_to: ["sprisk.validation.random_split"],
-      reads: ["question.target", "question.time_column"],
-      examples: [{ given: { "question.time_column": "signup_date" }, picks: "correlation_pruning" }],
-      alternatives: features.alternatives.map(plain),
-    };
-    serve([active]);
-    renderWithApi(<MethodologyPage />);
-    await showTree();
-
-    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
-    const detail = await screen.findByRole("region", { name: active.name });
-    expect(within(detail).getByText("question.time_column", { selector: "code" })).toBeInTheDocument();
-    const example = within(detail).getByRole("listitem", { name: "Example 1" });
-    expect(example).toHaveTextContent("question.time_column = signup_date");
-    expect(example).toHaveTextContent("Pairwise Correlation Pruning");
-    // An active rule's route is explained by the tested example that picks it, not a design note.
-    expect(within(detail).getByText(/^When: .*time column = signup_date/)).toBeInTheDocument();
-  });
-
-  it("says a shortlist rule's candidates are the registered models, and shows its examples' shortlists", async () => {
-    const { observes: _notes, ...withoutNotes } = split;
-    const shortlist: MethodologyRule = {
-      ...withoutNotes,
-      status: "active",
-      selection: "shortlist",
-      applies_to: ["sprisk.ml.linear_model"],
-      reads: ["rows", "candidate.*.family"],
-      alternatives: [],
-      examples: [{ given: { rows: 40 }, shortlist: ["ml_dummy_baseline", "ml_linear_model"] }],
-    };
-    serve([shortlist]);
-    renderWithApi(<MethodologyPage />);
-    await showTree();
-
-    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
-    const detail = await screen.findByRole("region", { name: shortlist.name });
-    expect(within(detail).getByText(/every registered model that fits the task/i)).toBeInTheDocument();
-    expect(within(detail).getByRole("listitem", { name: "Example 1" })).toHaveTextContent("shortlist: ml_dummy_baseline, ml_linear_model");
-    expect(within(detail).queryByRole("heading", { name: "Alternatives" })).not.toBeInTheDocument();
-  });
-
   it("marks a draft rule and shows its design notes", async () => {
     serve([features]);
     renderWithApi(<MethodologyPage />);
@@ -325,45 +291,27 @@ describe("methodology page", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
-  it("lists the rules by stage in the sidebar, each with its status on the selected flow", async () => {
+  it("lists the rules by stage in the sidebar, each marked when the selected flow decided it", async () => {
     serve([features, split]);
-    server.use(
-      http.get("/api/pipeline_versions/:id/methodology/review", () =>
-        HttpResponse.json({
-          schema_version: "sprisk.methodology_review/v1",
-          pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-          items: [{ rule: split.id, decides: "split.method", stage: "split", subject_node_id: "split", status: "proposal", reason: "Keeps class shares.", recommended_alternative_id: split.alternatives[0]!.id }],
-          next: [0],
-        }),
-      ),
-    );
+    decidedOnFlow([splitDecided("Keeps class shares.")]);
     useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
     renderWithApi(<MethodologyPage />);
     await showTree();
     const side = await screen.findByRole("complementary", { name: "Rules" });
     expect(within(side).getByText("Data splitting")).toBeInTheDocument();
-    expect(await within(side).findByRole("button", { name: new RegExp(`${split.name}.*Proposal`) })).toBeInTheDocument();
+    expect(await within(side).findByRole("button", { name: new RegExp(`${split.name}.*Decided`) })).toBeInTheDocument();
     useSelection.setState({ pipelineVersionId: undefined });
   });
 
-  it("shows the steps a rule decides on the selected flow under Used in", async () => {
+  it("shows what a method chose on the selected flow, and the steps it shaped, under Used in", async () => {
     serve([split]);
-    server.use(
-      http.get("/api/pipeline_versions/:id/methodology/review", () =>
-        HttpResponse.json({
-          schema_version: "sprisk.methodology_review/v1",
-          pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-          items: [{ rule: split.id, decides: "split.method", stage: "split", subject_node_id: "split", status: "proposal", reason: "Keeps class shares.", recommended_alternative_id: split.alternatives[0]!.id }],
-          next: [0],
-        }),
-      ),
-    );
+    decidedOnFlow([splitDecided("Keeps class shares.")]);
     useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
     renderWithApi(<MethodologyPage />);
     // The fixture is a draft rule, which only the tree view lists.
     await showTree();
     await userEvent.click(await screen.findByRole("tab", { name: "Used in" }));
-    expect(await screen.findByRole("list", { name: "Used in" })).toHaveTextContent(/Step split.*Proposal · Keeps class shares\./);
+    expect(await screen.findByRole("list", { name: "Used in" })).toHaveTextContent(new RegExp(`${split.alternatives[0]!.label}Keeps class shares\\.Step split`));
     useSelection.setState({ pipelineVersionId: undefined });
   });
 
@@ -377,23 +325,14 @@ describe("methodology page", () => {
 describe("pipeline path switch", () => {
   it("is off without a flow, and with one dims the decisions the flow has no step for", async () => {
     serve([features, split]);
-    server.use(
-      http.get("/api/pipeline_versions/:id/methodology/review", () =>
-        HttpResponse.json({
-          schema_version: "sprisk.methodology_review/v1",
-          pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-          items: [{ rule: split.id, decides: "split.method", stage: "split", subject_node_id: "split", status: "settled", reason: "r", recommended_alternative_id: split.alternatives[0]!.id }],
-          next: [],
-        }),
-      ),
-    );
+    decidedOnFlow([splitDecided("r")]);
     renderWithApi(<MethodologyPage />);
     await showTree();
     expect(await screen.findByRole("switch", { name: "Pipeline path" })).toBeDisabled();
 
     useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
     const pathSwitch = await screen.findByRole("switch", { name: "Pipeline path" });
-    await screen.findByLabelText("Pipeline review");
+    await screen.findByLabelText("Pipeline decisions");
     const map = screen.getByRole("region", { name: "Methodology map" });
     expect(within(map).getByRole("button", { name: features.name })).not.toHaveClass("dimmed");
     await userEvent.click(pathSwitch);
@@ -447,5 +386,80 @@ describe("decision flow", () => {
       expect(flow.links).toContainEqual(expect.objectContaining({ from: choice, to: decisions[1] }));
     }
     expect(flow.links.filter((l) => l.to === "end")).toHaveLength(splitMethod.options.length);
+  });
+});
+
+describe("data flow", () => {
+  // A method whose one option inserts a step before the model, changing `changes`.
+  const step = (name: string, changes: Method["changes"], decisions: string[] = [], decides = `features.${name}`, action: object = { insert: { before: "model", operator: `sprisk.clean.${name}@1.0.0`, node_id: name } }) => ({
+    ...repeatedItems,
+    id: `methodology.core.${name}@1.0.0`,
+    decides,
+    name,
+    ...(changes ? { changes } : {}),
+    needs: { ...repeatedItems.needs, decisions },
+    options: [{ ...repeatedItems.options[0]!, action }],
+  });
+
+  it("gives each kind of input its own lane, with a step changing two kinds where their lanes meet", () => {
+    const flow = dataFlow([
+      step("text", ["text"]),
+      step("image", ["image"], ["features.text"]),
+      step("rare", ["categories"]),
+      step("fill", ["numbers", "categories"], ["features.rare"]),
+      step("encode", ["categories"], ["features.fill"]),
+      step("scale", ["numbers"], ["features.fill"]),
+    ] as Method[]);
+    expect(flow.lanes.map((l) => l.kind)).toEqual(["numbers", "categories", "text", "image"]);
+    const at = (name: string) => flow.lanes.flatMap((l) => l.steps).find((s) => s.method.name === name)!;
+    // Image is drawn beside text, not after it: it changes another lane.
+    expect(at("image").column).toBe(0);
+    expect(at("text").column).toBe(0);
+    expect(at("rare").column).toBe(0);
+    expect(at("fill")).toMatchObject({ column: 1, lanes: ["numbers", "categories"] });
+    expect(at("encode").column).toBe(2);
+    expect(at("scale").column).toBe(2);
+    const lane = (kind: string) => flow.lanes.find((l) => l.kind === kind)!;
+    expect(lane("numbers").steps.map((s) => s.method.name)).toEqual(["fill", "scale"]);
+    expect(lane("categories").steps.map((s) => s.method.name)).toEqual(["rare", "fill", "encode"]);
+  });
+
+  it("draws the methods' lanes on the Data flow tab, and the picked step's card beside them", async () => {
+    serve([multicollinearity as MethodologyRule]);
+    const text = { ...step("text_representation", ["text"]), name: "Text representation" };
+    const image = { ...step("image_features", ["image"]), name: "Image representation", applies_when: { task: ["classification"], assets: ["image"] } };
+    const threshold = { ...step("decision_threshold", undefined, [], "evaluation.decision_threshold", { set: { role: "model", settings: {} } }), name: "Decision threshold" };
+    server.use(http.get("/api/methods", () => HttpResponse.json([repeatedItems, splitMethod, text, image, threshold])));
+    renderWithApi(<MethodologyPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Data flow" }));
+
+    const canvas = await screen.findByRole("region", { name: "Data flow" });
+    expect(within(canvas).getByText("Free text")).toBeInTheDocument();
+    // Only the image lane needs files bound to the rows.
+    expect(within(canvas).getAllByText(/^only with/)).toHaveLength(1);
+    expect(within(canvas).getByText("only with image files")).toBeInTheDocument();
+    expect(within(canvas).getByText("On its output").parentElement).toHaveTextContent("Decision threshold");
+    await userEvent.click(within(canvas).getByRole("button", { name: /Text representation/ }));
+    expect(screen.getByRole("region", { name: "Text representation" })).toHaveTextContent("Choices");
+  });
+
+  it("puts steps on the whole table before the split, the split, and model settings after the model", () => {
+    const flow = dataFlow([
+      step("join", undefined, [], "data.join", { insert: { before: "split", operator: "sprisk.io.join@1.0.0", node_id: "join" } }),
+      step("threshold", undefined, [], "evaluation.threshold", { set: { role: "model", settings: {} } }),
+      step("shortlist", undefined, [], "models.shortlist", { replace: { role: "model", operator: "sprisk.ml.linear_model@3.0.0" } }),
+      { ...splitMethod },
+      repeatedItems,
+      step("text", ["text"]),
+    ] as Method[]);
+    expect(flow.table.map((m) => m.name)).toEqual(["join"]);
+    expect(flow.split?.id).toBe(splitMethod.id);
+    expect(flow.afterModel.map((m) => m.name)).toEqual(["threshold"]);
+    // A method that swaps the model chooses the model itself.
+    expect(flow.model.map((m) => m.name)).toEqual(["shortlist"]);
+    expect(flow.table.map((m) => m.name)).toEqual(["join"]);
+    // Duplicate analysis names a concept and adds no step.
+    expect(flow.noStep.map((m) => m.id)).toEqual([repeatedItems.id]);
+    expect(flow.lanes.map((l) => l.kind)).toEqual(["text"]);
   });
 });

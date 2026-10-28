@@ -1,14 +1,14 @@
 import "@xyflow/react/dist/style.css";
 
 import { Background, BackgroundVariant, Handle, type NodeProps, Position, ReactFlow } from "@xyflow/react";
-import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
+import type { MethodologyRule } from "@sprisk/contracts";
 import { useMemo } from "react";
 
-import { activation, LANE_NOTE, ROUTE_LINE, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
+import { DECIDED, LANE_NOTE, type OnFlow, ROUTE_LINE, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
 
 type Props = {
   rules: MethodologyRule[];
-  reviews: Map<string, MethodologyReviewItem>;
+  decided: Map<string, OnFlow>;
   path: boolean;
   /** A rule's id, or a route's (`<rule id>#<route id>`). */
   picked: string | undefined;
@@ -19,8 +19,8 @@ type Props = {
  * decision order, each decision fanning out into its routes, each route leading on to the next
  * step. With a flow selected, each decision shows its status; with `path`, the flow's path is
  * one lit line and the rest dimmed. */
-export function MethodologyMap({ rules, reviews, path, picked, onPick }: Props) {
-  const tree = useMemo(() => ruleTree(rules, reviews, { path }), [rules, reviews, path]);
+export function MethodologyMap({ rules, decided, path, picked, onPick }: Props) {
+  const tree = useMemo(() => ruleTree(rules, decided, { path }), [rules, decided, path]);
   const nodes = tree.nodes.map((n) => (n.type === "rule" || n.type === "route" ? { ...n, selected: n.id === picked } : n));
   // Lit lines mean the flow's path only; picking a decision highlights just that node.
   const edges = tree.edges.map((e) => ({ ...e, type: "default", className: `mth-edge ${e.data?.kind ?? "trunk"}${e.data?.onPath ? " path" : ""}` }));
@@ -51,18 +51,6 @@ export function MethodologyMap({ rules, reviews, path, picked, onPick }: Props) 
     </div>
   );
 }
-
-/** Plain names for review statuses, as people read them. */
-export const STATUS_LABEL: Record<MethodologyReviewItem["status"], string> = {
-  settled: "Settled",
-  proposal: "Proposal",
-  needs_fact: "Needs a fact",
-  needs_run: "Needs a run",
-  waiting: "Waiting",
-  no_subject: "No step yet",
-  not_applicable: "Not applicable",
-  reopen: "Reopen",
-};
 
 function RootNode({ data }: NodeProps<Extract<TreeNode, { type: "root" }>>) {
   return (
@@ -105,10 +93,10 @@ function StageNode({ data }: NodeProps<Extract<TreeNode, { type: "stage" }>>) {
 }
 
 function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule" }>>) {
-  const { rule, review } = data;
+  const { rule, decided } = data;
   return (
     // nopan: a click on a rule picks it; it never starts a pan of the map.
-    <button type="button" className={`mth-rule-node nopan ${review?.status ?? ""}${rule.status === "draft" ? " draft" : ""}${data.dimmed ? " dimmed" : ""}`} aria-pressed={selected} aria-label={rule.name}>
+    <button type="button" className={`mth-rule-node nopan ${decided ? "settled" : ""}${rule.status === "draft" ? " draft" : ""}${data.dimmed ? " dimmed" : ""}`} aria-pressed={selected} aria-label={rule.name}>
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <span className="mth-rule-dot" />
       <span className="mth-rule-text">
@@ -116,12 +104,12 @@ function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule"
           <span className="mth-node-code">{data.code}</span> {rule.question ?? rule.name}
         </span>
         <span className="mth-rule-meta" title={rule.decides}>
-          {activation(rule) ?? rule.decides}
+          {rule.decides}
           {rule.status === "draft" && " · draft"}
-          {review && (
-            <span className={`mth-rule-status ${review.status}`} title={review.reason}>
+          {decided && (
+            <span className="mth-rule-status settled" title={decided.reason}>
               {" · "}
-              {STATUS_LABEL[review.status]}
+              {DECIDED}
             </span>
           )}
         </span>

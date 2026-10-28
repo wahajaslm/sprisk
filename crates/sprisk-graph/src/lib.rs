@@ -306,6 +306,58 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
     Ok(Plan { steps })
 }
 
+/// Outputs of a `fits_on_train` step that hold only its train rows (ADR-0018, ADR-0058).
+const TRAIN_OUTPUTS: [&str; 2] = ["train", "train_words"];
+
+/// `plan` as the contract Gate B reads (ADR-0070): each step's resolved ports, and for each
+/// output the input ports whose rows it holds.
+pub fn execution_plan(
+    pipeline: &PipelineVersion,
+    plan: &Plan,
+) -> Result<sprisk_contracts::ExecutionPlan, sprisk_contracts::ContractError> {
+    let steps: Vec<serde_json::Value> = plan
+        .steps
+        .iter()
+        .map(|step| {
+            let inputs: Vec<&str> = step.inputs.iter().map(|i| i.port.as_str()).collect();
+            let train_only = step.operator.fits_on_train == Some(true);
+            let outputs: Vec<serde_json::Value> = step
+                .operator
+                .outputs
+                .iter()
+                .map(|out| {
+                    let name = out.name.as_str();
+                    let rows_from = if train_only && TRAIN_OUTPUTS.contains(&name) {
+                        vec!["train"]
+                    } else {
+                        inputs.clone()
+                    };
+                    serde_json::json!({ "name": name, "kind": out.kind, "rows_from": rows_from })
+                })
+                .collect();
+            let fed: Vec<serde_json::Value> = step
+                .inputs
+                .iter()
+                .map(|i| serde_json::json!({ "port": i.port, "from": format!("{}.{}", i.from_node, i.from_port) }))
+                .collect();
+            serde_json::json!({
+                "node_id": step.node_id,
+                "operator": step.operator.id,
+                "inputs": fed,
+                "outputs": outputs,
+            })
+        })
+        .collect();
+    sprisk_contracts::parse(
+        &serde_json::json!({
+            "schema_version": "sprisk.execution_plan/v1",
+            "pipeline_version_id": pipeline.id,
+            "steps": steps,
+        })
+        .to_string(),
+    )
+}
+
 /// A code step's ports are variable names listed in its params (ADR-0031). A params property
 /// marked `x-sprisk-ports: input | output` lists them; each is a table port.
 fn with_named_ports(

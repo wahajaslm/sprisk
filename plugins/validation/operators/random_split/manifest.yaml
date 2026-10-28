@@ -6,6 +6,7 @@ title: Random split
 description: Holds out a random fifth of rows for test, with a fixed seed.
 entrypoint: sprisk_validation.random_split:random_split
 notebook_code: sprisk_validation.random_split:random_split
+stage: split
 role: split
 role_default: true
 folds: plain

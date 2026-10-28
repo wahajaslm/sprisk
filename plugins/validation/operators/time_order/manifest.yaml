@@ -6,6 +6,7 @@ title: Time order check
 description: Counts the test rows not later than the latest train row, the evidence
   that a temporal split trains only on the past.
 entrypoint: sprisk_validation.temporal_split:test_after_train
+stage: split
 attach:
   role: split
   side: output

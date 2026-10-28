@@ -36,24 +36,19 @@ export const STAGE_PURPOSE: Record<Stage, string> = {
 /** Studio node kinds: they pick the icon and its tint. */
 export type NodeKind = "source" | "recipe" | "view" | "decision" | "model";
 
-export function stageOf(operator: Operator): Stage {
-  const domain = operator.id.split(".")[1];
-  if (domain === "validation") return "Split";
-  if (domain === "clean") return "Clean";
-  if (domain === "clustering") return "Model";
-  switch (operator.capability_class) {
-    case "source":
-      return "Load";
-    case "analyzer":
-      return "Explore";
-    case "estimator":
-      return "Model";
-    case "evaluator":
-      return "Evaluate";
-    default:
-      return "Clean";
-  }
-}
+/** Each contract stage as the UI names it. Features is never declared: it is where a cleaning
+ * step lands when it reads the split's rows. */
+export const STAGE_OF: Record<NonNullable<Operator["stage"]>, Stage> = {
+  load: "Load",
+  explore: "Explore",
+  clean: "Clean",
+  split: "Split",
+  model: "Model",
+  evaluate: "Evaluate",
+};
+
+/** The stage its manifest names (ADR-0055); an operator that names none is with other steps. */
+export const stageOf = (operator: Operator): Stage => (operator.stage ? STAGE_OF[operator.stage] : "Unknown");
 
 /** A step's kind, as the design system draws it: a source, a chart for a look at the data or a
  * score, a decision for a split or a gate, a model, else a recipe. */

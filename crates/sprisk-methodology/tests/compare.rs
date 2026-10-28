@@ -17,7 +17,7 @@ fn comparison(select_params: Value) -> PipelineVersion {
             "nodes": [
                 cv("ml_linear_model", "sprisk.ml.linear_model@3.0.0"),
                 cv("ml_dummy_baseline", "sprisk.ml.dummy_baseline@3.0.0"),
-                { "id": "select_model", "operator": "sprisk.ml.select_model@5.0.0", "params": select_params },
+                { "id": "select_model", "operator": "sprisk.ml.select_model@6.0.0", "params": select_params },
             ],
             "edges": [],
             "created_at": "2026-10-21T10:00:00Z",

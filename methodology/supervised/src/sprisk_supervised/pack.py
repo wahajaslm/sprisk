@@ -6,7 +6,13 @@ import polars as pl
 from pydantic import ValidationError
 from ulid import ULID
 
-from sprisk_contracts import MethodologyDecision, Operator, PipelineVersion, QuestionVersion
+from sprisk_contracts import (
+    ExecutionPlan,
+    MethodologyDecision,
+    Operator,
+    PipelineVersion,
+    QuestionVersion,
+)
 from sprisk_supervised.code_leakage import code_leakage
 from sprisk_supervised.split_design import split_design
 from sprisk_supervised.split_leakage import CheckInputError, split_leakage
@@ -15,15 +21,17 @@ from sprisk_workers.errors import OperatorError
 
 
 def run(
-    pipeline: Any, operators: list[Any], question: Any, decisions: list[Any]
+    pipeline: Any, plan: Any, operators: list[Any], question: Any, decisions: list[Any]
 ) -> list[dict[str, Any]]:
     """Gate B for the Supervised pack: every rule's result, as one JSON array (ADR-0017).
 
-    `question` is the question the pipeline answers, or None when it is not linked;
+    `plan` is the ExecutionPlan Rust compiled it to (ADR-0070); `question` is the question the
+    pipeline answers, or None when it is not linked;
     `decisions` are the methodology decisions its nodes cite.
     """
     try:
         version = PipelineVersion.model_validate_json(json.dumps(pipeline))
+        compiled = ExecutionPlan.model_validate_json(json.dumps(plan))
         known = [Operator.model_validate_json(json.dumps(o)) for o in operators]
         asked = (
             None if question is None else QuestionVersion.model_validate_json(json.dumps(question))
@@ -44,7 +52,7 @@ def run(
     now = _now()
     try:
         results = [
-            split_leakage(version, by_ref, f"mck_{ULID()}", now),
+            split_leakage(version, compiled, by_ref, f"mck_{ULID()}", now),
             code_leakage(version, by_ref, f"mck_{ULID()}", now),
             *split_design(version, by_ref, asked, chosen, lambda: f"mck_{ULID()}", now),
         ]

@@ -1,14 +1,12 @@
-//! The engine (ADR-0060): what it builds from a question and its sources, and what it does
-//! next with a review of the flow. Pure: the API reads, applies and runs.
+//! The engine (ADR-0060): what it builds from a question and its sources, and what the look
+//! asks of a person. Pure: the API reads, decides and runs.
 
 use serde_json::{Value, json};
 use sprisk_contracts::{
-    Edge, MethodologyReview, MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule,
-    MethodologyRuleSelection, Node, Origin, PipelineVersion, QuestionVersion, RuleActionType,
-    TaskType, WalkAsk, WalkStopReason, parse,
+    Edge, Node, Origin, PipelineVersion, QuestionVersion, TaskType, WalkAsk, WalkStopReason, parse,
 };
 
-use crate::{CatalogError, Defaults, ResolveError, RuleCatalog, compare::SEED, facts};
+use crate::{Defaults, ResolveError, compare::SEED};
 
 /// The share of rows the first split holds out. The split rule may change it.
 const TEST_FRACTION: f64 = 0.2;
@@ -243,190 +241,11 @@ pub enum HeadRun {
     Failed,
 }
 
-/// The one thing the engine does next.
-#[derive(Debug)]
-pub enum Action<'r> {
-    /// Apply the item's recommended `alternative` to step `subject` (a Rule). `at` is the
-    /// item's index in the review.
-    Apply {
-        at: usize,
-        item: &'r MethodologyReviewItem,
-        subject: &'r str,
-        alternative: &'r str,
-    },
-    /// Compare the routes of the item's rule on step `subject`, on fixed folds (a Try), then
-    /// apply the winner.
-    Compare {
-        item: &'r MethodologyReviewItem,
-        subject: &'r str,
-        reason: String,
-    },
-    /// Run the head: `reason` is the first rule that measures rows it has not produced.
-    Run { reason: String },
-    Stop {
-        reason: WalkStopReason,
-        detail: String,
-    },
-}
-
-/// What to do with `review` of the head, whose run state is `head`. A recommended
-/// limitation stops the walk at once. Otherwise applies come first, then a run, then a
-/// comparison; a version is run once. When nothing is left to act on, the walk stops, naming what is still open.
-/// A rule that reads a guessed question fact is an Ask, never applied (`unconfirmed_reads`).
-pub fn next_action<'r>(
-    review: &'r MethodologyReview,
-    question: &QuestionVersion,
-    head: HeadRun,
-    rules: &RuleCatalog,
-) -> Result<Action<'r>, ResolveError> {
-    for item in &review.items {
-        if item.status == MethodologyReviewStatus::Settled && is_limitation(item, rules)? {
-            return Ok(Action::Stop {
-                reason: WalkStopReason::Limitation,
-                detail: describe(item),
-            });
-        }
-    }
-
-    let (mut run, mut compare) = (None, None);
-    let (mut asks, mut uncovered, mut unrun) = (Vec::new(), Vec::new(), Vec::new());
-    for (at, item) in review
-        .next
-        .iter()
-        .filter_map(|&at| Some((at as usize, review.items.get(at as usize)?)))
-    {
-        match item.status {
-            MethodologyReviewStatus::Proposal => {
-                let Some(subject) = &item.subject_node_id else {
-                    uncovered.push(describe(item));
-                    continue;
-                };
-                let guesses = unconfirmed_reads(rules.rule(item.rule.as_str())?, question)?;
-                if !guesses.is_empty() {
-                    asks.push(format!(
-                        "{} It reads {}, still a guess: confirm it first.",
-                        describe(item),
-                        guesses.join(", ")
-                    ));
-                    continue;
-                }
-                match &item.recommended_alternative_id {
-                    Some(alternative) => {
-                        return Ok(Action::Apply {
-                            at,
-                            item,
-                            subject: subject.as_str(),
-                            alternative: alternative.as_str(),
-                        });
-                    }
-                    // It depends: the rule leaves the choice to a comparison (a Try).
-                    None => {
-                        compare.get_or_insert(Action::Compare {
-                            item,
-                            subject: subject.as_str(),
-                            reason: item.reason.to_string(),
-                        });
-                    }
-                }
-            }
-            MethodologyReviewStatus::NeedsRun => match stale_shortlist(review, item, rules)? {
-                // A run never gives cross-validation results: the step changed after its models
-                // were compared, so its shortlist is compared again. A failed run is named first.
-                Some((shortlist, subject)) if head != HeadRun::Failed => {
-                    compare.get_or_insert(Action::Compare {
-                        item: shortlist,
-                        subject,
-                        reason: format!(
-                            "The flow changed after its models were compared: {}",
-                            describe(item)
-                        ),
-                    });
-                }
-                _ if head == HeadRun::NotRun => {
-                    run.get_or_insert_with(|| describe(item));
-                }
-                _ => unrun.push(describe(item)),
-            },
-            MethodologyReviewStatus::NeedsFact => asks.push(describe(item)),
-            // A stage the results reopen: no engine action yet.
-            _ => uncovered.push(describe(item)),
-        }
-    }
-    if let Some(reason) = run {
-        return Ok(Action::Run { reason });
-    }
-    if let Some(compare) = compare {
-        // A person's answer may change what is compared, or how it is scored.
-        if !asks.is_empty() {
-            let open = asks.join(" ");
-            return Ok(Action::Stop {
-                reason: WalkStopReason::NeedsPerson,
-                detail: format!("Answer these before models are compared: {open}"),
-            });
-        }
-        // The metric must be fixed before any score is seen (ADR-0059).
-        if question.success_bar.is_none() {
-            return Ok(Action::Stop {
-                reason: WalkStopReason::NeedsPerson,
-                detail: "State the success bar: its metric is what the routes are compared by, \
-                         and it must be fixed before any score is seen."
-                    .to_owned(),
-            });
-        }
-        return Ok(compare);
-    }
-    // A failed run is named even when only Asks are left: its later steps were never judged.
-    let (reason, open) = if head == HeadRun::Failed {
-        (WalkStopReason::RunFailed, [unrun, uncovered, asks].concat())
-    } else if !unrun.is_empty() || !uncovered.is_empty() {
-        (WalkStopReason::Uncovered, [unrun, uncovered, asks].concat())
-    } else if !asks.is_empty() {
-        (WalkStopReason::NeedsPerson, asks)
-    } else {
-        return Ok(Action::Stop {
-            reason: WalkStopReason::Complete,
-            detail: "Every rule that fits the question is settled.".to_owned(),
-        });
-    };
-    Ok(Action::Stop {
-        reason,
-        detail: open.join(" "),
-    })
-}
-
-/// What the look asks of a person from `review` (ADR-0063 amendment): each fact a rule needs
-/// stated, each rule that reads a guess, and the success bar, which fixes the metric before
-/// any score is seen (ADR-0059). In review order, the success bar last.
-pub fn look_asks(
-    review: &MethodologyReview,
-    question: &QuestionVersion,
-    rules: &RuleCatalog,
-) -> Result<Vec<WalkAsk>, ResolveError> {
+/// What the look asks of a person (ADR-0063 amendment), from the question alone: the success
+/// bar, which fixes the metric before any score is seen (ADR-0059); a goal that is only a
+/// guess; and how far a person must follow a prediction.
+pub fn question_asks(question: &QuestionVersion) -> Result<Vec<WalkAsk>, ResolveError> {
     let mut asks = Vec::new();
-    for item in review
-        .next
-        .iter()
-        .filter_map(|&at| review.items.get(at as usize))
-    {
-        let text = match item.status {
-            MethodologyReviewStatus::NeedsFact => describe(item),
-            MethodologyReviewStatus::Proposal => {
-                let guesses = unconfirmed_reads(rules.rule(item.rule.as_str())?, question)?;
-                if guesses.is_empty() {
-                    continue;
-                }
-                format!(
-                    "{} It reads {}, still a guess: confirm it first.",
-                    describe(item),
-                    guesses.join(", ")
-                )
-            }
-            _ => continue,
-        };
-        asks.push(parse(
-            &json!({ "decides": item.decides, "question": text }).to_string(),
-        )?);
-    }
     if question.success_bar.is_none() {
         asks.push(parse(
             &json!({
@@ -457,71 +276,4 @@ pub fn look_asks(
         )?);
     }
     Ok(asks)
-}
-
-/// The question facts `rule` reads that are still a guess (`inferred`). A rule's default is
-/// not applied over one (ADR-0059: a guess is confirmed before anything depends on it): the
-/// person's answer may change the decision, such as a time column that makes a split temporal.
-pub fn unconfirmed_reads(
-    rule: &MethodologyRule,
-    question: &QuestionVersion,
-) -> Result<Vec<String>, ResolveError> {
-    let facts = serde_json::to_value(question)?;
-    Ok(rule
-        .reads
-        .iter()
-        .filter_map(|read| read.as_str().strip_prefix("question."))
-        .filter(|name| facts.get(*name).and_then(|f| f.get("origin")) == Some(&json!("inferred")))
-        .map(|name| format!("question.{name}"))
-        .collect())
-}
-
-/// The settled shortlist item of `waiting`'s step, and that step, when `waiting` reads
-/// cross-validation results: the comparison it would read scored the flow before a later change.
-fn stale_shortlist<'r>(
-    review: &'r MethodologyReview,
-    waiting: &MethodologyReviewItem,
-    rules: &RuleCatalog,
-) -> Result<Option<(&'r MethodologyReviewItem, &'r str)>, CatalogError> {
-    let reads = &rules.rule(waiting.rule.as_str())?.reads;
-    if !facts::needs_results(reads.iter().map(|r| r.as_str())) {
-        return Ok(None);
-    }
-    for item in &review.items {
-        let Some(subject) = &item.subject_node_id else {
-            continue;
-        };
-        if item.status == MethodologyReviewStatus::Settled
-            && waiting.subject_node_id.as_ref() == Some(subject)
-            && rules.rule(item.rule.as_str())?.selection
-                == Some(MethodologyRuleSelection::Shortlist)
-        {
-            return Ok(Some((item, subject.as_str())));
-        }
-    }
-    Ok(None)
-}
-
-/// Whether the item's recommended route reports a limit the engine cannot go past.
-fn is_limitation(item: &MethodologyReviewItem, rules: &RuleCatalog) -> Result<bool, CatalogError> {
-    let Some(recommended) = &item.recommended_alternative_id else {
-        return Ok(false);
-    };
-    let rule = rules.rule(item.rule.as_str())?;
-    Ok(rule.alternatives.iter().any(|a| {
-        a.id.as_str() == recommended.as_str()
-            && a.action.type_ == RuleActionType::EmitMethodologyLimitation
-    }))
-}
-
-fn describe(item: &MethodologyReviewItem) -> String {
-    match &item.subject_node_id {
-        Some(step) => format!(
-            "{} (step {}): {}",
-            item.decides.as_str(),
-            step.as_str(),
-            item.reason.as_str()
-        ),
-        None => format!("{}: {}", item.decides.as_str(), item.reason.as_str()),
-    }
 }

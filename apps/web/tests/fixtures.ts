@@ -7,12 +7,13 @@ import type { Attempt, AttemptOutput, Operator, PipelineVersion, Run } from "@sp
 
 const resources = { cpu_cores: 1, memory_mb: 512, gpu: "none", timeout_seconds: 60 } as const;
 
-function op(id: string, capability_class: Operator["capability_class"], inputs: [string, string][], outputs: [string, string][]): Operator {
+function op(id: string, capability_class: Operator["capability_class"], stage: NonNullable<Operator["stage"]>, inputs: [string, string][], outputs: [string, string][]): Operator {
   const ports = (ps: [string, string][]) => ps.map(([name, kind]) => ({ name, kind })) as Operator["inputs"];
   return {
     schema_version: "sprisk.operator/v1",
     id,
     capability_class,
+    stage,
     entrypoint: "m:f",
     inputs: ports(inputs),
     outputs: ports(outputs),
@@ -30,19 +31,19 @@ export function fakeDock(overrides: Partial<DockCommands> = {}): DockCommands {
 
 export const operators: Operator[] = [
   {
-    ...op("sprisk.io.file_source@1.0.0", "source", [], [["data", "table"]]),
+    ...op("sprisk.io.file_source@1.0.0", "source", "load", [], [["data", "table"]]),
     params_schema: {
       type: "object",
       properties: { path: { type: "string", "x-sprisk-local-path": true }, format: { type: "string", enum: ["csv", "parquet"] } },
     },
   },
-  op("sprisk.profile.summarize@1.0.0", "analyzer", [["data", "table"]], [["profile", "diagnostics"]]),
-  op("sprisk.validation.random_split@1.0.0", "transform", [["data", "table"]], [["train", "table"], ["test", "table"]]),
-  { ...op("sprisk.clean.impute@1.0.0", "transform", [["train", "table"], ["test", "table"]], [["train", "table"], ["test", "table"]]), fits_on_train: true, title: "Imputation" },
-  op("sprisk.ml.linear_model@1.0.0", "estimator", [["train", "table"]], [["model", "model"]]),
-  op("sprisk.ml.evaluate@1.0.0", "evaluator", [["model", "model"], ["test", "table"]], [["metrics", "metrics"]]),
+  op("sprisk.profile.summarize@1.0.0", "analyzer", "explore", [["data", "table"]], [["profile", "diagnostics"]]),
+  op("sprisk.validation.random_split@1.0.0", "transform", "split", [["data", "table"]], [["train", "table"], ["test", "table"]]),
+  { ...op("sprisk.clean.impute@1.0.0", "transform", "clean", [["train", "table"], ["test", "table"]], [["train", "table"], ["test", "table"]]), fits_on_train: true, title: "Imputation" },
+  op("sprisk.ml.linear_model@1.0.0", "estimator", "model", [["train", "table"]], [["model", "model"]]),
+  op("sprisk.ml.evaluate@1.0.0", "evaluator", "evaluate", [["model", "model"], ["test", "table"]], [["metrics", "metrics"]]),
   {
-    ...op("sprisk.profile.chart@1.0.0", "analyzer", [["data", "table"]], [["chart", "figure"]]),
+    ...op("sprisk.profile.chart@1.0.0", "analyzer", "explore", [["data", "table"]], [["chart", "figure"]]),
     params_schema: {
       type: "object",
       required: ["kind", "x"],
@@ -58,7 +59,7 @@ export const operators: Operator[] = [
 
 /** The notebook-cell code step: its ports are variable names in its params (ADR-0031). */
 export const notebookOperator: Operator = {
-  ...op("sprisk.code.python@2.0.0", "analyzer", [], [["display", "diagnostics"], ["interface", "diagnostics"]]),
+  ...op("sprisk.code.python@2.0.0", "analyzer", "explore", [], [["display", "diagnostics"], ["interface", "diagnostics"]]),
   params_schema: {
     type: "object",
     properties: {

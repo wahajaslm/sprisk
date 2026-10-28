@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.summarize@1.0.0
 title: Column profile
 capability_class: analyzer
+stage: explore
 description: Per-column summary statistics (type, nulls, distinct, range, quartiles).
 entrypoint: sprisk_profile.summarize:summarize
 inputs: [{ name: data, kind: table }]

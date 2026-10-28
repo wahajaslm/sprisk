@@ -1,10 +1,10 @@
 {
   "idempotency_key": "walk-rakuten-0001",
   "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-  "sources": [
-    "/data/x_train.csv",
-    "/data/y_train.csv"
-  ],
   "max_actions": 40,
-  "max_wall_seconds": 3600
+  "max_wall_seconds": 3600,
+  "dataset_version_ids": [
+    "dsv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+    "dsv_01JABCDEFGHJKMNPQRSTVWXYZ1"
+  ]
 }

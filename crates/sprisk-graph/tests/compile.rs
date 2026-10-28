@@ -4,7 +4,7 @@ use std::fs;
 
 use serde_json::{Value, json};
 use sprisk_contracts::PipelineVersion;
-use sprisk_graph::{CompileError, compile};
+use sprisk_graph::{CompileError, compile, execution_plan};
 use sprisk_registry::Registry;
 
 fn operator(id: &str, inputs: &[(&str, &str)], outputs: &[(&str, &str)], params: Value) -> Value {
@@ -836,4 +836,65 @@ fn an_exclude_that_is_not_a_list_of_names_is_an_error_not_an_empty_list() {
     let keys = ["customer".to_owned()].into_iter().collect();
     let err = sprisk_graph::leave_out_keys(&mut plan, &keys).unwrap_err();
     assert!(err.to_string().contains("all"), "{err}");
+}
+
+/// The plan Gate B reads (ADR-0070): each step's resolved ports, and which inputs' rows each
+/// output holds.
+#[test]
+fn the_execution_plan_names_each_output_s_rows_and_a_code_step_s_own_ports() {
+    let (_dir, registry) = registry();
+    let mut code = node("look", "sprisk.code.cells@1.0.0");
+    code["params"] = json!({ "source": "x", "inputs": ["rows"], "outputs": ["summary"] });
+    let mut words = node("words", "sprisk.clean.wordy@1.0.0");
+    words["params"] = json!({ "by": 1 });
+    let version = pipeline(
+        json!([
+            node("ingest", "sprisk.source.parquet@1.0.0"),
+            node("split", "sprisk.validation.split@1.0.0"),
+            words,
+            code,
+        ]),
+        json!([
+            edge("ingest.data", "split.data"),
+            edge("split.train", "words.train"),
+            edge("split.validation", "words.test"),
+            edge("words.train", "look.rows"),
+        ]),
+    );
+    let plan = compile(&version, &registry).unwrap();
+
+    let made = serde_json::to_value(execution_plan(&version, &plan).unwrap()).unwrap();
+
+    let step = |id: &str| {
+        made["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["node_id"] == id)
+            .unwrap()
+            .clone()
+    };
+    let rows_from = |id: &str, port: &str| {
+        step(id)["outputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["name"] == port)
+            .unwrap()["rows_from"]
+            .clone()
+    };
+    assert_eq!(made["schema_version"], "sprisk.execution_plan/v1");
+    assert_eq!(
+        made["pipeline_version_id"],
+        "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"
+    );
+    assert_eq!(rows_from("split", "train"), json!(["data"]));
+    assert_eq!(rows_from("words", "train"), json!(["train"]));
+    assert_eq!(rows_from("words", "train_words"), json!(["train"]));
+    assert_eq!(rows_from("words", "test"), json!(["test", "train"]));
+    assert_eq!(rows_from("look", "summary"), json!(["rows"]));
+    assert_eq!(
+        step("look")["inputs"],
+        json!([{ "port": "rows", "from": "words.train" }])
+    );
 }

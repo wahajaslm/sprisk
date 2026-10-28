@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.opensmile_audio@1.0.0
 title: openSMILE eGeMAPS acoustic features
 capability_class: transform
+stage: clean
 description: "Extracts the standard eGeMAPSv02 acoustic functional descriptor set and appends it to optional text features."
 entrypoint: sprisk_clean.audio_speech:opensmile_features
 fits_on_train: true

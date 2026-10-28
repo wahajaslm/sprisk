@@ -6,6 +6,7 @@ activity: Features
 question: How are the gaps the model would refuse filled?
 pitfall: Fitting a fill on all rows before the split leaks test statistics into the train rows. Filling a column that is mostly empty makes up most of its values.
 applies_when: { task: [classification, regression] }
+changes: [numbers, categories]
 needs:
   concepts: []
   evidence: [features.gaps]

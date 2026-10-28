@@ -8,35 +8,35 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use sprisk_contracts::{
-    AppliedMethodologyDecision, AttemptState, CreateWalk, DecisionProposal, Method,
-    MethodAssurance, MethodDecided, MethodDecidedOutcome, MethodRequest, MethodologyDecision,
-    MethodologyDecisionByRule, MethodologyReviewItem, Operator, PipelineVersion, PipelineVersionId,
-    QuestionVersion, QuestionVersionId, Report, RunId, RunStatus, Walk, WalkAction, WalkAsk,
-    WalkDetail, WalkId, WalkStatus, WalkStep, WalkStopReason, parse,
+    ArtifactId, AttemptState, CreateWalk, GraphEffect, Method, MethodAssurance, MethodDecided,
+    MethodDecidedOutcome, MethodRequest, MethodShortlisted, MethodStop, MethodologyDecision,
+    Operator, PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId, Report,
+    RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId, WalkStatus, WalkStep,
+    WalkStopReason, parse,
 };
 use sprisk_core::time::format;
 use sprisk_methodology::deciding::{
-    Basis, Effective, Ready, apply_option, bindings, made_by, ready, reopened_too_late,
+    Basis, Effective, Ready, apply_option, bindings, made_by, ready, reopened_too_late, stop_asked,
 };
 use sprisk_methodology::engine::{
-    Action, HeadRun, MODEL_NODE, SCORE_BASELINE_NODE, SCORE_NODE, SHARES_NODE, Start, look_asks,
-    next_action, start, with_test_scoring,
+    HeadRun, MODEL_NODE, SCORE_BASELINE_NODE, SCORE_NODE, SHARES_NODE, Start, question_asks, start,
+    with_test_scoring,
 };
 use sprisk_methodology::flow_decisions::last_verify;
 use sprisk_methodology::measure::{Measuring, fitting, measure};
 use sprisk_methodology::verifying::{Checking, Measured, checked, checking, fresh, sealed_by};
 use sprisk_registry::evidence::EVIDENCE_PORT;
 
-use crate::method_session::MethodSession;
+use crate::method_session::{Decision, MethodSession};
 use crate::report::{self, Scored};
 use crate::{
-    ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, Query, apply_methodology, body,
-    check_local_paths, cite_decision, claim_selection, compile, decision_of, drive_run, id, limit,
-    optional_id, propose, queued_run, review_methodology, run_plan,
+    ApiError, AppState, NOTHING_TO_COMPARE, Query, body, check_local_paths, chosen_selection,
+    cite_decision, claim_run, compile, decision_of, drive_run, id, limit, method_comparison,
+    optional_id, queued_run, run_plan,
 };
 
-/// What the loop-back rule decides; its `max_looks` caps the walk's comparisons too, so the
-/// cap has one source.
+/// What the loop-back method decides; its `max_looks` limit caps the walk's comparisons too,
+/// so the cap has one source.
 const LOOP_BACK: &str = "evaluation.loop_back";
 
 const MAX_ACTIONS: u64 = 200;
@@ -54,7 +54,10 @@ pub(crate) async fn create_walk(
         .store
         .get_question_version(&request.question_version_id)
         .await?;
-    let sources: Vec<String> = request.sources.iter().map(|s| s.to_string()).collect();
+    let mut sources = Vec::with_capacity(request.dataset_version_ids.len());
+    for id in request.dataset_version_ids.iter() {
+        sources.push(crate::datasets::loadable_file(&state, id).await?);
+    }
     let defaults = sprisk_methodology::Defaults::of(&state.registry)?;
     let started = start(&question, &sources, &defaults).map_err(|e| ApiError::BadRequest {
         code: "invalid_walk",
@@ -65,7 +68,8 @@ pub(crate) async fn create_walk(
     let walk_id = format!("wlk_{}", ulid::Ulid::new());
     let mut walk = json!({
         "schema_version": "sprisk.walk/v1", "id": walk_id, "project_id": request.project_id,
-        "question_version_id": request.question_version_id, "sources": request.sources,
+        "question_version_id": request.question_version_id, "sources": sources,
+        "dataset_version_ids": request.dataset_version_ids,
         "max_actions": request.max_actions, "max_wall_seconds": request.max_wall_seconds,
         "status": "walking", "created_at": at,
     });
@@ -294,21 +298,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             .methodology_decision_by_key(&apply_key(&walk, round))
             .await?
         {
-            let decision = match decision {
-                MethodologyDecision::Rule(decision) => decision,
-                method => return record_decided(state, walk, round, &method).await,
-            };
-            let proposal = state
-                .store
-                .get_methodology_proposal(&decision.proposal_id)
-                .await?;
-            let why = proposal
-                .alternatives
-                .iter()
-                .find(|a| a.id.as_str() == decision.alternative_id.as_str())
-                .map_or("", |a| a.reason.as_str());
-            let reason = format!("{why} (applied before a restart)");
-            return record_apply(state, walk, round, &decision, reason.trim_start()).await;
+            return record_decided(state, walk, round, &decision).await;
         }
         let detail = format!(
             "Version {} gained a version the walk did not make.",
@@ -322,19 +312,10 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
     }
 
     let head_run = head_run(state, &steps, &head).await?;
-    let Json(review) = review_methodology(State(state.clone()), Path(head.to_string())).await?;
     let question = state
         .store
         .get_question_version(&walk.question_version_id)
         .await?;
-    let action = next_action(&review, &question, head_run, &state.rules).map_err(|e| match e {
-        sprisk_methodology::ResolveError::Rules(rules) => ApiError::Rules(rules),
-        other => ApiError::Internal(other.to_string()),
-    })?;
-    // Again before acting on the review: a source written while it ran is caught now.
-    if let Some(changed) = changed_source(&walk).await? {
-        return record_stop(state, walk, round, WalkStopReason::SourceChanged, &changed).await;
-    }
     // The look (ADR-0063 amendment): until a rule acts, the walk measures, runs the first flow
     // once and lets the methods decide, so every question is asked at the start, in one list.
     let looking = !steps.iter().any(|s| {
@@ -346,38 +327,40 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
     let pipeline = state.store.get_pipeline_version(&head).await?;
     let operators: Vec<Operator> = state.registry.operators().cloned().collect();
     let made = made_by(&state.rules, &steps).map_err(resolve_error)?;
-    let effective = bindings(&question, &made).map_err(resolve_error)?;
-    let mut notes = Vec::new();
-    // Producers are put in place before a run or a stop, and moved back onto their rows when a
-    // step was added in front of where they attach.
-    if looking || matches!(action, Action::Run { .. } | Action::Stop { .. }) {
-        let measuring = measure(
-            &state.rules,
-            &pipeline,
-            &question,
-            &effective.bindings,
-            &operators,
-            &made,
-        )
-        .map_err(resolve_error)?;
-        if !measuring.effects.is_empty() {
-            return record_measure(state, walk, round, &pipeline, measuring).await;
-        }
-        let kinds = produced_kinds(state, &pipeline);
-        if head_run == HeadRun::NotRun
-            && (looking || (!kinds.is_empty() && matches!(action, Action::Stop { .. })))
-        {
-            let reason = if looking {
-                "The look: runs the first flow once, before any rule acts, so every question is \
-                 found at the start."
-                    .to_owned()
-            } else {
-                format!("Runs the flow to measure {}.", kinds.join(", "))
-            };
-            return run(state, walk, round, &head, deadline, &reason).await;
-        }
-        notes = measuring.left_out;
+    if let Some((stop, why)) = stop_asked(&state.rules, &made, &steps).map_err(resolve_error)? {
+        let reason = match stop {
+            MethodStop::Limitation => WalkStopReason::Limitation,
+            MethodStop::Uncovered => WalkStopReason::Uncovered,
+        };
+        return record_stop(state, walk, round, reason, &why).await;
     }
+    let effective = bindings(&question, &made).map_err(resolve_error)?;
+    // Producers are put in place, and moved back onto their rows when a step was added in
+    // front of where they attach.
+    let measuring = measure(
+        &state.rules,
+        &pipeline,
+        &question,
+        &effective.bindings,
+        &operators,
+        &made,
+    )
+    .map_err(resolve_error)?;
+    if !measuring.effects.is_empty() {
+        return record_measure(state, walk, round, &pipeline, measuring).await;
+    }
+    let kinds = produced_kinds(state, &pipeline);
+    if head_run == HeadRun::NotRun && (looking || !kinds.is_empty()) {
+        let reason = if looking {
+            "The look: runs the first flow once, before any method decides, so every question \
+             is found at the start."
+                .to_owned()
+        } else {
+            format!("Runs the flow to measure {}.", kinds.join(", "))
+        };
+        return run(state, walk, round, &head, deadline, &reason).await;
+    }
+    let notes = measuring.left_out;
     let measured = evidence(state, &steps, &head, &pipeline).await?;
     let fields: BTreeMap<String, Value> = measured
         .iter()
@@ -460,13 +443,37 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
                 reason: format!("A person answered: {label}."),
                 // What raised the question stays with the answer.
                 evidence: used_evidence(method, &measured),
+                selection: None,
             };
             return record_decide(state, walk, round, &read, taking).await;
         }
-        let decided = session
+        let decided = match session
             .decide(&request)
             .await
-            .map_err(|e| ApiError::Internal(format!("method {}: {e}", method.id.as_str())))?;
+            .map_err(|e| ApiError::Internal(format!("method {}: {e}", method.id.as_str())))?
+        {
+            Decision::Decided(_) if method.compare == Some(true) => {
+                return Err(ApiError::Internal(format!(
+                    "compared method {} chose an option: it shortlists, and the comparison chooses",
+                    method.id.as_str()
+                )));
+            }
+            Decision::Decided(decided) => decided,
+            Decision::Shortlisted(listed) if method.compare == Some(true) => {
+                let comparing = MethodComparing {
+                    method,
+                    listed: &listed,
+                    evidence: used_evidence(method, &measured),
+                };
+                return compare_method(state, walk, round, &read, deadline, comparing).await;
+            }
+            Decision::Shortlisted(_) => {
+                return Err(ApiError::Internal(format!(
+                    "method {} shortlisted options, but it is not a compared method",
+                    method.id.as_str()
+                )));
+            }
+        };
         if decided.outcome == MethodDecidedOutcome::Ask {
             asks.push(method_ask(method, &request, &decided)?);
             continue;
@@ -477,11 +484,12 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             assurance: MethodAssurance::Rule,
             reason: decided.reason.to_string(),
             evidence: used_evidence(method, &measured),
+            selection: None,
         };
         return record_decide(state, walk, round, &read, taking).await;
     }
     if looking {
-        asks.extend(look_asks(&review, &question, &state.rules).map_err(resolve_error)?);
+        asks.extend(question_asks(&question).map_err(resolve_error)?);
     }
     if !asks.is_empty() {
         let lead = if looking {
@@ -511,72 +519,37 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             .collect::<Vec<_>>()
             .join(" ")
     };
-    match action {
-        Action::Apply {
-            item,
-            subject,
-            alternative,
-            ..
-        } => {
-            let (_, Json(proposal)) =
-                propose(state, head.as_str(), subject, Some(item.decides.as_str())).await?;
-            let applying = Applying {
-                proposal: &proposal,
-                alternative,
-                reason: item.reason.as_str(),
-            };
-            apply(state, walk, round, applying).await
-        }
-        Action::Compare {
-            item,
-            subject,
-            reason,
-        } => {
-            let comparing = Comparing {
-                item,
-                subject,
-                reason: &reason,
-            };
-            compare(state, walk, round, &head, deadline, comparing).await
-        }
-        Action::Run { reason } => run(state, walk, round, &head, deadline, &reason).await,
-        Action::Stop {
-            reason: WalkStopReason::RunFailed,
-            detail,
-        } => {
-            let failed = failed_steps(state, &steps, &head).await?;
-            let detail = noted(format!("{failed} Still open: {detail}"));
-            record_stop(state, walk, round, WalkStopReason::RunFailed, &detail).await
-        }
-        Action::Stop {
-            reason: WalkStopReason::Complete,
-            detail,
-        } => {
-            let undecided: Vec<String> = fitting(&state.rules, &question)
-                .filter(|m| !made.iter().any(|d| d.decides == m.decides.as_str()))
-                .map(|m| format!("{}: {}", m.decides.as_str(), m.question.as_str()))
-                .collect();
-            if !undecided.is_empty() {
-                let detail = noted(format!(
-                    "Every rule is settled, but these methods have not decided: {}",
-                    undecided.join(" ")
-                ));
-                return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail).await;
-            }
-            if !promised.is_empty() {
-                let checks = holding.map(|verified| verified.verifications.as_slice());
-                if let Some(held) = sealed_by(checks) {
-                    let detail = noted(format!("{detail} {held}"));
-                    return record_stop(state, walk, round, WalkStopReason::Unverified, &detail)
-                        .await;
-                }
-            }
-            score_test_rows(state, walk, round, &head, deadline, &detail).await
-        }
-        Action::Stop { reason, detail } => {
-            record_stop(state, walk, round, reason, &noted(detail)).await
+    if head_run == HeadRun::Failed {
+        let failed = failed_steps(state, &steps, &head).await?;
+        return record_stop(
+            state,
+            walk,
+            round,
+            WalkStopReason::RunFailed,
+            &noted(failed),
+        )
+        .await;
+    }
+    let undecided: Vec<String> = fitting(&state.rules, &question)
+        .filter(|m| !made.iter().any(|d| d.decides == m.decides.as_str()))
+        .map(|m| format!("{}: {}", m.decides.as_str(), m.question.as_str()))
+        .collect();
+    if !undecided.is_empty() {
+        let detail = noted(format!(
+            "These methods have not decided: {}",
+            undecided.join(" ")
+        ));
+        return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail).await;
+    }
+    let detail = "Every method that fits the question has decided.";
+    if !promised.is_empty() {
+        let checks = holding.map(|verified| verified.verifications.as_slice());
+        if let Some(held) = sealed_by(checks) {
+            let detail = noted(format!("{detail} {held}"));
+            return record_stop(state, walk, round, WalkStopReason::Unverified, &detail).await;
         }
     }
+    score_test_rows(state, walk, round, &head, deadline, detail).await
 }
 
 /// Stores the version with the producers placed, and the measure step that made it, and
@@ -630,14 +603,15 @@ fn produced_kinds(state: &AppState, pipeline: &PipelineVersion) -> Vec<String> {
 }
 
 /// What the producers of `head` measured in the walk's run of it, by evidence kind, with the
-/// step that measured it. Empty when the walk has not run it.
+/// step that measured it, and what the comparison that chose a model step found, with that
+/// step. Only the comparisons when the walk has not run it.
 async fn evidence(
     state: &AppState,
     steps: &[WalkStep],
     head: &PipelineVersionId,
     pipeline: &PipelineVersion,
 ) -> Result<Measured, ApiError> {
-    let mut found = BTreeMap::new();
+    let mut found = compared(state, pipeline).await?;
     let Some(run_id) = head_run_id(steps, head) else {
         return Ok(found);
     };
@@ -678,6 +652,41 @@ async fn evidence(
     Ok(found)
 }
 
+/// What the comparison the model step of `pipeline` was chosen by found (ADR-0063 D4): the
+/// select step's evidence, written beside the SelectionDecision the step's decision cites.
+/// A select step without that output predates D4 and is refused.
+async fn compared(state: &AppState, pipeline: &PipelineVersion) -> Result<Measured, ApiError> {
+    let mut found = BTreeMap::new();
+    let Some(model) = pipeline.nodes.iter().find(|n| n.id.as_str() == MODEL_NODE) else {
+        return Ok(found);
+    };
+    let Some(selection) = chosen_selection(state, pipeline, model).await? else {
+        return Ok(found);
+    };
+    let (_, written) = state
+        .store
+        .outputs(&selection.producer_attempt_id)
+        .await?
+        .into_iter()
+        .find(|(port, _)| port == EVIDENCE_PORT)
+        .ok_or_else(|| {
+            ApiError::Internal(format!(
+                "the select step that wrote {} wrote no evidence",
+                selection.id.as_str()
+            ))
+        })?;
+    let bytes = state.artifacts.get(written.content_hash.as_str()).await?;
+    // Checked against the select step's manifest when its outputs were saved.
+    let set: BTreeMap<String, Value> = serde_json::from_slice(&bytes).map_err(|e| {
+        ApiError::Internal(format!("evidence beside {}: {e}", selection.id.as_str()))
+    })?;
+    found.extend(
+        set.into_iter()
+            .map(|(kind, fields)| (kind, (model.id.to_string(), fields))),
+    );
+    Ok(found)
+}
+
 /// A method's ask, with every option still open for a person to pick from: none a failed
 /// promise ruled out.
 fn method_ask(
@@ -708,6 +717,8 @@ struct Taking<'m> {
     reason: String,
     /// What the method read, which a person's answer rests on too.
     evidence: Vec<Value>,
+    /// The SelectionDecision a compared method's option won by.
+    selection: Option<ArtifactId>,
 }
 
 /// The evidence `method` needs, as its producers measured it, with the step of each.
@@ -774,6 +785,9 @@ async fn record_decide(
     }
     if !taking.evidence.is_empty() {
         decision["evidence"] = json!(taking.evidence);
+    }
+    if let Some(selection) = &taking.selection {
+        decision["selection_id"] = json!(selection);
     }
     let made = if applied.effects.is_empty() {
         None
@@ -948,7 +962,7 @@ fn resolve_error(error: sprisk_methodology::ResolveError) -> ApiError {
     }
 }
 
-/// Every rule is settled: the model is scored on the test rows, once (ADR-0060). A version
+/// Every method has decided: the model is scored on the test rows, once (ADR-0060). A version
 /// with one Evaluate added is stored with its run and step, and run; the next round reads the
 /// score and ends the walk. No rule reads it.
 async fn score_test_rows(
@@ -1113,7 +1127,7 @@ async fn finish_scoring(
     let answer = format!(
         "Test rows, scored once ({n_rows} rows): {bar}{reported}; the baseline on the same rows: {floor}."
     );
-    let detail = format!("Every rule that fits the question is settled. {answer}");
+    let detail = format!("Every method that fits the question has decided. {answer}");
     let flow = scored.made_pipeline_version_id.as_ref().ok_or_else(|| {
         ApiError::Internal(format!(
             "the score step of walk {} names no flow",
@@ -1265,20 +1279,6 @@ async fn changed_source(walk: &Walk) -> Result<Option<String>, ApiError> {
     Ok(None)
 }
 
-/// What a comparison compares, on which step, and why.
-struct Comparing<'a> {
-    item: &'a MethodologyReviewItem,
-    subject: &'a str,
-    reason: &'a str,
-}
-
-/// A rule's recommended alternative the walk applies, and the proposal it comes from.
-struct Applying<'a> {
-    proposal: &'a DecisionProposal,
-    alternative: &'a str,
-    reason: &'a str,
-}
-
 /// When the walk's time runs out: its wall budget after it was created.
 fn deadline(walk: &Walk) -> Result<jiff::Timestamp, ApiError> {
     let created: jiff::Timestamp = walk
@@ -1355,199 +1355,191 @@ async fn failed_attempts(state: &AppState, run_id: &RunId) -> Result<String, Api
     Ok(format!("Run {}: {}", run_id.as_str(), failed.join(" ")))
 }
 
-/// Compares the routes of `item`'s rule on step `subject` through the same model selection as
-/// a person (ADR-0050): on fixed folds with a fixed seed. The round that starts it drives its
-/// run to the end or the walk's deadline; the next applies its winner, or stops when none
-/// beats the baseline.
-async fn compare(
+/// A compared method's shortlist, and what the method read.
+struct MethodComparing<'m> {
+    method: &'m Method,
+    listed: &'m MethodShortlisted,
+    evidence: Vec<Value>,
+}
+
+/// Compares the options a compared method shortlisted (ADR-0063 D3) as a rule's shortlist is
+/// compared (ADR-0050): each option swaps the model step for its model, on fixed folds with a
+/// fixed seed. The round that starts the comparison drives its run; the next takes the winner
+/// as the method's decision, or stops when none beats the baseline.
+async fn compare_method(
     state: &AppState,
     walk: Walk,
     round: usize,
-    head: &PipelineVersionId,
+    read: &Read<'_>,
     deadline: jiff::Timestamp,
-    Comparing {
-        item,
-        subject,
-        reason,
-    }: Comparing<'_>,
+    MethodComparing {
+        method,
+        listed,
+        evidence,
+    }: MethodComparing<'_>,
 ) -> Result<WalkStatus, ApiError> {
-    // A new comparison is a new look at the folds; past the cap, more looks would fit them.
-    let fresh = state
-        .store
-        .selection_for(head, &id(subject)?)
-        .await?
-        .is_none();
-    let looks = state.store.looks(head).await?;
-    let most = max_looks(state)?;
-    if fresh && looks >= most {
-        let detail = format!(
-            "{} (step {subject}): the flow has looked at its folds {looks} times, the most \
-             allowed ({most}); more comparisons would fit the folds.",
-            item.decides.as_str()
-        );
-        return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
+    let head = read.head;
+    let basis = Basis {
+        bindings: &read.effective.bindings,
+        pipeline: head,
+        operators: read.operators,
+        measured: read.measured,
+        question: read.question,
+    };
+    let mut swaps = Vec::with_capacity(listed.shortlist.len());
+    for option in &listed.shortlist {
+        let applied = apply_option(method, option.as_str(), MethodAssurance::Rule, &basis)
+            .map_err(resolve_error)?;
+        swaps.push((option.as_str(), applied.effects));
     }
-    let Claimed {
-        selection,
-        plan: claimed,
-        ..
-    } = match claim_selection(state, head.as_str(), subject).await {
-        Ok(claimed) => claimed,
-        Err(ApiError::BadRequest { code, message })
-            if code == NOT_COMPARED || code == NOTHING_TO_COMPARE =>
-        {
-            let detail = format!("{} ({code}: {message})", item.decides.as_str());
+    let mut models = Vec::with_capacity(swaps.len());
+    for (option, effects) in &swaps {
+        let [
+            GraphEffect::ReplaceNode {
+                node_id,
+                operator,
+                params,
+            },
+        ] = effects.as_slice()
+        else {
+            return Err(ApiError::Internal(format!(
+                "option {option} of compared method {} does not swap exactly one step",
+                method.id.as_str()
+            )));
+        };
+        models.push((
+            node_id.as_str(),
+            sprisk_methodology::Candidate {
+                id: option,
+                operator: operator.as_str(),
+                params,
+            },
+        ));
+    }
+    let subject = models[0].0;
+    if let Some((other, _)) = models.iter().find(|(step, _)| *step != subject) {
+        return Err(ApiError::Internal(format!(
+            "compared method {} swaps steps {subject} and {other}: a comparison is of one step",
+            method.id.as_str()
+        )));
+    }
+    let left_out = method
+        .options
+        .iter()
+        .filter(|o| !listed.shortlist.contains(&o.id))
+        .map(|o| (o.id.to_string(), listed.reason.to_string()))
+        .collect();
+    let candidates = sprisk_methodology::Candidates {
+        subject,
+        models: models.into_iter().map(|(_, c)| c).collect(),
+        left_out,
+    };
+    let step_id = id(subject)?;
+    let saved = state.store.selection_for(&head.id, &step_id).await?;
+    // A new comparison is a new look at the folds; past the cap, more looks would fit them.
+    if saved.is_none() {
+        let looks = state.store.looks(&head.id).await?;
+        let most = max_looks(state)?;
+        if looks >= most {
+            let detail = format!(
+                "{} (step {subject}): the flow has looked at its folds {looks} times, the most \
+                 allowed ({most}); more comparisons would fit the folds.",
+                method.decides.as_str()
+            );
+            return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
+        }
+    }
+    let (comparison, run) = match saved {
+        Some((comparison, _)) if comparison.compares_method.as_ref() != Some(&method.id) => {
+            let detail = format!(
+                "{}: step {subject} is already compared for something else.",
+                method.decides.as_str()
+            );
             return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail).await;
         }
-        Err(other) => return Err(other),
+        Some(saved) => saved,
+        None => {
+            let made = match method_comparison(state, head, read.question, &method.id, &candidates)
+                .await
+            {
+                Ok(made) => made,
+                Err(ApiError::BadRequest { code, message }) if code == NOTHING_TO_COMPARE => {
+                    let detail = format!("{} ({code}: {message})", method.decides.as_str());
+                    return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail)
+                        .await;
+                }
+                Err(other) => return Err(other),
+            };
+            let (comparison, _) = state
+                .store
+                .insert_selection(&head.id, &step_id, &made)
+                .await?;
+            (comparison, None)
+        }
     };
-    if selection.proposal.rule.as_str() != item.rule.as_str() {
-        let detail = format!(
-            "{}: step {subject} is compared for {}, not for this rule.",
-            item.decides.as_str(),
-            selection.proposal.rule.as_str()
-        );
-        return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail).await;
-    }
-    let run_id = selection.run.id.clone();
+    let (run, claimed) = claim_run(state, &head.id, &step_id, &comparison, run).await?;
     if let Some(plan) = claimed {
         let compared = json!({
-            "pipeline_version_id": head, "rule": item.rule, "decides": item.decides,
-            "subject_node_id": subject, "run_id": run_id,
+            "pipeline_version_id": head.id, "method": method.id, "decides": method.decides,
+            "subject_node_id": subject, "run_id": run.id,
         });
         let step = step(
             state,
             walk.id.as_str(),
             round,
             WalkAction::Compare,
-            reason,
+            listed.reason.as_str(),
             compared,
         )?;
         state.store.record_walk_step(&walk, &step).await?;
-        let comparison = &selection.comparison;
-        drive_run(state, &run_id, comparison, &plan, None, Some(deadline))
+        drive_run(state, &run.id, &comparison, &plan, None, Some(deadline))
             .await
-            .map_err(|e| ApiError::Internal(format!("run {}: {e}", run_id.as_str())))?;
+            .map_err(|e| ApiError::Internal(format!("run {}: {e}", run.id.as_str())))?;
         return Ok(WalkStatus::Walking);
     }
-    let ended = state.store.get_run(&run_id).await?.status;
-    if matches!(ended, RunStatus::Queued | RunStatus::Running) {
-        // Started by a person, or left by a walk that stopped mid-run: walk again once it ends.
+    if matches!(run.status, RunStatus::Queued | RunStatus::Running) {
         let detail = format!(
-            "The comparison for {} is still {ended} in run {}; walk again once it ends.",
-            item.decides.as_str(),
-            run_id.as_str()
+            "The comparison for {} is still {} in run {}; walk again once it ends.",
+            method.decides.as_str(),
+            run.status,
+            run.id.as_str()
         );
         return record_stop(state, walk, round, WalkStopReason::Error, &detail).await;
     }
-    if ended != RunStatus::Succeeded {
-        let failed = failed_attempts(state, &run_id).await?;
+    if run.status != RunStatus::Succeeded {
+        let failed = failed_attempts(state, &run.id).await?;
         let detail = format!(
-            "The comparison for {} ended {ended}. {failed}",
-            item.decides.as_str()
+            "The comparison for {} ended {}. {failed}",
+            method.decides.as_str(),
+            run.status
         );
         return record_stop(state, walk, round, WalkStopReason::RunFailed, &detail).await;
     }
-    let (decision, _) = decision_of(state, &selection.comparison)
+    let (decision, artifact) = decision_of(state, &comparison)
         .await?
         .ok_or_else(|| ApiError::Internal(format!("comparison of {subject} decided nothing")))?;
     let Some(winner) = &decision.winner else {
         let detail = format!(
             "{} (step {subject}): no candidate beats the baseline on the same folds. {}",
-            item.decides.as_str(),
+            method.decides.as_str(),
             decision.reason.as_str()
         );
         return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
     };
-    let applying = Applying {
-        proposal: &selection.proposal,
-        alternative: winner.as_str(),
-        reason: decision.reason.as_str(),
+    let taking = Taking {
+        method,
+        option: winner.to_string(),
+        assurance: MethodAssurance::Rule,
+        reason: decision.reason.to_string(),
+        evidence,
+        selection: Some(artifact),
     };
-    apply(state, walk, round, applying).await
-}
-
-/// Applies `alternative` to step `subject` through the same Apply as a person, keyed by the
-/// walk and round, so a repeated round gets the saved decision.
-async fn apply(
-    state: &AppState,
-    walk: Walk,
-    round: usize,
-    Applying {
-        proposal,
-        alternative,
-        reason,
-    }: Applying<'_>,
-) -> Result<WalkStatus, ApiError> {
-    let choice = json!({
-        "alternative_id": alternative,
-        "idempotency_key": apply_key(&walk, round),
-    });
-    let applied = apply_methodology(
-        State(state.clone()),
-        Path(proposal.id.to_string()),
-        choice.to_string(),
-    )
-    .await;
-    let decision = match applied {
-        Ok((_, Json(AppliedMethodologyDecision { decision, .. }))) => match decision {
-            MethodologyDecision::Rule(decision) => decision,
-            MethodologyDecision::Method(method) => {
-                return Err(ApiError::Internal(format!(
-                    "the apply key of walk {} round {round} names method decision {}",
-                    walk.id.as_str(),
-                    method.id.as_str()
-                )));
-            }
-        },
-        // Someone changed the head while this round reviewed it.
-        Err(ApiError::BadRequest {
-            code: "stale_proposal",
-            message,
-        }) => {
-            return record_stop(state, walk, round, WalkStopReason::Stale, &message).await;
-        }
-        Err(other) => return Err(other),
-    };
-    record_apply(state, walk, round, &decision, reason).await
+    record_decide(state, walk, round, read, taking).await
 }
 
 /// The key of the apply a walk takes in `round`: a replayed apply returns the saved decision.
 fn apply_key(walk: &Walk, round: usize) -> String {
     format!("{}-round-{round}", walk.id.as_str())
-}
-
-/// Records the apply step of `decision` and moves the walk's head to the version it made.
-async fn record_apply(
-    state: &AppState,
-    mut walk: Walk,
-    round: usize,
-    decision: &MethodologyDecisionByRule,
-    reason: &str,
-) -> Result<WalkStatus, ApiError> {
-    let decides = state
-        .rules
-        .rule(decision.rule.as_str())
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .decides
-        .clone();
-    let made = json!({
-        "pipeline_version_id": decision.base_pipeline_version_id, "rule": decision.rule,
-        "decides": decides, "subject_node_id": decision.subject_node_id,
-        "alternative_id": decision.alternative_id, "methodology_decision_id": decision.id,
-        "made_pipeline_version_id": decision.pipeline_version_id,
-    });
-    let step = step(
-        state,
-        walk.id.as_str(),
-        round,
-        WalkAction::Apply,
-        reason,
-        made,
-    )?;
-    walk.head_pipeline_version_id = Some(decision.pipeline_version_id.clone());
-    state.store.record_walk_step(&walk, &step).await?;
-    Ok(WalkStatus::Walking)
 }
 
 /// Runs the head to its end, or to the walk's deadline. The run and its step are stored
@@ -1657,13 +1649,18 @@ fn internal<T>(parsed: Result<T, sprisk_contracts::ContractError>) -> Result<T, 
     parsed.map_err(|e| ApiError::Internal(e.to_string()))
 }
 
-/// The most looks at a flow's folds, as the loop-back rule's settings state it.
+/// The most looks at a flow's folds, as the loop-back method's limits state it.
 fn max_looks(state: &AppState) -> Result<i64, ApiError> {
     state
         .rules
-        .rules()
-        .find(|r| r.decides.as_str() == LOOP_BACK)
-        .and_then(|r| r.policy_thresholds.get("max_looks"))
-        .and_then(serde_json::Value::as_i64)
-        .ok_or_else(|| ApiError::Internal(format!("no rule deciding {LOOP_BACK} states max_looks")))
+        .methods()
+        .find(|m| m.decides.as_str() == LOOP_BACK)
+        .and_then(|m| m.limits.as_ref())
+        .and_then(|limits| limits.iter().find(|(k, _)| k.as_str() == "max_looks"))
+        .ok_or_else(|| {
+            ApiError::Internal(format!("no method deciding {LOOP_BACK} states max_looks"))
+        })
+        .and_then(|(_, most)| {
+            i64::try_from(*most).map_err(|e| ApiError::Internal(format!("max_looks: {e}")))
+        })
 }

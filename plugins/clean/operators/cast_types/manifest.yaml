@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.cast_types@1.0.0
 title: Numeric type casting
 capability_class: transform
+stage: clean
 description: Text columns that hold numbers become numbers. Fails on a value that does not read as a number, naming it.
 entrypoint: sprisk_clean.columns:cast_types
 inputs: [{ name: data, kind: table }]

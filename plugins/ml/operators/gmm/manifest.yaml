@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clustering.gmm@1.0.0
 title: Gaussian mixture clustering
 capability_class: transform
+stage: model
 model: { family: distance_based }
 description: "Gaussian Mixture Models clustering: fits K multivariate Gaussian components with EM."
 entrypoint: sprisk_ml.clustering:gmm

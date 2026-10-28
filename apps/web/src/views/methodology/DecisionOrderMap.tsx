@@ -72,7 +72,7 @@ export function DecisionOrderMap({ methods, operators, picked, onPick }: { metho
 
 /** The picked decision: its choices with when and why, what it is decided from, what it
  * waits for, and its pitfall. */
-function MethodDetail({ current, all, operators, onPick }: { current: OrderedMethod; all: OrderedMethod[]; operators: Operator[]; onPick: (id: string) => void }) {
+export function MethodDetail({ current, all, operators, onPick }: { current: OrderedMethod; all: OrderedMethod[]; operators: Operator[]; onPick: (id: string) => void }) {
   const { method, order } = current;
   const waits = method.needs.decisions.flatMap((d) => all.filter((m) => m.method.decides === d));
   const readBy = all.filter((m) => m.method.needs.decisions.includes(method.decides));

@@ -41,6 +41,7 @@ def decide(
                 "decisions": decisions or {},
                 "bound": bound or [],
                 **({"statements": statements} if statements is not None else {}),
+                **({"limits": manifest["limits"]} if "limits" in manifest else {}),
                 "ruled_out": [
                     {"option": o, "verification": _promise(manifest, o), "detail": d}
                     for o, d in ruled.items()

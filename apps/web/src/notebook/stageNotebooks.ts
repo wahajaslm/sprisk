@@ -3,18 +3,9 @@ import type { FlowDecision, Node, Operator, PipelineVersion } from "@sprisk/cont
 import { isCodeOperator } from "../flow/edit.ts";
 import { namedPorts, nodeOf, notebookOrder, outputName } from "../flow/notebook.ts";
 import { portOf, stepOf } from "../flow/ports.ts";
-import { type Stage, STAGE_TITLE, STAGES, stageOf } from "../flow/stages.ts";
+import { type Stage, STAGE_OF, STAGE_TITLE, STAGES, stageOf } from "../flow/stages.ts";
 
 type Operators = Map<string, Operator>;
-
-const STAGE_OF_NODE: Record<NonNullable<Node["stage"]>, Stage> = {
-  load: "Load",
-  split: "Split",
-  explore: "Explore",
-  clean: "Clean",
-  model: "Model",
-  evaluate: "Evaluate",
-};
 
 /** Each step's stage (ADR-0055, ADR-0065): the one it keeps, else the one its operator implies,
  * but never before a stage it reads from. A look at the loaded rows is in Explore; a look at
@@ -25,7 +16,7 @@ export function stagesOf(pipeline: PipelineVersion, operators: Operators): Map<s
   for (const node of notebookOrder(pipeline)) {
     const operator = operators.get(node.operator);
     const read = pipeline.edges.filter((e) => stepOf(e.to) === node.id).map((e) => placed.get(stepOf(e.from)) ?? "Load");
-    const own = node.stage ? STAGE_OF_NODE[node.stage] : operator ? stageOf(operator) : "Explore";
+    const own = node.stage ? STAGE_OF[node.stage] : operator ? stageOf(operator) : "Explore";
     const at = latest([own, ...read]);
     placed.set(node.id, at === "Split" && (own === "Clean" || own === "Features") ? "Features" : at);
   }

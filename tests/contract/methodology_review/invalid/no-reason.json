@@ -1,8 +1,0 @@
-{
-  "schema_version": "sprisk.methodology_review/v1",
-  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-  "items": [
-    { "rule": "methodology.supervised.data_split@1.0.0", "decides": "split.method", "stage": "split", "status": "settled" }
-  ],
-  "next": []
-}

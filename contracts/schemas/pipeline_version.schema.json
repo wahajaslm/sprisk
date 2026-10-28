@@ -23,6 +23,10 @@
           "$ref": "#/$defs/MethodologyProposalId",
           "description": "The shortlist proposal whose models this version cross-validates (ADR-0046). A comparison is a side version, not an edit: it has no parent_id, so the proposal stays applicable. Absent on every other version."
         },
+        "compares_method": {
+          "$ref": "#/$defs/MethodRef",
+          "description": "The compared method whose shortlist this version cross-validates (ADR-0063 D3), a side version like one that `compares` a proposal. A version has at most one of the two. Absent on every other version."
+        },
         "nodes": { "type": "array", "items": { "$ref": "#/$defs/Node" } },
         "edges": { "type": "array", "items": { "$ref": "#/$defs/Edge" } },
         "created_at": { "$ref": "#/$defs/Timestamp" }
@@ -54,8 +58,8 @@
     },
     "Stage": {
       "type": "string",
-      "enum": ["load", "split", "explore", "clean", "model", "evaluate"],
-      "description": "A flow's stages in order; each is one notebook (ADR-0055). Load reads the data and looks at all rows; Explore looks at the training rows, after the split."
+      "enum": ["load", "explore", "clean", "split", "model", "evaluate"],
+      "description": "A flow's stages in working order; each is one notebook (ADR-0055, ADR-0065). Load reads the data, Explore looks at all of it, Clean fixes what needs no fitting, Split sets the test rows aside."
     },
     "NodeNotes": {
       "type": "object",

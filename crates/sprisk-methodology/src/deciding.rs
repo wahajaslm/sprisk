@@ -6,9 +6,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
-    Binding, GraphEffect, Method, MethodAssurance, MethodRequest, Operator, OperatorAttachSide,
-    OperatorRole, PipelineVersion, PromiseResult, QuestionStatement, QuestionVersion,
-    RuledOutOption, WalkAction, WalkAsk, WalkStep, parse,
+    Binding, GraphEffect, Method, MethodAssurance, MethodRequest, MethodStop, Operator,
+    OperatorAttachSide, OperatorRole, PipelineVersion, PromiseResult, QuestionStatement,
+    QuestionVersion, RuledOutOption, WalkAction, WalkAsk, WalkStep, parse,
 };
 
 use crate::compare::upstream;
@@ -109,6 +109,40 @@ pub fn made_by(catalog: &RuleCatalog, steps: &[WalkStep]) -> Result<Vec<Made>, R
         }
     }
     Ok(made)
+}
+
+/// The stop a decision in force asks for (ADR-0063 slice 6): its option's `stop`, and why, as
+/// the decide step that made it says. The walk stops on it, before anything else.
+pub fn stop_asked(
+    catalog: &RuleCatalog,
+    made: &[Made],
+    steps: &[WalkStep],
+) -> Result<Option<(MethodStop, String)>, ResolveError> {
+    for step in steps.iter().filter(|s| s.action == WalkAction::Decide) {
+        let (Some(decides), Some(option)) = (&step.decides, &step.option) else {
+            continue;
+        };
+        let in_force = made
+            .iter()
+            .any(|m| m.round == step.round && m.decides == decides.as_str());
+        if !in_force {
+            continue;
+        }
+        let method = catalog
+            .methods()
+            .find(|m| m.decides.as_str() == decides.as_str())
+            .ok_or_else(|| ResolveError::UnknownMethod(decides.to_string()))?;
+        let stop = method
+            .options
+            .iter()
+            .find(|o| o.id == *option)
+            .and_then(|o| o.action.as_ref())
+            .and_then(|a| a.stop);
+        if let Some(stop) = stop {
+            return Ok(Some((stop, step.reason.to_string())));
+        }
+    }
+    Ok(None)
 }
 
 /// Why the walk cannot reopen a decision a failed promise ruled out: a comparison, a rule's
@@ -272,7 +306,8 @@ impl Made {
 /// they read is made, no concept they read is only a guess, no undecided method may still
 /// change the rows their evidence is measured on, and each evidence kind they need is in
 /// `measured` or cannot be measured (see `measure::measurable`). One whose evidence can be
-/// measured but is not yet waits for the walk to measure it.
+/// measured but is not yet waits for the walk to measure it, as does one needing what a
+/// comparison finds, until the walk compares.
 pub fn ready<'c>(
     catalog: &'c RuleCatalog,
     question: &QuestionVersion,
@@ -362,6 +397,21 @@ pub fn ready<'c>(
                 continue 'methods;
             }
         }
+        // A compared method fits its candidates on the rows its step reads, with its
+        // settings: it waits while any other method may change either, whatever the order.
+        if method.compare == Some(true) {
+            for changed in changed_steps(method, pipeline, &by_id) {
+                let Changed::Replaced(at) = changed else {
+                    continue;
+                };
+                if open
+                    .iter()
+                    .any(|other| other.order != order && other.changes_input_of(at, pipeline))
+                {
+                    continue 'methods;
+                }
+            }
+        }
         let mut evidence = Map::new();
         for kind in &method.needs.evidence {
             if let Some(fields) = measured.get(kind.as_str()) {
@@ -369,6 +419,10 @@ pub fn ready<'c>(
                 continue;
             }
             let producer = methods::producer_of(kind.as_str(), &by_id)?;
+            // What a comparison finds is measured once the walk compares.
+            if producer.role == Some(OperatorRole::Select) {
+                continue 'methods;
+            }
             let operator_of = |id: &str| by_id.get(id).copied();
             if measurable(producer, |c| bound.contains(c), pipeline, operator_of)? {
                 continue 'methods;
@@ -393,6 +447,9 @@ pub fn ready<'c>(
         }
         if !method.needs.statements.is_empty() {
             request["statements"] = Value::Object(statements(question, &method.needs.statements)?);
+        }
+        if let Some(limits) = &method.limits {
+            request["limits"] = json!(limits);
         }
         let request = parse(&request.to_string())?;
         found.ready.push(Ready { method, request });
@@ -454,17 +511,31 @@ impl Open<'_> {
                 earlier || (writes && !self.writes_measured.contains(&at))
             }
             Changed::Replaced(s) | Changed::InsertedBefore(s) => before.contains(s),
+            // A setting changes no rows.
+            Changed::Set(_) => false,
+        })
+    }
+
+    /// Whether this method may still change the rows step `at` reads, or its settings.
+    fn changes_input_of(&self, at: &str, pipeline: &PipelineVersion) -> bool {
+        let before = upstream(pipeline, at);
+        self.changes.iter().any(|c| match c {
+            Changed::InsertedBefore(s) => before.contains(s),
+            Changed::Replaced(s) => *s != at && before.contains(s),
+            Changed::Set(s) => *s == at,
         })
     }
 }
 
-/// A step a method's option changes: one it inserts a step before, or one it replaces.
+/// A step a method's option changes: one it inserts a step before, one it replaces, or one
+/// it gives settings.
 enum Changed<'p> {
     InsertedBefore(&'p str),
     Replaced(&'p str),
+    Set(&'p str),
 }
 
-/// The steps `method`'s options insert before or replace, found by role.
+/// The steps `method`'s options insert before, replace or set, found by role.
 fn changed_steps<'p>(
     method: &Method,
     pipeline: &'p PipelineVersion,
@@ -483,6 +554,10 @@ fn changed_steps<'p>(
         .iter()
         .filter_map(|a| a.replace.as_ref().map(|r| r.role))
         .collect();
+    let set: BTreeSet<OperatorRole> = actions
+        .iter()
+        .filter_map(|a| a.set.as_ref().map(|s| s.role))
+        .collect();
     let mut changed: Vec<Changed<'p>> = steps_with(pipeline, by_id, |r| inserted.contains(&r))
         .into_iter()
         .map(Changed::InsertedBefore)
@@ -491,6 +566,11 @@ fn changed_steps<'p>(
         steps_with(pipeline, by_id, |r| replaced.contains(&r))
             .into_iter()
             .map(Changed::Replaced),
+    );
+    changed.extend(
+        steps_with(pipeline, by_id, |r| set.contains(&r))
+            .into_iter()
+            .map(Changed::Set),
     );
     changed
 }
@@ -632,12 +712,22 @@ pub fn apply_option(
             },
             &format!("the role {role}"),
         )?;
-        let mut params: Map<String, Value> = replace
-            .settings
+        // A model swapped for another keeps its target, task, features and costs, as a rule's
+        // swap does; the option's own settings come on top.
+        let replaced = pipeline
+            .nodes
             .iter()
-            .flat_map(|s| s.iter())
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+            .find(|n| n.id.as_str() == step)
+            .ok_or_else(|| ResolveError::UnknownNode(step.clone()))?;
+        let all: Vec<&Operator> = operators.iter().collect();
+        let mut params = crate::decision::model_settings(&all, replaced, operator.id.as_str())?;
+        params.extend(
+            replace
+                .settings
+                .iter()
+                .flat_map(|s| s.iter())
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
         let concepts = replace
             .concepts
             .iter()
@@ -838,4 +928,117 @@ fn one_step(
             found.join(", ")
         ))),
     }
+}
+
+/// The compared method that decides a step running operator `operator` (ADR-0063 D3): one
+/// whose options swap a step of that operator's role. None when no compared method does.
+pub fn compared_method<'c>(catalog: &'c RuleCatalog, operator: &Operator) -> Option<&'c Method> {
+    let role = operator.role?;
+    catalog.methods().find(|m| {
+        m.compare == Some(true)
+            && m.options
+                .iter()
+                .filter_map(|o| o.action.as_ref()?.replace.as_ref())
+                .any(|r| r.role == role)
+    })
+}
+
+/// The request a compared method decides on outside a walk, for a person's model selection
+/// (ADR-0063 D3): `evidence` measured on the step's train rows and the question's statements.
+/// A method that reads decisions or concepts has none to read there, so it is refused.
+pub fn person_request(
+    catalog: &RuleCatalog,
+    method: &Method,
+    question: &QuestionVersion,
+    evidence: Map<String, Value>,
+) -> Result<MethodRequest, ResolveError> {
+    if !method.needs.decisions.is_empty() || !method.needs.concepts.is_empty() {
+        return Err(ResolveError::Selection(format!(
+            "{} reads decisions or concepts, which only a walk makes",
+            method.id.as_str()
+        )));
+    }
+    let module = catalog.method_module(method.id.as_str())?;
+    let options: Vec<&str> = method.options.iter().map(|o| o.id.as_str()).collect();
+    Ok(parse(
+        &json!({
+            "schema_version": "sprisk.method_request/v1",
+            "module": module.display().to_string(), "method": method.id,
+            "needs": method.needs, "options": options, "task": question.task.value,
+            "evidence": evidence, "decisions": {}, "bound": [],
+            "statements": statements(question, &method.needs.statements)?,
+        })
+        .to_string(),
+    )?)
+}
+
+/// A compared method's options offered to a person for step `node_id` (ADR-0063 D3), each
+/// swapping the step for its model on the basis's flow, with the shortlist its decide()
+/// answered, so a person compares, studies and applies them as a rule's shortlist. An option
+/// left off can still be chosen with a reason. Nothing is recommended: the comparison is.
+/// `evidence` is what the shortlist was decided on, for the person to read.
+pub fn compared_proposal(
+    method: &Method,
+    basis: &Basis,
+    node_id: &str,
+    listed: &sprisk_contracts::MethodShortlisted,
+    evidence: Value,
+    stamp: crate::Stamp,
+) -> Result<sprisk_contracts::DecisionProposal, ResolveError> {
+    let mut alternatives = Vec::with_capacity(method.options.len());
+    for option in &method.options {
+        let applied = apply_option(
+            method,
+            option.id.as_str(),
+            MethodAssurance::Confirmed,
+            basis,
+        )?;
+        let [
+            effect @ GraphEffect::ReplaceNode {
+                node_id: swapped, ..
+            },
+        ] = applied.effects.as_slice()
+        else {
+            return Err(ResolveError::Selection(format!(
+                "option {} of {} does not swap exactly one step",
+                option.id.as_str(),
+                method.id.as_str()
+            )));
+        };
+        if swapped.as_str() != node_id {
+            return Err(ResolveError::Selection(format!(
+                "option {} of {} swaps step {}, not {node_id}",
+                option.id.as_str(),
+                method.id.as_str(),
+                swapped.as_str()
+            )));
+        }
+        let reason = if listed.shortlist.contains(&option.id) {
+            option.rationale.to_string()
+        } else {
+            format!("Left off: {}", listed.reason.as_str())
+        };
+        alternatives.push(json!({
+            "id": option.id, "label": option.label, "description": option.description,
+            "applicability": "applicable", "reason": reason, "effect": effect,
+        }));
+    }
+    let fingerprint = json!({ "rule": method.id, "question": basis.question,
+                              "pipeline": basis.pipeline, "node_id": node_id });
+    let fingerprint = format!(
+        "sha256:{}",
+        hex::encode(<sha2::Sha256 as sha2::Digest>::digest(serde_json::to_vec(
+            &fingerprint
+        )?))
+    );
+    Ok(parse(
+        &json!({
+            "schema_version": "sprisk.decision_proposal/v1", "id": stamp.id, "rule": method.id,
+            "question_version_id": basis.question.id, "pipeline_version_id": basis.pipeline.id,
+            "subject_node_id": node_id, "evidence": evidence, "alternatives": alternatives,
+            "shortlist": listed.shortlist,
+            "fingerprint": fingerprint, "created_at": stamp.created_at,
+        })
+        .to_string(),
+    )?)
 }

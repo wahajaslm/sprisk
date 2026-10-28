@@ -56,8 +56,25 @@
         "applies_when": {
           "$ref": "#/$defs/MethodAppliesWhen"
         },
+        "compare": {
+          "type": "boolean",
+          "description": "Its decide() answers with a shortlist, not one option: the engine compares those options on the same folds and takes the winner by ADR-0050 (one-standard-error rule, baseline test). Each option replaces one step. Absent: false."
+        },
+        "changes": {
+          "type": "array",
+          "description": "The kinds of model input its step changes, each a lane in the data flow; a step changing two kinds is where those lanes meet. Absent: its step works on the whole table, or it adds no step.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["numbers", "categories", "dates", "text", "image", "audio"]
+          }
+        },
         "needs": {
           "$ref": "#/$defs/MethodNeeds"
+        },
+        "limits": {
+          "$ref": "#/$defs/MethodLimits"
         },
         "options": {
           "type": "array",
@@ -246,8 +263,22 @@
         },
         "set": {
           "$ref": "#/$defs/MethodSet"
+        },
+        "stop": {
+          "$ref": "#/$defs/MethodStop"
         }
       }
+    },
+    "MethodStop": {
+      "type": "string",
+      "description": "The walk stops once this option is taken (ADR-0063 slice 6), with the method's reason as its detail. limitation: a limit the walk cannot go past, such as no lift over the baseline. uncovered: a change the walk cannot make yet, such as reopening the features.",
+      "enum": ["limitation", "uncovered"]
+    },
+    "MethodLimits": {
+      "type": "object",
+      "description": "Fixed counts the method decides by, by name, such as the most looks at the folds (ADR-0063 slice 6); not a step's settings. decide() reads them; the engine reads one it enforces itself. Absent: none.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+      "additionalProperties": { "type": "integer", "minimum": 0 }
     },
     "MethodSet": {
       "type": "object",
@@ -413,6 +444,10 @@
         "statements": {
           "$ref": "#/$defs/MethodStatements",
           "description": "The needed statements the question makes. Absent: the method needs none."
+        },
+        "limits": {
+          "$ref": "#/$defs/MethodLimits",
+          "description": "The method's limits. Absent: it has none."
         }
       }
     },
@@ -538,6 +573,9 @@
           "$ref": "#/$defs/MethodDecided"
         },
         {
+          "$ref": "#/$defs/MethodShortlisted"
+        },
+        {
           "$ref": "#/$defs/MethodRefused"
         },
         {
@@ -580,6 +618,42 @@
           "type": "string",
           "minLength": 1,
           "description": "Why, for a person. For ask, the question itself."
+        }
+      }
+    },
+    "MethodShortlisted": {
+      "description": "A compared method's decide() (`compare: true`, ADR-0063 D3): the options worth comparing. The engine compares them on the same folds and takes the winner; decide() never picks it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "method",
+        "shortlist",
+        "reason"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "shortlisted"
+          ]
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "shortlist": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/MethodOptionId"
+          },
+          "description": "Two or more of the method's options, in its own order: a comparison needs something to compare."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why these options, and why any other was left out, for a person."
         }
       }
     },

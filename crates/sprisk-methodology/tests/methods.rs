@@ -144,8 +144,8 @@ fn an_option_filling_a_param_with_an_unknown_concept_is_refused() {
     edit(
         pack.path(),
         SPLIT,
-        "group_column: common.item_identity",
-        "group_column: common.item_key",
+        RANDOM_OPTION,
+        &format!("{RANDOM_OPTION}\n        concepts: {{ seed: common.item_key }}"),
     );
     assert!(refused(pack.path()).contains("unknown concept common.item_key"));
 }
@@ -356,6 +356,8 @@ fn an_all_rows_diagnostic_may_name_the_label_as_a_column_it_drops() {
 }
 
 const GROUP_OVERLAP: &str = "operators/group_overlap/manifest.yaml";
+/// The random option's operator line: the only option whose operator maps no column.
+const RANDOM_OPTION: &str = "operator: sprisk.validation.random_split@1.0.0";
 
 /// The fixture with the group overlap producer reading the target instead of the item.
 fn overlap_reading_the_target() -> TempDir {
@@ -391,8 +393,8 @@ fn a_producer_on_the_test_rows_may_name_the_label_as_a_column_it_drops() {
     edit(
         pack.path(),
         GROUP_OVERLAP,
-        "x-sprisk-column: true,",
-        "x-sprisk-column: true, x-sprisk-excluded: true,",
+        "      x-sprisk-column: true\n",
+        "      x-sprisk-column: true\n      x-sprisk-excluded: true\n",
     );
     load(pack.path()).unwrap();
 }
@@ -434,11 +436,11 @@ fn an_option_setting_a_param_the_operator_lacks_is_refused() {
     edit(
         pack.path(),
         SPLIT,
-        "group_column: common.item_identity",
-        "group: common.item_identity",
+        RANDOM_OPTION,
+        &format!("{RANDOM_OPTION}\n        concepts: {{ group: common.item_identity }}"),
     );
     assert!(
-        refused(pack.path()).contains("sprisk.validation.temporal_split@1.0.0 has no param group")
+        refused(pack.path()).contains("sprisk.validation.random_split@1.0.0 has no param group")
     );
 }
 
@@ -490,18 +492,12 @@ fn an_operator_mapping_a_concept_to_a_param_it_lacks_is_refused() {
 #[test]
 fn an_option_mapping_a_param_its_operator_already_maps_is_refused() {
     let pack = split_decision();
-    let group_split = fs::read_to_string(repo(
-        "plugins/validation/operators/group_split/manifest.yaml",
-    ))
-    .unwrap();
-    let own = group_split
-        .replace("group_split@1.0.0", "own_split@1.0.0")
-        .replace(
-            "role: split",
-            "role: split\nconcepts: { group_column: common.item_identity }",
-        );
-    write(pack.path(), "operators/own_split/manifest.yaml", &own);
-    edit(pack.path(), SPLIT, "group_split@1.0.0", "own_split@1.0.0");
+    edit(
+        pack.path(),
+        SPLIT,
+        "operator: sprisk.validation.group_split@1.0.0",
+        "operator: sprisk.validation.group_split@1.0.0\n        concepts: { group_column: common.item_identity }",
+    );
     assert!(refused(pack.path()).contains("maps group_column, which its operator already maps"));
 }
 
@@ -610,6 +606,31 @@ fn a_method_inserting_a_step_loads() {
     let pack = text_spelling();
     let catalog = load(pack.path()).unwrap();
     assert_eq!(catalog.methods().count(), 1);
+}
+
+#[test]
+fn a_step_before_the_model_that_does_not_say_what_it_changes_is_refused() {
+    let pack = text_spelling();
+    edit(pack.path(), SPELLING, "before: split", "before: model");
+    assert!(
+        refused(pack.path())
+            .contains("inserts a step before the model, so it says which inputs it changes")
+    );
+}
+
+#[test]
+fn a_method_saying_what_it_changes_without_a_step_before_the_model_is_refused() {
+    let pack = text_spelling();
+    edit(
+        pack.path(),
+        SPELLING,
+        "\nneeds:",
+        "\nchanges: [text]\nneeds:",
+    );
+    assert!(
+        refused(pack.path())
+            .contains("says which inputs it changes, but inserts no step before the model")
+    );
 }
 
 #[test]
@@ -725,4 +746,54 @@ fn an_option_setting_a_param_some_operator_of_the_role_lacks_is_refused() {
         "{}",
         refused(pack.path())
     );
+}
+
+#[test]
+fn an_option_that_stops_the_walk_and_changes_the_flow_is_refused() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        SPLIT,
+        "    action:\n      replace:\n",
+        "    action:\n      stop: limitation\n      replace:\n",
+    );
+    assert!(refused(pack.path()).contains("stops the walk, so it changes nothing in the flow"));
+}
+
+#[test]
+fn an_option_that_stops_the_walk_is_shown_as_a_limitation() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        REPEATED,
+        "    action:\n      bind: { concept: common.item_identity, evidence: data.near_duplicate_groups, column: item_group }\n",
+        "    action: { stop: limitation }\n",
+    );
+    let catalog = load(pack.path()).unwrap();
+    let shown = catalog
+        .all_rules()
+        .into_iter()
+        .find(|r| r.decides.as_str() == "data.repeated_items")
+        .unwrap();
+    let action = serde_json::to_value(&shown.alternatives[0].action).unwrap();
+    assert_eq!(action["type"], "emit_methodology_limitation", "{action}");
+}
+
+#[test]
+fn an_option_that_stops_the_walk_as_uncovered_is_shown_as_a_reopen() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        REPEATED,
+        "    action:\n      bind: { concept: common.item_identity, evidence: data.near_duplicate_groups, column: item_group }\n",
+        "    action: { stop: uncovered }\n",
+    );
+    let catalog = load(pack.path()).unwrap();
+    let shown = catalog
+        .all_rules()
+        .into_iter()
+        .find(|r| r.decides.as_str() == "data.repeated_items")
+        .unwrap();
+    let action = serde_json::to_value(&shown.alternatives[0].action).unwrap();
+    assert_eq!(action["type"], "reopen", "{action}");
 }

@@ -795,8 +795,9 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         Ok(resolved)
     }
 
-    /// Commit the pipeline version, its operators, the question it answers (`null` when it is
-    /// not linked) and the decisions its nodes cite as the gate attempt's input artifacts.
+    /// Commit the pipeline version, its compiled plan, its operators, the question it answers
+    /// (`null` when it is not linked) and the decisions its nodes cite as the gate attempt's
+    /// input artifacts.
     async fn gate_inputs(
         &self,
         run_id: &RunId,
@@ -808,10 +809,17 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         operators.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
         operators.dedup_by(|a, b| a.id == b.id);
         let question = self.question(pipeline).await?;
+        // Gate B builds its graph from what the compiler resolved (ADR-0070).
+        let compiled =
+            sprisk_graph::execution_plan(pipeline, plan).map_err(|e| SchedulerError::Contract {
+                what: "execution plan",
+                reason: e.to_string(),
+            })?;
         let docs = [
             ("decisions", json!(self.cited_decisions(pipeline).await?)),
             ("operators", json!(operators)),
             ("pipeline", json!(pipeline)),
+            ("plan", json!(compiled)),
             ("question", question),
         ];
         self.commit_docs(run_id, attempt, docs).await

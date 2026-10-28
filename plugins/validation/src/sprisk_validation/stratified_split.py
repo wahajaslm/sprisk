@@ -11,6 +11,7 @@ from sprisk_workers.authoring import operator
     inputs=["data"],
     outputs=["train", "test"],
     role="split",
+    stage="split",
     folds="plain",
     columns={"stratify": "common.target"},
     tunables={

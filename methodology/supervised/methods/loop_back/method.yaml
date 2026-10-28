@@ -1,0 +1,45 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.loop_back@1.0.0
+decides: evaluation.loop_back
+name: Loop back
+activity: Evaluation
+question: Is the chosen model good enough to score the test rows, or should the flow go back?
+pitfall: Looping back on test-row scores turns the test rows into a validation set, and the final score is no longer honest.
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: []
+  # What the comparison that chose the model found (ADR-0063 D4); train rows only.
+  evidence: [models.comparison]
+  decisions: [models.estimator_selection]
+  statements: [success_bar]
+limits:
+  # Most looks at the same folds before the flow stops and reports. Project convention: a
+  # few honest fixes, not a search over the folds (Cawley & Talbot 2010). The walk also
+  # refuses a comparison past it.
+  max_looks: 3
+options:
+  - id: proceed
+    label: "Meets the bar: score the test rows once"
+    description: Move on to the single score on the test rows and the report.
+    condition: beats baseline ∧ score meets bar
+    when: the chosen model beats the baseline and meets the success bar
+    rationale: The flow is done; the test rows give the honest final number.
+    verify: []
+  - id: reopen
+    label: "Below the bar: change the features"
+    description: The chosen model beats the baseline but misses the success bar. The walk stops and names the features to change; the models are then compared again as a new flow version.
+    condition: beats baseline ∧ score misses bar ∧ looks < max_looks
+    when: the chosen model misses the success bar, with looks left
+    rationale: Fix where the weakness is, judged on cross-validation only.
+    action: { stop: uncovered }
+    verify: []
+  - id: stop
+    label: "No lift, or out of looks: stop and report"
+    description: Report the result as it stands, with the number of looks it took.
+    condition: no lift ∨ looks ≥ max_looks
+    when: no lift over the baseline, or every look taken
+    rationale: "Further looping would fit the folds. A null result is a result: it says no lift for these models and features, not that no signal exists."
+    action: { stop: limitation }
+    verify: []
+verifications: {}
+source: "Cawley & Talbot (2010), On over-fitting in model selection and subsequent selection bias in performance evaluation, JMLR 11:2079-2107. Course: knowledge/Sprint_5_-_Machine_learning_24/Methodology_in_Data_Science/methodologie_projet_etape_4_EN.ipynb."

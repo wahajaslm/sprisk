@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.html_text@1.0.0
 title: HTML in text
 capability_class: analyzer
+stage: explore
 description: Names the text columns whose values hold HTML tags or entities (ADR-0063).
 entrypoint: sprisk_profile.html_text:html_text
 # Every row, before the split: it reads text structure, never the label's values.

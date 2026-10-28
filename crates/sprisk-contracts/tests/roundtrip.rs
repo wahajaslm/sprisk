@@ -10,15 +10,16 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     Binding, ClassificationReport, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
     ConceptSet, CopilotChatReply, CopilotChatRequest, CopilotLedgerDraft, CopilotLedgerRequest,
-    CreateDatasetVersion, CreateRun, CreateStudy, CreateWalk, DatasetProfile, DatasetVersion, SourceProfileRequest, DecisionProposal, EvidenceSet, FigureSet,
-    FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest,
-    MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
-    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
-    NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
-    NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
-    PipelineVersion, Problem, ProfilePlan, QuestionVersion, Report, RuleAnswer, RuleDecision,
-    RuleObservation, RuleRequest, Run, SelectionDecision, Study, StudyDetail, TablePage,
-    TableShift, Trial, VerificationRequest, Walk, WalkDetail, WalkStep, WorkerMessage, parse,
+    CreateDatasetVersion, CreateRun, CreateStudy, CreateWalk, DatasetProfile, DatasetVersion,
+    DecisionProposal, EvidenceSet, ExecutionPlan, FigureSet, FlowDecisions, KeyMatches,
+    LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest, MethodologyCheck,
+    MethodologyDecision, MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookCode,
+    NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
+    NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
+    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, ProfilePlan,
+    QuestionVersion, Report, Run, SelectionDecision, SourceProfileRequest, Study, StudyDetail,
+    TablePage, TableShift, Trial, VerificationRequest, Walk, WalkDetail, WalkStep, WorkerMessage,
+    parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -85,6 +86,7 @@ const ENTITIES: &[&str] = &[
     "dataset_version",
     "decision_proposal",
     "evidence_set",
+    "execution_plan",
     "figure_set",
     "flow_decisions",
     "key_matches",
@@ -95,7 +97,6 @@ const ENTITIES: &[&str] = &[
     "method_request",
     "methodology_check",
     "methodology_decision",
-    "methodology_review",
     "methodology_rule",
     "methodology_rule_source",
     "model_selection",
@@ -116,10 +117,6 @@ const ENTITIES: &[&str] = &[
     "profile_plan",
     "question_version",
     "report",
-    "rule_answer",
-    "rule_decision",
-    "rule_observation",
-    "rule_request",
     "run",
     "selection_decision",
     "source_profile_request",
@@ -197,11 +194,6 @@ fn decision_proposal() {
 }
 
 #[test]
-fn methodology_review() {
-    check::<MethodologyReview>("methodology_review");
-}
-
-#[test]
 fn apply_methodology_decision() {
     check::<ApplyMethodologyDecision>("apply_methodology_decision");
 }
@@ -272,6 +264,11 @@ fn dataset_version() {
 }
 
 #[test]
+fn execution_plan() {
+    check::<ExecutionPlan>("execution_plan");
+}
+
+#[test]
 fn source_profile_request() {
     check::<SourceProfileRequest>("source_profile_request");
 }
@@ -309,26 +306,6 @@ fn methodology_rule() {
 #[test]
 fn methodology_rule_source() {
     check::<MethodologyRuleSource>("methodology_rule_source");
-}
-
-#[test]
-fn rule_observation() {
-    check::<RuleObservation>("rule_observation");
-}
-
-#[test]
-fn rule_decision() {
-    check::<RuleDecision>("rule_decision");
-}
-
-#[test]
-fn rule_request() {
-    check::<RuleRequest>("rule_request");
-}
-
-#[test]
-fn rule_answer() {
-    check::<RuleAnswer>("rule_answer");
 }
 
 #[test]

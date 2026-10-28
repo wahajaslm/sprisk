@@ -1,4 +1,0 @@
-{
-  "schema_version": "sprisk.rule_request/v1",
-  "module": "methodology/common/rules/missing_markers/rule.py"
-}

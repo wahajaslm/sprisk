@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from compiled import plan_of
 from repo_operators import repo_operators
 
 from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
@@ -106,8 +107,13 @@ def compare(models: dict[str, str]) -> PipelineVersion:
     return pipeline(nodes, edges)
 
 
+def leakage(p: PipelineVersion, ops: dict[str, Operator]) -> MethodologyCheck:
+    """The check on `p` and the plan Rust would compile for it."""
+    return split_leakage(p, plan_of(p, ops), ops, CHECK_ID, NOW)
+
+
 def check(p: PipelineVersion) -> MethodologyCheck:
-    result = split_leakage(p, operators(), CHECK_ID, NOW)
+    result = leakage(p, operators())
     return MethodologyCheck.model_validate_json(result.model_dump_json(by_alias=True))
 
 
@@ -211,7 +217,7 @@ def test_a_split_is_found_by_its_role_not_its_name() -> None:
     ops[later.id.root] = later
     nodes = {"load": SOURCE, "split": later.id.root, "cheat": LINEAR}
     edges = [("load.data", "split.data"), ("split.test", "cheat.train")]
-    result = split_leakage(pipeline(nodes, edges), ops, CHECK_ID, NOW)
+    result = leakage(pipeline(nodes, edges), ops)
     assert result.verdict == Verdict.fail
     assert [n.root for n in result.cited_nodes] == ["cheat", "split"]
 
@@ -241,17 +247,17 @@ def test_evaluator_with_two_table_inputs_is_an_input_error() -> None:
     nodes["eval_linear"] = TWO_TABLE_EVAL
     edges.append(("split.train", "eval_linear.other"))
     with pytest.raises(CheckInputError, match="eval_linear"):
-        split_leakage(pipeline(nodes, edges), operators(), CHECK_ID, NOW)
+        leakage(pipeline(nodes, edges), operators())
 
 
 def test_unknown_operator_is_an_input_error() -> None:
     with pytest.raises(CheckInputError, match="sprisk.test.missing@1.0.0"):
-        split_leakage(pipeline({"x": "sprisk.test.missing@1.0.0"}, []), operators(), CHECK_ID, NOW)
+        leakage(pipeline({"x": "sprisk.test.missing@1.0.0"}, []), operators())
 
 
 def test_unconnected_evaluator_input_is_an_input_error() -> None:
     with pytest.raises(CheckInputError, match="e.test"):
-        split_leakage(pipeline({"e": EVAL}, []), operators(), CHECK_ID, NOW)
+        leakage(pipeline({"e": EVAL}, []), operators())
 
 
 IMPUTE = "sprisk.clean.impute@1.0.0"
@@ -306,7 +312,7 @@ def test_fitting_transform_fed_train_rows_mixed_with_raw_data_fails() -> None:
             ("split.test", "impute.test"),
         ],
     )
-    result = split_leakage(p, ops, CHECK_ID, NOW)
+    result = leakage(p, ops)
     assert result.verdict == Verdict.fail
     assert "impute" in [n.root for n in result.cited_nodes]
 
@@ -351,11 +357,11 @@ def test_model_trained_on_a_transforms_test_output_fails() -> None:
 def test_unconnected_fitting_transform_train_is_an_input_error() -> None:
     p = pipeline({"impute": IMPUTE}, [])
     with pytest.raises(CheckInputError, match="impute.train"):
-        split_leakage(p, operators(), CHECK_ID, NOW)
+        leakage(p, operators())
 
 
 CROSS_VALIDATE = "sprisk.ml.cross_validate@4.0.0"
-SELECT = "sprisk.ml.select_model@5.0.0"
+SELECT = "sprisk.ml.select_model@6.0.0"
 
 
 def cross_validated(rows_from: str) -> PipelineVersion:
@@ -431,7 +437,7 @@ def test_an_attached_step_that_writes_rows_is_still_a_reader_of_the_test_set() -
     nodes, edges = nodes_edges(cross_validated("split.train"))
     nodes["attached"] = "acme.test.attached_rows@1.0.0"
     edges += [("split.train", "attached.train"), ("split.test", "attached.test")]
-    result = split_leakage(pipeline(nodes, edges), ops, CHECK_ID, NOW)
+    result = leakage(pipeline(nodes, edges), ops)
     assert result.verdict == Verdict.not_assessed
     assert result.rationale.startswith("attached reads the test set")
 
@@ -466,7 +472,7 @@ def test_a_step_that_fits_on_train_is_checked_whatever_its_name() -> None:
     for node in p.nodes:
         if node.id.root == "impute":
             node.operator = node.operator.model_copy(update={"root": renamed.id.root})
-    result = split_leakage(p, ops, CHECK_ID, NOW)
+    result = leakage(p, ops)
     assert result.verdict == Verdict.fail
     assert "impute" in [n.root for n in result.cited_nodes]
 
@@ -539,3 +545,55 @@ def test_a_model_scored_with_the_train_rows_words_fails() -> None:
     assert result.verdict == Verdict.fail
     assert result.rationale.startswith("eval scores model with words.train_words")
     assert [n.root for n in result.cited_nodes] == ["eval", "model", "words"]
+
+
+KMEANS = "sprisk.clustering.kmeans@1.0.0"
+FOREST = "sprisk.ml.random_forest@3.0.0"
+
+
+def test_clusters_fitted_on_every_row_before_the_split_leak_into_the_model() -> None:
+    nodes = {"load": SOURCE, "kmeans": KMEANS, "split": SPLIT, "model": FOREST, "e": EVAL}
+    edges = [
+        ("load.data", "kmeans.data"),
+        ("kmeans.clusters", "split.data"),
+        ("split.train", "model.train"),
+        ("model.model", "e.model"),
+        ("split.test", "e.test"),
+    ]
+    result = check(pipeline(nodes, edges))
+    assert result.verdict == Verdict.fail
+    assert "kmeans" in result.rationale and "model" in result.rationale
+    assert {n.root for n in result.cited_nodes} == {"kmeans", "model"}
+
+
+def test_clusters_fitted_on_the_training_rows_are_not_a_leak() -> None:
+    nodes = {"load": SOURCE, "split": SPLIT, "kmeans": KMEANS, "model": FOREST}
+    edges = [
+        ("load.data", "split.data"),
+        ("split.train", "kmeans.data"),
+        ("kmeans.clusters", "model.train"),
+    ]
+    assert check(pipeline(nodes, edges)).verdict == Verdict.pass_
+
+
+def test_clusters_that_feed_no_model_are_only_a_look_at_the_data() -> None:
+    nodes = {"load": SOURCE, "kmeans": KMEANS, "split": SPLIT, "model": FOREST}
+    edges = [
+        ("load.data", "kmeans.data"),
+        ("load.data", "split.data"),
+        ("split.train", "model.train"),
+    ]
+    assert check(pipeline(nodes, edges)).verdict == Verdict.pass_
+
+
+def test_a_plan_of_another_version_is_bad_input() -> None:
+    p = compare({"linear": LINEAR})
+    other = plan_of(p, operators()).model_copy(
+        update={
+            "pipeline_version_id": p.id.model_copy(
+                update={"root": "plv_01JABCDEFGHJKMNPQRSTVWXY99"}
+            )
+        }
+    )
+    with pytest.raises(CheckInputError, match="plv_01JABCDEFGHJKMNPQRSTVWXY99"):
+        split_leakage(p, other, operators(), CHECK_ID, NOW)

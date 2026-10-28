@@ -1,12 +1,12 @@
-import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
+import type { MethodologyRule } from "@sprisk/contracts";
 import { type KeyboardEvent, type PointerEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { isOpen } from "./ruleTree.ts";
+import type { OnFlow } from "./ruleTree.ts";
 import { type MapNode, type MapRoute, mapLayout, routePath } from "./mapLayout.ts";
 
 type Props = {
   rules: MethodologyRule[];
-  reviews: Map<string, MethodologyReviewItem>;
+  decided: Map<string, OnFlow>;
   path: boolean;
   /** A rule's id, or a route's (`<rule id>#<route id>`). */
   picked: string | undefined;
@@ -17,8 +17,8 @@ type Props = {
  * on the middle line, a fork on the target, the supervised branch above and the unsupervised
  * below. Each decision is a mark for its level with its question above it; each route a dot
  * with its name, halfway to the decision it leads on to. Plain SVG, drawn once per change. */
-export function MethodologyCanvas({ rules, reviews, path, picked, onPick }: Props) {
-  const map = useMemo(() => mapLayout(rules, reviews, { path }), [rules, reviews, path]);
+export function MethodologyCanvas({ rules, decided, path, picked, onPick }: Props) {
+  const map = useMemo(() => mapLayout(rules, decided, { path }), [rules, decided, path]);
   const box = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const drag = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | undefined>(undefined);
@@ -36,7 +36,6 @@ export function MethodologyCanvas({ rules, reviews, path, picked, onPick }: Prop
   const loops = map.routes.filter((r) => r.loop).map(curve).join("");
   const fan = map.routes.filter((r) => r.from === pickedRule).map(curve).join("");
   const lit = map.routes.filter((r) => r.chosen).map(curve).join("");
-  const current = firstOpen(reviews);
 
   const onDown = (e: PointerEvent) => {
     const el = box.current;
@@ -116,7 +115,7 @@ export function MethodologyCanvas({ rules, reviews, path, picked, onPick }: Prop
             );
           })}
           {map.nodes.map((n) => (
-            <Node key={n.id} node={n} selected={n.id === pickedRule} current={n.kind === "decision" && n.rule.id === current} onPick={choose} keys={keys} />
+            <Node key={n.id} node={n} selected={n.id === pickedRule} onPick={choose} keys={keys} />
           ))}
         </svg>
       </div>
@@ -124,16 +123,10 @@ export function MethodologyCanvas({ rules, reviews, path, picked, onPick }: Prop
   );
 }
 
-/** The rule the selected flow's review has open first, where the walk would act next. */
-function firstOpen(reviews: Map<string, MethodologyReviewItem>): string | undefined {
-  for (const [rule, item] of reviews) if (isOpen(item.status) && item.subject_node_id !== undefined) return rule;
-  return undefined;
-}
-
-function Node({ node, selected, current, onPick, keys }: { node: MapNode; selected: boolean; current: boolean; onPick: (id: string) => void; keys: (id: string) => (e: KeyboardEvent) => void }) {
+function Node({ node, selected, onPick, keys }: { node: MapNode; selected: boolean; onPick: (id: string) => void; keys: (id: string) => (e: KeyboardEvent) => void }) {
   const { x, y } = node;
-  const settled = node.kind === "decision" && node.review?.status === "settled";
-  const tone = `${settled ? " settled" : ""}${current ? " current" : ""}${node.onPath ? " on" : ""}${selected ? " selected" : ""}${node.kind === "decision" && node.rule.status === "draft" ? " draft" : ""}`;
+  const settled = node.kind === "decision" && node.decided !== undefined;
+  const tone = `${settled ? " settled" : ""}${node.onPath ? " on" : ""}${selected ? " selected" : ""}${node.kind === "decision" && node.rule.status === "draft" ? " draft" : ""}`;
   const top = y - node.lift - 14 * (node.lines.length - 1);
   const words = node.lines.map((line, i) => (
     <text key={i} x={x} y={top + i * 14} className="label">
@@ -157,12 +150,7 @@ function Node({ node, selected, current, onPick, keys }: { node: MapNode; select
     );
   }
   const mark =
-    node.level === "try" ? (
-      <>
-        <circle cx={x} cy={y} r={7} className="mark ring" />
-        <circle cx={x} cy={y} r={3} className="mark solid" />
-      </>
-    ) : node.level === "ask" ? (
+    node.level === "ask" ? (
       <polygon points={`${x},${y - 9} ${x + 9},${y} ${x},${y + 9} ${x - 9},${y}`} className="mark ring" />
     ) : (
       <circle cx={x} cy={y} r={7} className="mark solid" />
@@ -173,7 +161,6 @@ function Node({ node, selected, current, onPick, keys }: { node: MapNode; select
       <rect x={x - 62} y={top - 14} width={124} height={y + 16 - (top - 14)} rx={6} className="hit" />
       {words}
       {selected && <circle cx={x} cy={y} r={14} className="halo" />}
-      {current && <circle cx={x} cy={y} r={8} className="pulse" />}
       {mark}
     </g>
   );

@@ -8,8 +8,9 @@ from typing import Any
 import polars as pl
 import pytest
 import yaml
+from compiled import plan_of
 
-from sprisk_contracts import MethodologyCheck
+from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
 from sprisk_supervised.pack import run, split_rows_run
 from sprisk_workers.errors import OperatorError
 
@@ -52,7 +53,16 @@ def inputs_for(evaluators: int) -> dict[str, Any]:
         "created_at": "2026-10-16T10:00:00Z",
     }
     operators = [yaml.safe_load(p.read_text()) for p in sorted(PLUGINS.rglob("manifest.yaml"))]
-    return {"pipeline": pipeline, "operators": operators, "question": None, "decisions": []}
+    by_ref = {o["id"]: Operator.model_validate_json(json.dumps(o)) for o in operators}
+    version = PipelineVersion.model_validate_json(json.dumps(pipeline))
+    plan = plan_of(version, by_ref).model_dump(mode="json", by_alias=True, exclude_none=True)
+    return {
+        "pipeline": pipeline,
+        "plan": plan,
+        "operators": operators,
+        "question": None,
+        "decisions": [],
+    }
 
 
 def answering_the_question(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -70,7 +80,7 @@ def test_returns_every_rule_result(evaluators: int, verdict: str) -> None:
     assert leakage.verdict == verdict
     assert code.check.root == "supervised.code_leakage@1.0.0"
     assert code.verdict == "not_assessed"
-    assert design.check.root == "methodology.supervised.data_split@1.0.0"
+    assert design.check.root == "methodology.supervised.split_design@1.0.0"
     assert design.verdict == "not_assessed", "no question is linked"
     assert leakage.id.root.startswith("mck_")
     assert len({leakage.id.root, code.id.root, design.id.root}) == 3
@@ -79,6 +89,12 @@ def test_returns_every_rule_result(evaluators: int, verdict: str) -> None:
 def test_invalid_pipeline_is_an_operator_error() -> None:
     with pytest.raises(OperatorError) as e:
         run(**{**inputs_for(1), "pipeline": {"nodes": []}})
+    assert e.value.code == "invalid_check_input"
+
+
+def test_an_invalid_plan_is_an_operator_error() -> None:
+    with pytest.raises(OperatorError) as e:
+        run(**{**inputs_for(1), "plan": {"steps": []}})
     assert e.value.code == "invalid_check_input"
 
 
@@ -133,11 +149,10 @@ def test_an_invalid_decision_is_an_operator_error() -> None:
 
 def test_the_split_check_names_the_decision_that_chose_the_split() -> None:
     inputs = answering_the_question(inputs_for(1))
-    decision = fixture("methodology_decision", "applied.json")
-    decision["rule"] = "methodology.supervised.data_split@1.0.0"
+    decision = fixture("methodology_decision", "by-method-changes-steps.json")
     inputs["pipeline"]["nodes"][1]["methodology_decision_id"] = decision["id"]
     inputs["decisions"] = [decision]
-    (design,) = [c for c in run(**inputs) if c["check"].endswith("data_split@1.0.0")]
+    (design,) = [c for c in run(**inputs) if c["check"].endswith("split_design@1.0.0")]
     assert design["methodology_decision_id"] == decision["id"]
 
 

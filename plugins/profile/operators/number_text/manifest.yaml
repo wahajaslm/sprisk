@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.number_text@1.0.0
 title: Numbers in text
 capability_class: analyzer
+stage: explore
 description: Names the text columns that hold numbers, the placeholders among them to mark missing, and those to read as numbers (ADR-0063).
 entrypoint: sprisk_profile.number_text:number_text
 # Every row, before the split: it reads text structure, never the label's values.

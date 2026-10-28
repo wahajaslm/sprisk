@@ -53,6 +53,7 @@ def test_after_train(train: pl.DataFrame, test: pl.DataFrame, time_column: str) 
     inputs=["data"],
     outputs=["train", "test"],
     role="split",
+    stage="split",
     folds="time",
     columns={"time_column": "common.event_time", "group_column": "common.item_identity"},
     tunables={"test_fraction": {"minimum": 0.05, "maximum": 0.5, "step": 0.05}},

@@ -14,12 +14,12 @@ import { formatMetric } from "./NodeFact.tsx";
 /** The head's studies (ADR-0052), newest first, as the design's Sweep: a way to start one per
  * model step, then each study's search. */
 export function Studies({ head, versions, studies }: { head: PipelineVersion; versions: PipelineVersion[]; studies: Study[] }) {
-  const steps = useComparedSteps(head).filter((s) => s.models);
+  const steps = useComparedSteps(head);
   return (
     <div className="exp-body">
       {steps.length > 0 && (
         <div className="exp-toolbar">
-          {steps.map(({ node }) => (
+          {steps.map((node) => (
             <NewStudy key={`${head.id}/${node.id}`} pipelineId={head.id} nodeId={node.id} />
           ))}
         </div>

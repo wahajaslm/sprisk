@@ -21,7 +21,6 @@ options:
       replace:
         role: split
         operator: sprisk.validation.temporal_split@1.0.0
-        concepts: { time_column: common.event_time, group_column: common.item_identity }
         settings: { test_fraction: 0.2 }
     verify: [test_after_train]
   - id: item_groups
@@ -34,7 +33,6 @@ options:
       replace:
         role: split
         operator: sprisk.validation.group_split@1.0.0
-        concepts: { group_column: common.item_identity }
         settings: { test_fraction: 0.2, seed: 42 }
     verify: [no_group_overlap]
   - id: stratified_random
@@ -46,8 +44,7 @@ options:
     action:
       replace:
         role: split
-        operator: sprisk.validation.random_split@1.0.0
-        concepts: { stratify: common.target }
+        operator: sprisk.validation.stratified_split@1.0.0
         settings: { test_fraction: 0.2, seed: 42 }
     # The class shares read the test labels, so they are reported with the final score.
     verify: [no_row_in_both]

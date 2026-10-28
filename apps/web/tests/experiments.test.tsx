@@ -14,7 +14,7 @@ import { Experiments } from "../src/views/Experiments.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { PV, RUN, attempts, pipeline, run, scoreAttempt, scoreOutputs } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
-import { server } from "./server.ts";
+import { comparedModel, server } from "./server.ts";
 
 const PV2 = "plv_01JABCDEFGHJKMNPQRSTVWXYZ2";
 const RUN2 = "run_01JABCDEFGHJKMNPQRSTVWXYZ2";
@@ -359,7 +359,7 @@ describe("model comparison", () => {
     const posted: string[] = [];
     compared(winner);
     server.use(
-      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])),
+      ...comparedModel,
       http.post("/api/pipeline_versions/:id/model_selection/:node", ({ params }) => {
         posted.push(`${String(params.id)}/${String(params.node)}`);
         return HttpResponse.json({ proposal, comparison, run: comparisonRun }, { status: 201 });
@@ -371,7 +371,7 @@ describe("model comparison", () => {
   it("asks for a run before Sprisk can choose the model", async () => {
     compared(winner);
     server.use(
-      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])),
+      ...comparedModel,
       http.get("/api/runs", ({ request }) =>
         HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [comparisonRun] : []),
       ),
@@ -428,7 +428,7 @@ describe("model comparison", () => {
     const posted: string[] = [];
     compared(winner, true);
     server.use(
-      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])),
+      ...comparedModel,
       http.post("/api/pipeline_versions/:id/model_selection/:node", () => {
         posted.push("select");
         return HttpResponse.json({ proposal, comparison, run: comparisonRun }, { status: 201 });
@@ -518,20 +518,7 @@ describe("model comparison", () => {
       expect(applied[0]).toMatchObject({ alternative_id: "impute_mean", reason: "Means are reported." });
     });
 
-    const missingness = { ...shortlistRule, id: "methodology.supervised.missingness@1.1.0", selection: undefined, applies_to: ["sprisk.clean.impute"] };
-
-    it("starts the comparison itself once the flow has run", async () => {
-      const posted: string[] = [];
-      prepared();
-      server.use(
-        http.get("/api/methodology_rules", () => HttpResponse.json([missingness])),
-        http.post("/api/pipeline_versions/:id/model_selection/:node", ({ params }) => {
-          posted.push(`${String(params.id)}/${String(params.node)}`);
-          return HttpResponse.json({ proposal: prepProposal, comparison: prepComparison, run: comparisonRun }, { status: 201 });
-        }),
-      );
-      await waitFor(() => expect(posted).toEqual([`${PV}/impute`]));
-    });
+    const missingness = { ...shortlistRule, id: "methodology.supervised.missingness@1.1.0" };
 
     it("shows what each choice ran in every fold, how it differs from the flow, and each step's code", async () => {
       prepared();
@@ -583,27 +570,5 @@ describe("model comparison", () => {
       expect(median).toHaveTextContent("Differs from the pipeline: impute · its own code → sprisk.clean.impute@1.0.0's code");
     });
 
-    it("asks for a run before Sprisk can compare the step's choices", async () => {
-      prepared();
-      server.use(
-        http.get("/api/methodology_rules", () => HttpResponse.json([missingness])),
-        http.get("/api/runs", ({ request }) =>
-          HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [comparisonRun] : []),
-        ),
-      );
-      expect(await screen.findByText("Run the pipeline, and Sprisk will compare its choices for impute.")).toBeInTheDocument();
-    });
-
-    it("says so, without alarm, when a step has nothing to compare", async () => {
-      prepared();
-      server.use(
-        http.get("/api/methodology_rules", () => HttpResponse.json([missingness])),
-        http.post("/api/pipeline_versions/:id/model_selection/:node", () =>
-          HttpResponse.json({ errors: [{ code: "nothing_to_compare", message: "nothing to compare: only the recommendation drop_rows can be measured here" }] }, { status: 422 }),
-        ),
-      );
-      expect(await screen.findByText("impute: nothing to compare: only the recommendation drop_rows can be measured here")).toBeInTheDocument();
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    });
   });
 });

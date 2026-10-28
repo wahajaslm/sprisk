@@ -1,0 +1,25 @@
+{
+  "schema_version": "sprisk.methodology_decision/v1",
+  "id": "mdc_01JABCDEFGHJKMNPQRSTVWXYZ2",
+  "method": "methodology.supervised.model_shortlist@1.0.0",
+  "decides": "modeling.estimator_selection",
+  "option": "linear_model",
+  "assurance": "rule",
+  "reason": "The linear model beat the baseline on the same folds; the forest was within one standard error, and the simpler model is kept.",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "base_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "effects": [
+    {
+      "kind": "replace_node",
+      "node_id": "model",
+      "operator": "sprisk.ml.linear_model@1.0.0",
+      "params": {
+        "target": "churned",
+        "task": "classification"
+      }
+    }
+  ],
+  "created_at": "2026-10-22T10:02:00Z",
+  "selection_id": "art_01JABCDEFGHJKMNPQRSTVWXYZ5"
+}

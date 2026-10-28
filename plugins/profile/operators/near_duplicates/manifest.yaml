@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.near_duplicates@1.0.0
 title: Duplicate titles (normalized)
 capability_class: analyzer
+stage: explore
 description: Groups rows whose titles match once case, accents, spacing and punctuation go, and counts the rows that share a title (ADR-0063).
 entrypoint: sprisk_profile.near_duplicates:near_duplicates
 # Every row, before the split: it reads a title, never the label.

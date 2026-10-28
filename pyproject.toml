@@ -1,6 +1,11 @@
 [tool.uv.workspace]
 members = ["python/sprisk-contracts", "python/sprisk-workers", "plugins/io", "plugins/profile", "plugins/validation", "plugins/ml", "plugins/clean", "plugins/code", "methodology/supervised"]
 
+# A root pytest table keeps the rootdir here, so `pytest plugins/ml` still loads plugins/conftest.py
+# instead of stopping at the plugin's own pyproject.toml.
+[tool.pytest.ini_options]
+testpaths = ["python", "plugins", "methodology"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

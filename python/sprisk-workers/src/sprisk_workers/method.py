@@ -36,6 +36,14 @@ class Outcome:
     reason: str
 
 
+@dataclass(frozen=True)
+class Shortlist:
+    """A compared method's options for the engine to compare on the same folds (ADR-0063 D3)."""
+
+    options: list[str]
+    reason: str
+
+
 class Context:
     """What decide() may see: only what its method.yaml says it needs."""
 
@@ -49,6 +57,7 @@ class Context:
         self._bound = set(sent["bound"])
         self._ruled_out = {r["option"]: r["detail"] for r in sent.get("ruled_out") or []}
         self._statements = sent.get("statements") or {}
+        self._limits = sent.get("limits") or {}
         self.task: str = sent["task"]
 
     def evidence(self, kind: str) -> dict[str, Any] | None:
@@ -66,6 +75,13 @@ class Context:
         """What the question states; None when it does not say. Never guessed."""
         self._declared("statements", name)
         return self._statements.get(name)
+
+    def limit(self, name: str) -> int:
+        """A fixed count the method's method.yaml states, such as the most looks."""
+        if name not in self._limits:
+            raise MethodError(f"{self._method} has no limit {name}")
+        value: int = self._limits[name]
+        return value
 
     def bound(self, concept: str) -> bool:
         """Whether a binding names the concept. Never which column: decide() reads no names."""
@@ -85,6 +101,11 @@ class Context:
 
     def ask(self, option: str, question: str) -> Outcome:
         return Outcome("ask", self._option(option), question)
+
+    def compare(self, options: list[str], reason: str) -> Shortlist:
+        if len(set(options)) < 2 or len(set(options)) != len(options):
+            raise MethodError(f"{self._method}: a comparison needs at least two options, each once")
+        return Shortlist([self._option(o) for o in options], reason)
 
     def _declared(self, kind: str, name: str) -> None:
         if name not in (self._needs.get(kind) or []):
@@ -192,10 +213,18 @@ def answer(request: MethodRequest) -> MethodAnswer:
             outcome = _decide(decorated, ctx, request)
         else:
             outcome = load_function(Path(request.module), "decide")(ctx)
-        if not isinstance(outcome, Outcome):
-            raise MethodError(f"{method}: decide() must return ctx.choose or ask")
+        if not isinstance(outcome, Outcome | Shortlist):
+            raise MethodError(f"{method}: decide() must return ctx.choose, ask or compare")
     except MethodError as e:
         return MethodAnswer.model_validate_json(json.dumps({"answer": "refused", "error": str(e)}))
+    if isinstance(outcome, Shortlist):
+        listed = {
+            "answer": "shortlisted",
+            "method": method,
+            "shortlist": outcome.options,
+            "reason": outcome.reason,
+        }
+        return MethodAnswer.model_validate_json(json.dumps(listed))
     return MethodAnswer.model_validate_json(
         json.dumps(
             {

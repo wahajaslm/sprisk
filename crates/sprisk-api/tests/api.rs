@@ -146,15 +146,6 @@ async fn api_with_clock(
             Duration::from_secs(30),
             2,
         ),
-        rule_runner: sprisk_api::RuleRunner::new(
-            vec![
-                python.display().to_string(),
-                "-m".into(),
-                "sprisk_workers.rule".into(),
-            ],
-            Duration::from_secs(30),
-            2,
-        ),
         method_runner: sprisk_api::MethodRunner::new(
             vec![
                 python.display().to_string(),
@@ -660,7 +651,7 @@ async fn a_step_is_written_as_plain_python_with_its_settings_and_names() {
     );
 
     // A step with no plain code yet, and a step that does not exist.
-    let uri = "/operators/sprisk.ml.select_model@5.0.0/notebook_code";
+    let uri = "/operators/sprisk.ml.select_model@6.0.0/notebook_code";
     let (status, body) = call(&api.app, "POST", uri, Some(request.clone())).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["errors"][0]["code"], "no_plain_code", "{body}");
@@ -2257,36 +2248,6 @@ async fn a_flow_can_only_link_a_saved_question_revision() {
 }
 
 #[tokio::test]
-async fn a_step_s_proposal_can_be_asked_for_one_decision() {
-    let api = api().await;
-    cluster_proposal(&api).await;
-    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ8/methodology/proposals/cluster";
-
-    let (status, proposal) = call(
-        &api.app,
-        "POST",
-        &format!("{uri}/clustering.algorithm_choice"),
-        Some(json!({})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(
-        proposal["rule"],
-        "methodology.unsupervised.clustering_algorithm@1.0.0"
-    );
-
-    let (status, body) = call(
-        &api.app,
-        "POST",
-        &format!("{uri}/evaluation.decision_threshold"),
-        Some(json!({})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "methodology_not_applicable");
-}
-
-#[tokio::test]
 async fn an_unknown_methodology_proposal_is_not_found() {
     let api = api().await;
     let (status, body) = call(
@@ -2310,47 +2271,6 @@ async fn an_unknown_methodology_decision_is_not_found() {
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-}
-
-#[tokio::test]
-async fn clustering_methodology_is_resolved_previewed_and_applied_once() {
-    let api = api().await;
-    let proposal = cluster_proposal(&api).await;
-    assert_eq!(
-        proposal["recommended_alternative_id"],
-        "kmeans_centroid_clustering"
-    );
-    assert_eq!(
-        proposal["rule"],
-        "methodology.unsupervised.clustering_algorithm@1.0.0"
-    );
-    assert_eq!(proposal["alternatives"].as_array().unwrap().len(), 4);
-
-    let uri = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    // DBSCAN is not the recommendation, so choosing it needs a reason.
-    let bare = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-apply-dbscan-bare" });
-    let (status, body) = call(&api.app, "POST", &uri, Some(bare)).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "reason_required");
-    let request = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-apply-dbscan",
-                          "reason": "The clusters are not convex." });
-    let (status, applied) = call(&api.app, "POST", &uri, Some(request.clone())).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    assert_eq!(
-        applied["pipeline"]["parent_id"],
-        "plv_01JABCDEFGHJKMNPQRSTVWXYZ8"
-    );
-    assert_eq!(
-        applied["pipeline"]["nodes"][1]["operator"],
-        "sprisk.clustering.dbscan@1.0.0"
-    );
-    assert_eq!(
-        applied["pipeline"]["nodes"][1]["methodology_decision_id"],
-        applied["decision"]["id"]
-    );
 }
 
 /// The scaling flow with `nodes` and `edges` added after the scale step.
@@ -2451,11 +2371,19 @@ async fn model_flow(api: &Api) {
 }
 
 /// The model shortlist of step `model`: a model step has several rules, so it is named.
+/// The learnable model flow's model step proposal: the model shortlist's options.
+async fn model_proposal(api: &Api) -> Value {
+    learnable_model_flow(api).await;
+    let (status, proposal) = propose_model(api).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    proposal
+}
+
 async fn propose_model(api: &Api) -> (StatusCode, Value) {
     call(
         &api.app,
         "POST",
-        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/model/modeling.estimator_selection",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/model/models.estimator_selection",
         Some(json!({})),
     )
     .await
@@ -2470,7 +2398,7 @@ async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     assert_eq!(
         proposal["rule"],
-        "methodology.supervised.model_baseline_selection@2.1.0"
+        "methodology.supervised.model_shortlist@1.0.0"
     );
     // 30 train rows: too few for a forest, so the baseline and the linear model.
     assert_eq!(
@@ -2492,7 +2420,7 @@ async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
 }
 
 #[tokio::test]
-async fn a_model_with_no_features_is_measured_on_every_column_but_its_target() {
+async fn a_model_with_no_features_is_shortlisted_on_the_train_rows_it_reads() {
     let api = api().await;
     let model = json!({
         "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
@@ -2509,13 +2437,13 @@ async fn a_model_with_no_features_is_measured_on_every_column_but_its_target() {
 
     let (status, proposal) = propose_model(&api).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    let features = proposal["evidence"]
+    let rows = proposal["evidence"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|e| e["label"] == "Feature columns")
-        .unwrap();
-    assert_eq!(features["value"], "1", "age alone: {proposal}");
+        .find(|e| e["label"] == "Train rows")
+        .unwrap_or_else(|| panic!("{proposal}"));
+    assert_eq!(rows["value"], "30", "{proposal}");
 }
 
 #[tokio::test]
@@ -2566,7 +2494,7 @@ async fn methods_are_listed_in_decision_order() {
     let (status, methods) = call(&api.app, "GET", "/methods", None).await;
     assert_eq!(status, StatusCode::OK, "{methods}");
     let methods = methods.as_array().unwrap();
-    assert_eq!(methods.len(), 23);
+    assert_eq!(methods.len(), 25);
     let at = |decides: &str| {
         methods
             .iter()
@@ -2599,7 +2527,7 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 63);
+    assert_eq!(rules.len(), 62);
 
     // Methods are shown as rules, in their own words, with their options as alternatives.
     let split = rules
@@ -2622,20 +2550,13 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
         split["verification"]["invariant"],
         "No item has rows in both train and test. No test row has the same features as a train row. Every test row is later than the latest train row."
     );
-    // The words people read go with each rule (ADR-0045 amendment).
-    let clustering = rules
+    // Decisions not built yet are drafts, listed in their own words (ADR-0063 slice 6).
+    let draft = rules
         .iter()
-        .find(|r| r["id"] == "methodology.unsupervised.clustering_algorithm@1.0.0")
+        .find(|r| r["id"] == "methodology.supervised.multicollinearity@1.0.0")
         .unwrap();
-    assert_eq!(clustering["stage"], "models");
-    assert_eq!(
-        clustering["question"],
-        "Which clustering algorithm should group the rows?"
-    );
-    assert_eq!(
-        clustering["alternatives"][0]["when"],
-        "always, as the baseline while cluster shape is not recorded"
-    );
+    assert_eq!(draft["status"], "draft");
+    assert_eq!(draft["decides"], "features.multicollinearity_strategy");
 }
 
 #[tokio::test]
@@ -2644,11 +2565,13 @@ async fn a_methodology_rule_source_is_its_files() {
     let (status, source) = call(
         &api.app,
         "GET",
-        "/methodology_rules/methodology.unsupervised.clustering_algorithm@1.0.0/source",
+        "/methodology_rules/methodology.supervised.multicollinearity@1.0.0/source",
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{source}");
+    // A draft has its manifest and no code.
+    assert_eq!(source["files"].as_array().unwrap().len(), 1, "{source}");
     assert_eq!(source["files"][0]["path"], "rule.yaml");
     assert_eq!(source["files"][0]["language"], "yaml");
 
@@ -2937,31 +2860,21 @@ async fn a_comparison_is_built_only_by_compare_and_never_edited_by_a_rule() {
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(forged)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "comparison_by_compare");
+    // Nor for a compared method: the walk builds those (ADR-0063 D3).
+    let mut forged = pipeline(&api.csv);
+    forged["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ6");
+    forged["compares_method"] = json!("methodology.supervised.model_shortlist@1.0.0");
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(forged)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "comparison_by_compare");
 
     let uri = format!(
-        "/pipeline_versions/{}/methodology/proposals/split",
+        "/pipeline_versions/{}/methodology/proposals/model/models.estimator_selection",
         comparison["id"].as_str().unwrap()
     );
     let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "comparison_not_editable");
-}
-
-#[tokio::test]
-async fn only_a_shortlist_proposal_can_be_compared() {
-    let api = api().await;
-    let proposal = cluster_proposal(&api).await;
-
-    let (status, body) = compare(&api, &proposal).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "methodology_not_applicable");
-    assert!(
-        body["errors"][0]["message"]
-            .as_str()
-            .unwrap()
-            .contains("has no shortlist to compare"),
-        "{body}"
-    );
 }
 
 #[tokio::test]
@@ -3142,72 +3055,6 @@ async fn sprisk_selects_a_model_by_itself_once_per_version() {
 }
 
 #[tokio::test]
-async fn the_loop_back_rule_reads_the_results_the_chosen_model_was_compared_by() {
-    let api = api().await;
-    learnable_model_flow(&api).await;
-    let loop_back = |version: &str| {
-        format!("/pipeline_versions/{version}/methodology/proposals/model/evaluation.loop_back")
-    };
-    let base = "plv_01JABCDEFGHJKMNPQRSTVWXYZ0";
-    let (status, body) = call(&api.app, "POST", &loop_back(base), Some(json!({}))).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(
-        body["errors"][0]["code"],
-        "methodology_evidence_unavailable"
-    );
-    assert!(
-        body["errors"][0]["message"]
-            .as_str()
-            .unwrap()
-            .contains("compare the models first"),
-        "{body}"
-    );
-
-    let (_, selection) = select_model(&api, "model").await;
-    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-    let decided = output(&api, &attempts, "select_model", "decision").await;
-    assert_eq!(decided["winner"], "ml_linear_model", "{decided}");
-
-    // Choosing the winner makes a new version, which the same comparison scored.
-    let uri = format!(
-        "/methodology_proposals/{}/apply",
-        selection["proposal"]["id"].as_str().unwrap()
-    );
-    let choice =
-        json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-loop-back" });
-    let (status, applied) = call(&api.app, "POST", &uri, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    let chosen = applied["pipeline"]["id"].as_str().unwrap();
-
-    let (status, proposal) = call(&api.app, "POST", &loop_back(chosen), Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(
-        proposal["recommended_alternative_id"], "proceed",
-        "{proposal}"
-    );
-    let proceed = &proposal["alternatives"][0];
-    assert_eq!(proceed["applicability"], "applicable", "{proposal}");
-    assert!(
-        proceed["reason"]
-            .as_str()
-            .unwrap()
-            .contains("meets the bar of 0.7"),
-        "{proposal}"
-    );
-    let looks = proposal["evidence"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|e| e["label"] == "Looks at these folds")
-        .unwrap();
-    assert_eq!(
-        looks["value"], "1",
-        "choosing the winner is no new look: {proposal}"
-    );
-}
-
-#[tokio::test]
 async fn models_are_compared_by_the_metric_the_success_bar_is_stated_in() {
     let api = api().await;
     learnable_model_flow_barred(&api, "weighted_f1").await;
@@ -3363,63 +3210,24 @@ async fn two_requests_at_once_share_one_model_selection_and_one_run() {
     assert_eq!(comparisons, 1, "{versions}");
 }
 
-/// The clustering rule's proposal on a flow that loads and clusters: four alternatives,
-/// k-means recommended.
-async fn cluster_proposal(api: &Api) -> Value {
-    let question = json!({
-        "schema_version": "sprisk.question_version/v1",
-        "id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ8",
-        "investigation_id": "inv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-        "objective": { "value": "Customer clustering exploration", "origin": "explicit" },
-        "task": { "value": "exploration", "origin": "confirmed" },
-        "assumptions": [],
-        "unknowns": [],
-        "acceptance_criteria": [],
-        "created_at": "2026-10-15T10:00:00Z"
-    });
-    let (status, _) = call(&api.app, "POST", "/question_versions", Some(question)).await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let mut flow = pipeline(&api.csv);
-    flow["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ8");
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ8");
-    flow["nodes"].as_array_mut().unwrap().push(json!({
-        "id": "cluster",
-        "operator": "sprisk.clustering.kmeans@1.0.0",
-        "params": { "n_clusters": 3 }
-    }));
-    flow["edges"] = json!([{ "from": "load.data", "to": "cluster.data" }]);
-    let (status, _) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let (status, proposal) = call(
-        &api.app,
-        "POST",
-        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ8/methodology/proposals/cluster",
-        Some(json!({})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    proposal
-}
-
 #[tokio::test]
 async fn an_apply_key_reused_for_another_choice_conflicts_instead_of_replaying_the_first() {
     // SCI-07: a retry gets the same version; a changed payload under the same key conflicts.
     let api = api().await;
-    let proposal = cluster_proposal(&api).await;
+    let proposal = model_proposal(&api).await;
     let uri = format!(
         "/methodology_proposals/{}/apply",
         proposal["id"].as_str().unwrap()
     );
-    let first = json!({ "alternative_id": "kmeans_centroid_clustering", "idempotency_key": "test-reused-key" });
+    let first = json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-reused-key",
+                        "reason": "Chosen before comparing." });
     let (status, applied) = call(&api.app, "POST", &uri, Some(first)).await;
     assert_eq!(status, StatusCode::CREATED, "{applied}");
 
     for changed in [
-        json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-reused-key",
-                "reason": "The clusters are not convex." }),
-        json!({ "alternative_id": "kmeans_centroid_clustering", "idempotency_key": "test-reused-key",
+        json!({ "alternative_id": "ml_dummy_baseline", "idempotency_key": "test-reused-key",
+                "reason": "Chosen before comparing." }),
+        json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-reused-key",
                 "reason": "A reason the first request did not give." }),
     ] {
         let (status, body) = call(&api.app, "POST", &uri, Some(changed.clone())).await;
@@ -3440,18 +3248,19 @@ async fn an_apply_key_reused_for_another_choice_conflicts_instead_of_replaying_t
 #[tokio::test]
 async fn two_applies_at_once_with_one_key_and_different_choices_make_one_decision() {
     let api = api().await;
-    let proposal = cluster_proposal(&api).await;
+    let proposal = model_proposal(&api).await;
     let uri = format!(
         "/methodology_proposals/{}/apply",
         proposal["id"].as_str().unwrap()
     );
-    let kmeans = json!({ "alternative_id": "kmeans_centroid_clustering", "idempotency_key": "test-raced-key" });
-    let dbscan = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-raced-key",
-                         "reason": "The clusters are not convex." });
+    let linear = json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-raced-key",
+                         "reason": "Chosen before comparing." });
+    let baseline = json!({ "alternative_id": "ml_dummy_baseline", "idempotency_key": "test-raced-key",
+                           "reason": "Chosen before comparing." });
 
     let ((one, first), (two, second)) = tokio::join!(
-        call(&api.app, "POST", &uri, Some(kmeans)),
-        call(&api.app, "POST", &uri, Some(dbscan))
+        call(&api.app, "POST", &uri, Some(linear)),
+        call(&api.app, "POST", &uri, Some(baseline))
     );
 
     // The loser is refused: as a conflicting key, or as stale once the winner's version exists.
@@ -4388,165 +4197,6 @@ async fn german_credit_runs_as_stage_notebooks_with_one_chart_per_step() {
     );
 }
 
-/// Load → Split → Forest on a classification question with no time or entity column.
-async fn forest_flow(api: &Api) {
-    forest_flow_with(api, json!({})).await;
-}
-
-/// `forest_flow` whose question also states `facts`.
-async fn forest_flow_with(api: &Api, facts: Value) {
-    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    let fields = q.as_object_mut().unwrap();
-    fields.remove("time_column");
-    fields.remove("entity_column");
-    fields.extend(facts.as_object().unwrap().clone());
-    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
-    flow["nodes"].as_array_mut().unwrap().extend([
-        json!({ "id":"split", "operator":"sprisk.validation.stratified_split@1.0.0",
-                "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"} }),
-        json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
-                "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
-    ]);
-    flow["edges"] = json!([
-        {"from":"load.data","to":"split.data"},
-        {"from":"split.train","to":"model.train"}
-    ]);
-    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut csv = String::from("age,returned_within_30d\n");
-    for age in 20..80 {
-        csv.push_str(&format!("{age},{}\n", u8::from(age >= 50)));
-    }
-    std::fs::write(&api.csv, csv).unwrap();
-}
-
-async fn review(api: &Api) -> Value {
-    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (status, review) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(status, StatusCode::OK, "{review}");
-    review
-}
-
-fn statuses(review: &Value) -> Vec<(String, String)> {
-    review["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|i| {
-            (
-                i["decides"].as_str().unwrap().to_owned(),
-                i["status"].as_str().unwrap().to_owned(),
-            )
-        })
-        .collect()
-}
-
-#[tokio::test]
-async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_shaping_them() {
-    let api = api().await;
-    forest_flow(&api).await;
-
-    let review = review(&api).await;
-    let expected: Vec<(String, String)> = [
-        // The question, the data before the split and the split are methods' decisions, made
-        // in the walk's look (ADR-0063); the Objective page asks what the question must say.
-        ("modeling.estimator_selection", "needs_run"),
-        // It reads the model selection's results, so it waits for the model step's rules.
-        ("evaluation.loop_back", "waiting"),
-    ]
-    .iter()
-    .map(|(d, s)| ((*d).to_owned(), (*s).to_owned()))
-    .collect();
-    assert_eq!(statuses(&review), expected, "{review}");
-    assert_eq!(review["next"], json!([0]), "run the flow next: {review}");
-}
-
-#[tokio::test]
-async fn after_a_run_the_review_decides_the_rules_that_measure_rows_and_lists_what_is_next() {
-    let api = api().await;
-    forest_flow(&api).await;
-    let (run, _) = run_to_end(&api).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-
-    let review = review(&api).await;
-    let items = statuses(&review);
-    assert!(!items.iter().any(|(_, s)| s == "needs_run"), "{review}");
-    for at in review["next"].as_array().unwrap() {
-        let status = &items[at.as_u64().unwrap() as usize].1;
-        assert!(
-            ["proposal", "needs_fact"].contains(&status.as_str()),
-            "{review}"
-        );
-    }
-    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (_, again) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(statuses(&again), items, "the review is deterministic");
-}
-
-#[tokio::test]
-async fn a_flow_with_no_question_cannot_be_reviewed() {
-    let api = api().await;
-    let (status, body) = call(
-        &api.app,
-        "POST",
-        "/pipeline_versions",
-        Some(pipeline(&api.csv)),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (status, body) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "question_required", "{body}");
-}
-
-#[tokio::test]
-async fn an_unknown_flow_has_no_review() {
-    let api = api().await;
-    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (status, body) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-}
-
-#[tokio::test]
-async fn a_step_that_carries_the_rule_s_applied_decision_is_settled() {
-    let api = api().await;
-    let proposal = cluster_proposal(&api).await;
-    let other = proposal["alternatives"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| {
-            a["applicability"] == "applicable" && a["id"] != proposal["recommended_alternative_id"]
-        })
-        .unwrap();
-    let apply = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let choice = json!({ "alternative_id": other["id"], "reason": "the person prefers it",
-                         "idempotency_key": "review-override-1" });
-    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-
-    let uri = format!(
-        "/pipeline_versions/{}/methodology/review",
-        applied["pipeline"]["id"].as_str().unwrap()
-    );
-    let (status, review) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(status, StatusCode::OK, "{review}");
-    assert!(
-        statuses(&review).contains(&(
-            "clustering.algorithm_choice".to_owned(),
-            "settled".to_owned()
-        )),
-        "{review}"
-    );
-}
-
 /// ADR-0063 slice 6: "?" in a number column is marked missing in a step before the split,
 /// then the column is read as numbers, both decided in the walk's look.
 #[tokio::test(flavor = "multi_thread")]
@@ -4560,7 +4210,7 @@ async fn placeholders_are_marked_then_the_column_is_read_as_numbers_before_the_s
     }
     std::fs::write(&api.csv, csv).unwrap();
     learnable_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-markers");
+    let mut request = walk_request(&api, &[&api.csv], "walk-markers").await;
     request["max_actions"] = json!(20);
 
     let detail = walk_to_end(&api, request).await;
@@ -4600,7 +4250,7 @@ async fn rows_copied_in_the_data_are_dropped_before_the_split() {
     csv.push_str(&format!("{first}\n{first}\n"));
     std::fs::write(&api.csv, csv).unwrap();
     learnable_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-copies");
+    let mut request = walk_request(&api, &[&api.csv], "walk-copies").await;
     request["max_actions"] = json!(20);
 
     let detail = walk_to_end(&api, request).await;
@@ -4628,8 +4278,8 @@ async fn the_look_settles_the_task_and_class_balance_from_the_train_rows() {
     let api = api().await;
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-target");
-    request["max_actions"] = json!(30);
+    let mut request = walk_request(&api, &[&api.csv], "walk-target").await;
+    request["max_actions"] = json!(31);
 
     let detail = walk_to_end(&api, request).await;
     let steps = detail["steps"].as_array().unwrap();
@@ -4709,7 +4359,7 @@ async fn values_that_differ_only_in_case_are_lowercased_before_the_split() {
     }
     std::fs::write(&api.csv, csv).unwrap();
     learnable_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-spelling");
+    let mut request = walk_request(&api, &[&api.csv], "walk-spelling").await;
     request["max_actions"] = json!(4);
 
     let detail = walk_to_end(&api, request).await;
@@ -4822,15 +4472,32 @@ async fn rakuten_like_question(api: &Api) {
     assert_eq!(status, StatusCode::CREATED, "{body}");
 }
 
-fn walk_request(sources: &[&Path], key: &str) -> Value {
+/// A walk request on `sources`, each registered as a dataset version first (ADR-0069).
+async fn walk_request(api: &Api, sources: &[&Path], key: &str) -> Value {
+    let mut ids = Vec::with_capacity(sources.len());
+    for source in sources {
+        ids.push(registered(api, &source.display().to_string()).await);
+    }
+    walk_request_of(&ids, key)
+}
+
+fn walk_request_of(ids: &[String], key: &str) -> Value {
     json!({
         "idempotency_key": key,
         "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
         "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-        "sources": sources,
+        "dataset_version_ids": ids,
         "max_actions": 40,
         "max_wall_seconds": 600,
     })
+}
+
+/// The id of the dataset version `location` is registered as.
+async fn registered(api: &Api, location: &str) -> String {
+    let request = json!({ "location": location });
+    let (status, body) = call(&api.app, "POST", "/dataset_versions", Some(request)).await;
+    assert!(status.is_success(), "{status} {body}");
+    body["id"].as_str().unwrap().to_owned()
 }
 
 /// Starts a walk and waits, bounded, until it stops. Returns its detail.
@@ -4879,7 +4546,11 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-rakuten-0001")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-rakuten-0001").await,
+    )
+    .await;
     // Built from the question and the file. The look runs it once and the methods decide the
     // split and the data steps before it (ADR-0063 slice 6), measuring again where a step
     // changed the rows they read; then each rule's change is applied, and the flow is run
@@ -4923,10 +4594,11 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "verify",
             "decide question.error_costs not_two_classes",
             "decide evaluation.decision_threshold default_half",
-            "decide question.class_balance balanced",
-            "compare modeling.estimator_selection",
-            "apply modeling.estimator_selection ml_linear_model",
+            "compare models.estimator_selection",
+            "decide models.estimator_selection ml_linear_model",
             "run",
+            "decide evaluation.loop_back proceed",
+            "decide question.class_balance balanced",
             "score",
             "stop",
         ],
@@ -5009,7 +4681,7 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
         &api.app,
         "POST",
         "/walks",
-        Some(walk_request(&[&api.csv], "walk-rakuten-0001")),
+        Some(walk_request(&api, &[&api.csv], "walk-rakuten-0001").await),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{again}");
@@ -5017,7 +4689,11 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
 
     // Same question and file, a new walk: the same decisions in the same order, but the test
     // rows the first walk scored are not scored again.
-    let second = walk_to_end(&api, walk_request(&[&api.csv], "walk-rakuten-0002")).await;
+    let second = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-rakuten-0002").await,
+    )
+    .await;
     let first_trail: Vec<String> = trail(&detail)
         .into_iter()
         .filter(|s| s != "score")
@@ -5050,7 +4726,7 @@ async fn a_person_s_answer_is_taken_even_where_the_method_would_choose_another()
     q["answers"] = json!([{ "decides": "split.method", "option": "simple_random" }]);
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut request = walk_request(&[&api.csv], "walk-answered-split");
+    let mut request = walk_request(&api, &[&api.csv], "walk-answered-split").await;
     request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
     // The look measures and runs; text spelling and repeated items decide before the split.
     request["max_actions"] = json!(6);
@@ -5071,7 +4747,7 @@ async fn a_method_s_decision_is_a_record_made_through_apply_and_cited_by_the_ste
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-method-records");
+    let mut request = walk_request(&api, &[&api.csv], "walk-method-records").await;
     request["max_actions"] = json!(6);
 
     let detail = walk_to_end(&api, request).await;
@@ -5175,7 +4851,11 @@ async fn matching_titles_are_grouped_by_rule_and_the_split_keeps_each_item_on_on
 
     // Matching titles group rows into items by rule (ADR-0071): grouping errs toward a stricter
     // split, never a leaky one, so nothing is asked and the walk runs on.
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-relistings")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-relistings").await,
+    )
+    .await;
     let walked = trail(&detail);
     assert_eq!(
         walked[..13],
@@ -5386,7 +5066,7 @@ async fn a_walk_with_no_stated_target_stops_before_building_anything() {
         &api.app,
         "POST",
         "/walks",
-        Some(walk_request(&[&api.csv], "walk-no-target")),
+        Some(walk_request(&api, &[&api.csv], "walk-no-target").await),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{walk}");
@@ -5397,28 +5077,46 @@ async fn a_walk_with_no_stated_target_stops_before_building_anything() {
     assert_eq!(versions, json!([]), "nothing is built");
 }
 
+/// A walk starts from registered dataset versions, each one local file that is unchanged
+/// since it was registered (ADR-0069).
 #[tokio::test]
-async fn a_walk_reads_only_files_inside_the_data_roots() {
+async fn a_walk_starts_only_from_a_dataset_version_that_is_one_unchanged_local_file() {
     let api = api().await;
     rakuten_like_question(&api).await;
-    let outside = Path::new("/etc/hosts.csv");
-    let (status, body) = call(
-        &api.app,
-        "POST",
-        "/walks",
-        Some(walk_request(&[outside], "walk-outside")),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    let (status, body) = call(
-        &api.app,
-        "POST",
-        "/walks",
-        Some(walk_request(&[Path::new("/data/x.xlsx")], "walk-xlsx")),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "invalid_walk", "{body}");
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    let refused = |request: Value| {
+        let app = api.app.clone();
+        async move {
+            let (status, body) = call(&app, "POST", "/walks", Some(request)).await;
+            (
+                status,
+                body["errors"][0]["code"].as_str().unwrap().to_owned(),
+            )
+        }
+    };
+    let unknown = walk_request_of(&["dsv_01JABCDEFGHJKMNPQRSTVWXYZ9".into()], "walk-unknown");
+    let bad = StatusCode::UNPROCESSABLE_ENTITY;
+    assert_eq!(
+        refused(unknown).await,
+        (bad, "unknown_dataset_version".into())
+    );
+
+    let folder = api.csv.parent().unwrap().join("two");
+    std::fs::create_dir_all(&folder).unwrap();
+    for name in ["a.csv", "b.csv"] {
+        std::fs::write(folder.join(name), rakuten_like_listings()).unwrap();
+    }
+    let two = registered(&api, &folder.display().to_string()).await;
+    let request = walk_request_of(&[two], "walk-two-files");
+    assert_eq!(refused(request).await, (bad, "dataset_not_loadable".into()));
+
+    let id = registered(&api, &api.csv.display().to_string()).await;
+    let mut edited = rakuten_like_listings();
+    edited.push_str("9999,new listing,,1,1,10\n");
+    std::fs::write(&api.csv, edited).unwrap();
+    let request = walk_request_of(std::slice::from_ref(&id), "walk-changed");
+    let changed = (StatusCode::CONFLICT, "source_changed".into());
+    assert_eq!(refused(request).await, changed);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5426,7 +5124,7 @@ async fn a_walk_stops_when_it_has_taken_its_actions() {
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-one-action");
+    let mut request = walk_request(&api, &[&api.csv], "walk-one-action").await;
     request["max_actions"] = json!(1);
     let detail = walk_to_end(&api, request).await;
     assert_eq!(
@@ -5460,7 +5158,7 @@ async fn a_walk_stops_when_its_time_is_up() {
     .await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-no-time")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-no-time").await).await;
     assert_eq!(trail(&detail), ["build", "stop"], "{detail}");
     assert_eq!(
         detail["walk"]["stop"]["reason"], "budget_exhausted",
@@ -5473,7 +5171,7 @@ async fn a_walk_needs_a_bounded_budget_and_its_own_key() {
     let api = api().await;
     rakuten_like_question(&api).await;
     for (field, value) in [("max_actions", 0), ("max_wall_seconds", 8 * 24 * 60 * 60)] {
-        let mut request = walk_request(&[&api.csv], "walk-budget");
+        let mut request = walk_request(&api, &[&api.csv], "walk-budget").await;
         request[field] = json!(value);
         let (status, body) = call(&api.app, "POST", "/walks", Some(request)).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
@@ -5484,7 +5182,7 @@ async fn a_walk_needs_a_bounded_budget_and_its_own_key() {
     q["target"]["origin"] = json!("inferred");
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut request = walk_request(&[&api.csv], "walk-key-reused");
+    let mut request = walk_request(&api, &[&api.csv], "walk-key-reused").await;
     request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
     let (status, body) = call(&api.app, "POST", "/walks", Some(request.clone())).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -5527,12 +5225,24 @@ async fn a_walk_whose_source_changes_stops_as_source_changed() {
         &api.app,
         "POST",
         "/walks",
-        Some(walk_request(&[&api.csv], "walk-source-changed")),
+        Some(walk_request(&api, &[&api.csv], "walk-source-changed").await),
     )
     .await;
     assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
     let hashes = walk["source_hashes"].as_array().unwrap();
     assert_eq!(hashes.len(), 1, "{walk}");
+    assert_eq!(
+        walk["sources"],
+        json!([api.csv.canonicalize().unwrap()]),
+        "the file its dataset version holds, resolved"
+    );
+    assert!(
+        walk["dataset_version_ids"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("dsv_"),
+        "{walk}"
+    );
     assert!(hashes[0].as_str().unwrap().starts_with("sha256:"), "{walk}");
     // Someone saves new rows over the file while the walk is going.
     let mut edited = rakuten_like_listings();
@@ -5585,7 +5295,7 @@ async fn walk_left_walking(api: &Api) -> (sprisk_contracts::Walk, String) {
         "head_pipeline_version_id": head, "created_at": stamp_now(),
     });
     let walk: sprisk_contracts::Walk = parse(&walk.to_string()).unwrap();
-    let request = walk_request(&[&api.csv], "walk-restarted");
+    let request = walk_request(api, &[&api.csv], "walk-restarted").await;
     let request: sprisk_contracts::CreateWalk = parse(&request.to_string()).unwrap();
     let built = walk_step(
         &walk,
@@ -5710,67 +5420,13 @@ async fn a_restarted_walk_finishes_scoring_its_test_rows_and_ends_on_that_score(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
-    let api = api().await;
-    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
-    rakuten_like_question(&api).await;
-    let (walk, head) = walk_left_walking(&api).await;
-    // The head was run, then round 1 applied a rule that reads its rows, and the server
-    // stopped before it recorded the step.
-    let (status, run) = call(
-        &api.app,
-        "POST",
-        "/runs",
-        Some(json!({ "pipeline_version_id": head })),
-    )
-    .await;
-    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
-    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
-    for _ in 0..400 {
-        let (_, body) = call(&api.app, "GET", &run_uri, None).await;
-        if body["finished_at"].is_string() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    let uri = format!(
-        "/pipeline_versions/{head}/methodology/proposals/model/modeling.estimator_selection"
-    );
-    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    let apply = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let choice = json!({
-        "alternative_id": proposal["alternatives"][0]["id"],
-        "idempotency_key": format!("{}-round-1", walk.id.as_str()),
-        "reason": "Chosen before the comparison ran.",
-    });
-    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-
-    assert_eq!(resume_walks(&api.state).await.unwrap(), 1);
-    let detail = stopped(&api, &serde_json::to_value(&walk).unwrap()).await;
-
-    // Not stale: the version its head gained is the one its own round made.
-    let steps = detail["steps"].as_array().unwrap();
-    assert_eq!(steps[1]["action"], "apply", "{detail}");
-    assert_eq!(
-        steps[1]["methodology_decision_id"], applied["decision"]["id"],
-        "{detail}"
-    );
-    assert_ne!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn a_question_s_walks_are_found_by_the_question_newest_first() {
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
     let mut made = Vec::new();
     for key in ["walk-found-1", "walk-found-2"] {
-        let mut request = walk_request(&[&api.csv], key);
+        let mut request = walk_request(&api, &[&api.csv], key).await;
         request["max_actions"] = json!(1);
         let (status, walk) = call(&api.app, "POST", "/walks", Some(request)).await;
         assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
@@ -5852,7 +5508,7 @@ async fn a_walk_that_cannot_take_its_next_step_stops_with_the_error() {
         &api.app,
         "POST",
         "/walks",
-        Some(walk_request(&[&api.csv], "walk-error")),
+        Some(walk_request(&api, &[&api.csv], "walk-error").await),
     )
     .await;
     assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
@@ -5889,7 +5545,11 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
     let (x, y) = rakuten_like_files(&api);
     rakuten_like_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&x, &y], "walk-rakuten-files")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&x, &y], "walk-rakuten-files").await,
+    )
+    .await;
     // The look's run fails at the split, which finds no target in the listings; the methods
     // decide the split, and the join method reads both loads all the same. Identifiers are
     // dropped after the join, which uses the row index as its key. The target's shape is
@@ -5936,10 +5596,11 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "verify",
             "decide question.error_costs not_two_classes",
             "decide evaluation.decision_threshold default_half",
-            "decide question.class_balance balanced",
-            "compare modeling.estimator_selection",
-            "apply modeling.estimator_selection ml_linear_model",
+            "compare models.estimator_selection",
+            "decide models.estimator_selection ml_linear_model",
             "run",
+            "decide evaluation.loop_back proceed",
+            "decide question.class_balance balanced",
             "score",
             "stop",
         ],
@@ -6045,10 +5706,8 @@ source: "scikit-learn User Guide §3.1: ShuffleSplit."
 
 const SHUFFLE_MODULE: &str = r#"from typing import Any
 
-
 def decide(ctx: Any) -> Any:
     return ctx.choose("shuffled", "Rows are shuffled into train and test.")
-
 
 def verify_no_row_in_both(evidence: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]:
     if evidence["in_both"]:
@@ -6107,7 +5766,11 @@ async fn a_split_operator_and_a_method_added_as_folders_are_used_with_no_code_ed
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-added-folders")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-added-folders").await,
+    )
+    .await;
 
     let steps = detail["steps"].as_array().unwrap();
     let split = steps
@@ -6146,7 +5809,7 @@ async fn a_complete_walk_ends_in_a_report_whose_claims_link_to_their_records() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-reported")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-reported").await).await;
     assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
     let walk = detail["walk"]["id"].as_str().unwrap();
     let (status, report) = call(&api.app, "GET", &format!("/walks/{walk}/report"), None).await;
@@ -6245,7 +5908,7 @@ async fn a_walk_that_did_not_complete_has_no_report() {
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-unreported");
+    let mut request = walk_request(&api, &[&api.csv], "walk-unreported").await;
     request["max_actions"] = json!(1);
     let detail = walk_to_end(&api, request).await;
     assert_ne!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
@@ -6262,7 +5925,7 @@ async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-scored")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-scored").await).await;
 
     let trail = trail(&detail);
     assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
@@ -6293,7 +5956,8 @@ async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
         "{flow}"
     );
     // The scored flow is sealed: changing or comparing it would choose by the test rows.
-    let uri = format!("/pipeline_versions/{head}/methodology/proposals/model");
+    let uri =
+        format!("/pipeline_versions/{head}/methodology/proposals/model/models.estimator_selection");
     let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "test_rows_scored", "{body}");
@@ -6338,7 +6002,11 @@ async fn a_promise_its_evidence_cannot_settle_keeps_the_test_rows_sealed() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-unverified")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-unverified").await,
+    )
+    .await;
 
     let trail = trail(&detail);
     assert_eq!(detail["walk"]["stop"]["reason"], "unverified", "{detail}");
@@ -6361,7 +6029,7 @@ async fn a_failed_promise_reopens_the_decision_that_made_it() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-reopened")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-reopened").await).await;
 
     let trail = trail(&detail);
     assert!(!trail.contains(&"score".to_owned()), "{detail}");
@@ -6415,7 +6083,7 @@ async fn an_answer_whose_promise_failed_is_not_applied_again() {
     q["answers"] = json!([{ "decides": "split.method", "option": "simple_random" }]);
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut request = walk_request(&[&api.csv], "walk-answer-failed");
+    let mut request = walk_request(&api, &[&api.csv], "walk-answer-failed").await;
     request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
 
     let detail = walk_to_end(&api, request).await;
@@ -6452,7 +6120,11 @@ async fn a_method_that_refuses_to_check_its_promise_stops_the_walk_with_an_error
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-refused-check")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-refused-check").await,
+    )
+    .await;
 
     assert_eq!(detail["walk"]["stop"]["reason"], "error", "{detail}");
     let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
@@ -6465,13 +6137,13 @@ async fn a_second_walk_on_the_same_files_never_scores_their_test_rows_again() {
     let api = api().await;
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
-    let first = walk_to_end(&api, walk_request(&[&api.csv], "walk-scored")).await;
+    let first = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-scored").await).await;
     assert_eq!(first["walk"]["stop"]["reason"], "complete", "{first}");
 
     // The same rows, from a copy at another path: a second score would be a second look.
     let copy = api.csv.with_file_name("copy.csv");
     std::fs::copy(&api.csv, &copy).unwrap();
-    let second = walk_to_end(&api, walk_request(&[&copy], "walk-again")).await;
+    let second = walk_to_end(&api, walk_request(&api, &[&copy], "walk-again").await).await;
 
     let trail = trail(&second);
     assert!(!trail.iter().any(|s| s == "score"), "{second}");
@@ -6515,7 +6187,7 @@ async fn the_engine_fills_gaps_before_the_model_and_walks_on_to_the_comparison()
     std::fs::write(&api.csv, gappy_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-gappy")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-gappy").await).await;
     let trail = trail(&detail);
     let filled = trail
         .iter()
@@ -6523,7 +6195,7 @@ async fn the_engine_fills_gaps_before_the_model_and_walks_on_to_the_comparison()
         .unwrap_or_else(|| panic!("the gaps are filled: {detail}"));
     let compared = trail
         .iter()
-        .position(|s| s == "compare modeling.estimator_selection")
+        .position(|s| s == "compare models.estimator_selection")
         .unwrap_or_else(|| panic!("the filled flow runs, so the shortlist is compared: {detail}"));
     assert!(filled < compared, "{detail}");
 }
@@ -6534,15 +6206,19 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-learnable")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-learnable").await,
+    )
+    .await;
     let trail = trail(&detail);
     let compared = trail
         .iter()
-        .position(|s| s == "compare modeling.estimator_selection")
+        .position(|s| s == "compare models.estimator_selection")
         .unwrap_or_else(|| panic!("the shortlist is compared: {detail}"));
     assert!(
-        trail[compared + 1].starts_with("apply modeling.estimator_selection ml_"),
-        "then its winner is applied: {detail}"
+        trail[compared + 1].starts_with("decide models.estimator_selection ml_"),
+        "then the method takes its winner: {detail}"
     );
     let steps = detail["steps"].as_array().unwrap();
     assert!(
@@ -6601,13 +6277,13 @@ async fn a_walk_where_no_model_beats_the_baseline_stops_and_says_so() {
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-noise")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-noise").await).await;
     let trail = trail(&detail);
     assert_eq!(trail.last().map(String::as_str), Some("stop"), "{detail}");
     assert!(
         !trail
             .iter()
-            .any(|t| t.starts_with("apply modeling.estimator_selection")),
+            .any(|t| t.starts_with("apply models.estimator_selection")),
         "no model is chosen: {detail}"
     );
     assert_eq!(detail["walk"]["stop"]["reason"], "limitation", "{detail}");
@@ -6937,9 +6613,12 @@ async fn a_folder_mixing_formats_or_a_uri_carrying_a_secret_is_refused() {
     }
 }
 
+/// An object-store source is profiled like a local one (ADR-0067): once made for its
+/// fingerprint, its profile is served as kept, without reading the bucket again.
 #[tokio::test]
-async fn an_object_store_source_is_not_profiled_yet() {
+async fn an_object_store_source_serves_the_profile_kept_for_its_fingerprint() {
     let api = api().await;
+    let fingerprint = "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
     let remote: sprisk_contracts::DatasetVersion = parse(
         &json!({
             "schema_version": "sprisk.dataset_version/v1",
@@ -6949,17 +6628,208 @@ async fn an_object_store_source_is_not_profiled_yet() {
             "format": "parquet",
             "file_count": 2,
             "size_bytes": 10,
-            "fingerprint": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "fingerprint": fingerprint,
             "created_at": "2026-10-27T10:00:00Z",
         })
         .to_string(),
     )
     .unwrap();
     api.store.insert_dataset_version(&remote).await.unwrap();
+    let kept: sprisk_contracts::DatasetProfile = parse(
+        &std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/contract/dataset_profile/valid/sampled-row-groups.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    api.store
+        .save_profile(fingerprint, PROFILER_CODE, None, &kept)
+        .await
+        .unwrap();
 
     let path = "/dataset_versions/dsv_01JABCDEFGHJKMNPQRSTVWXYZ0/profile";
     let (status, body) = call(&api.app, "GET", path, None).await;
 
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body, serde_json::to_value(&kept).unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-compared-method").await,
+    )
+    .await;
+
+    let steps = detail["steps"].as_array().unwrap();
+    let method = "methodology.supervised.model_shortlist@1.0.0";
+    let compared = steps
+        .iter()
+        .find(|s| s["action"] == "compare")
+        .unwrap_or_else(|| panic!("no comparison: {detail}"));
+    assert_eq!(compared["method"], method, "{compared}");
+    assert_eq!(compared["subject_node_id"], "model", "{compared}");
+    let chosen = steps
+        .iter()
+        .find(|s| s["action"] == "decide" && s["decides"] == "models.estimator_selection")
+        .unwrap_or_else(|| panic!("no winner taken: {detail}"));
+    assert_eq!(chosen["assurance"], "rule", "{chosen}");
+    assert_ne!(chosen["option"], "ml_dummy_baseline", "{chosen}");
+    let uri = format!(
+        "/methodology_decisions/{}",
+        chosen["methodology_decision_id"].as_str().unwrap()
+    );
+    let (_, decision) = call(&api.app, "GET", &uri, None).await;
+    assert!(decision["selection_id"].is_string(), "{decision}");
+    // Loop-back reads what the comparison the winner won by found, and the walk scores.
+    let looped = steps
+        .iter()
+        .find(|s| s["action"] == "decide" && s["decides"] == "evaluation.loop_back")
+        .unwrap_or_else(|| panic!("loop-back did not decide: {detail}"));
+    assert_eq!(looped["option"], "proceed", "{looped}");
+    assert_eq!(
+        looped["evidence"][0]["kind"], "models.comparison",
+        "{looped}"
+    );
+    assert_eq!(looped["evidence"][0]["fields"]["looks"], 1, "{looped}");
+    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+}
+
+/// The same flow, held to a bar no model reaches: loop-back stops the walk and names what to
+/// change, before any test row is scored.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_winner_below_the_success_bar_stops_the_walk_naming_the_features_to_change() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["target"]["value"] = json!("outcome");
+    q["interpretability"] = json!({ "value": "low", "origin": "explicit" });
+    q["costs"] = json!({ "value": { "positive": "responds", "false_negative": 1.0, "false_positive": 1.0 },
+                         "origin": "explicit" });
+    q["success_bar"] =
+        json!({ "value": { "metric": "expected_cost", "score": 0.0001 }, "origin": "explicit" });
+    let facts = q.as_object_mut().unwrap();
+    for gone in ["time_column", "entity_column", "prediction_horizon"] {
+        facts.remove(gone);
+    }
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-below-bar").await,
+    )
+    .await;
+    let trail = trail(&detail);
+    assert!(
+        trail.contains(&"decide evaluation.loop_back reopen".to_owned()),
+        "{detail}"
+    );
+    assert!(
+        !trail.contains(&"score".to_owned()),
+        "no test row is scored: {detail}"
+    );
+    assert_eq!(detail["walk"]["stop"]["reason"], "uncovered", "{detail}");
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains("change the features"), "{why}");
+    assert!(why.contains("1 of 3 looks"), "{why}");
+}
+
+/// The Experiments page's path (ADR-0063 D3): a person compares every option of the compared
+/// method that decides the model step, studies them, and applies the winner, as with a rule's
+/// shortlist.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_person_compares_a_compared_method_s_options_and_applies_the_winner() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+
+    let (status, selection) = select_model(&api, "model").await;
+    assert_eq!(status, StatusCode::CREATED, "{selection}");
+    let proposal = &selection["proposal"];
+    assert_eq!(
+        proposal["rule"], "methodology.supervised.model_shortlist@1.0.0",
+        "{proposal}"
+    );
+    assert_eq!(
+        proposal["shortlist"],
+        json!(["ml_dummy_baseline", "ml_linear_model"]),
+        "32 train rows leave the forest off: {proposal}"
+    );
+    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let decided = output(&api, &attempts, "select_model", "decision").await;
+    let winner = decided["winner"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{decided}"));
+    assert_eq!(winner, "ml_linear_model", "{decided}");
+    let (status, study) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/studies/model",
+        Some(json!({
+            "idempotency_key": "method-study-0001", "strategy": "random", "seed": 7,
+            "max_trials": 5, "max_wall_seconds": 600, "guardrails": [],
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{study}");
+
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice = json!({ "alternative_id": winner, "idempotency_key": "test-method-winner" });
+    let (status, applied) = call(&api.app, "POST", &uri, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    assert!(applied["decision"]["selection_id"].is_string(), "{applied}");
+    let model = applied["pipeline"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "model")
+        .unwrap();
+    // The swapped-in model keeps the step's target, task and features.
+    assert_eq!(model["params"]["target"], "returned_within_30d", "{model}");
+    assert_eq!(model["params"]["features"], json!(["age"]), "{model}");
+}
+
+/// Costs set by hand on a model after a time split are refused when it runs: the inner folds
+/// that tune its cut-off shuffle rows (ADR-0053, M4 gap 1).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_with_costs_after_a_time_split_is_refused() {
+    let api = api().await;
+    let mut flow = pipeline(&api.csv);
+    let costs = json!({ "positive": "1", "false_negative": 5.0, "false_positive": 1.0 });
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
+                "params":{"time_column":"order_date","test_fraction":0.25} }),
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
+                "params":{"target":"returned_within_30d","task":"classification","costs":costs} }),
+    ]);
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let create = json!({ "pipeline_version_id": BASE });
+    let (status, body) = call(&api.app, "POST", "/runs", Some(create)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "profile_not_local");
+    assert_eq!(
+        body["errors"][0]["code"], "costs_after_ordered_split",
+        "{body}"
+    );
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("split"),
+        "{body}"
+    );
 }

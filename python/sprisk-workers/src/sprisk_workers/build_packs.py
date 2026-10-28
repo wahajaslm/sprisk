@@ -164,6 +164,7 @@ def operator_manifest(fn: Callable[..., Any], kinds: dict[str, str] | None = Non
         "resources": found.resources,
     }
     for key, value in (
+        ("stage", found.stage),
         ("role", found.role),
         ("folds", found.folds),
         ("role_default", found.role_default or None),
@@ -206,7 +207,9 @@ def promise_id(fn: Callable[..., Any]) -> str:
     return f"{_pack(fn)}.{found.evidence.rsplit('.', 1)[-1]}@{found.version}"
 
 
-def promise_manifest(fn: Callable[..., Any], role: str, kinds: dict[str, str]) -> Operator:
+def promise_manifest(
+    fn: Callable[..., Any], role: str, kinds: dict[str, str], stage: str | None = None
+) -> Operator:
     """The evidence step that checks a promise on the outputs of the step with `role`,
     whatever code made them (ADR-0063)."""
     found = declared_promise(fn)
@@ -239,6 +242,8 @@ def promise_manifest(fn: Callable[..., Any], role: str, kinds: dict[str, str]) -
     }
     if found.concepts:
         manifest["concepts"] = found.concepts
+    if stage is not None:
+        manifest["stage"] = stage
     return _validated(Operator, manifest, ref)  # type: ignore[no-any-return]
 
 
@@ -410,7 +415,7 @@ def compile_packs(
         for init in sorted((pyproject.parent / "src").glob("*/__init__.py")):
             if init.parent.name not in trusted:
                 continue
-            roles: dict[Callable[..., Any], str] = {}
+            placed: dict[Callable[..., Any], tuple[str, str | None]] = {}
             for fn in _operators(init.parent.name):
                 found = declared(fn)
                 assert found is not None
@@ -418,15 +423,21 @@ def compile_packs(
                 ref = f"{fn.__module__}:{fn.__name__}"
                 _claim(written, path, _text(ref, operator_manifest(fn, kinds)), "operator")
                 for check in found.promises:
-                    if roles.setdefault(check, found.role or "") != (found.role or ""):
-                        raise ManifestError(f"{check.__name__} checks steps of two roles")
-            for check, role in roles.items():
+                    where = (found.role or "", found.stage)
+                    if placed.setdefault(check, where) != where:
+                        raise ManifestError(f"{check.__name__} checks steps of two roles or stages")
+            for check, (role, stage) in placed.items():
                 promised = declared_promise(check)
                 assert promised is not None
                 name = promised.evidence.rsplit(".", 1)[-1]
                 path = pyproject.parent / "operators" / name / "manifest.yaml"
                 ref = f"{check.__module__}:{check.__name__}"
-                _claim(written, path, _text(ref, promise_manifest(check, role, kinds)), "promise")
+                _claim(
+                    written,
+                    path,
+                    _text(ref, promise_manifest(check, role, kinds, stage)),
+                    "promise",
+                )
     for path in sorted(p for root in roots for p in root.rglob("method.py")):
         module = _method_module(path)
         for value in vars(module).values():

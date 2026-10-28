@@ -1272,7 +1272,7 @@ async fn walk_parts() -> (
     );
     store.insert_question_version(&question).await.unwrap();
     let walk: sprisk_contracts::Walk = fixture("walk", "walking.json");
-    let request: sprisk_contracts::CreateWalk = fixture("create_walk", "two-sources.json");
+    let request: sprisk_contracts::CreateWalk = fixture("create_walk", "two-datasets.json");
     let first: sprisk_contracts::PipelineVersion = fixture_with(
         "pipeline_version",
         "single-node-no-parent.json",

@@ -63,6 +63,7 @@ class OperatorDeclaration:
     version: str
     capability_class: str
     resources: dict[str, Any]
+    stage: str | None
 
 
 @dataclass(frozen=True)
@@ -162,8 +163,10 @@ def operator(
     version: str = "1.0.0",
     capability_class: str = "transform",
     resources: dict[str, Any] | None = None,
+    stage: str | None = None,
 ) -> Callable[[F], F]:
-    """`columns=` is the short form of `concepts=` for a concept bound to a table column."""
+    """`columns=` is the short form of `concepts=` for a concept bound to a table column.
+    `stage` is where its steps show; its promises' check steps show there too."""
     for check in promises or []:
         if not isinstance(getattr(check, ATTRIBUTE, None), PromiseDeclaration):
             raise ManifestError(f"{id} lists {check.__name__}, which is not a promise")
@@ -181,6 +184,7 @@ def operator(
             version=version,
             capability_class=capability_class,
             resources=resources or dict(RESOURCES),
+            stage=stage,
         )
     )
 

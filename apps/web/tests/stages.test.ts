@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { figurePortOf, stepLabel } from "../src/flow/stages.ts";
+import { figurePortOf, stageOf, stepLabel } from "../src/flow/stages.ts";
 import { notebookOperator, operators } from "./fixtures.ts";
 
 const byId = (id: string) => operators.find((o) => o.id === id)!;
@@ -30,5 +30,16 @@ describe("a step's label (ADR-0055)", () => {
 
   it("calls a code step with no title Python code", () => {
     expect(stepLabel({ id: "rate", operator: notebookOperator.id, params: {} }).title).toBe("Python code");
+  });
+});
+
+describe("a step's stage", () => {
+  it("is the one its operator's manifest names", () => {
+    expect(stageOf({ ...byId("sprisk.ml.evaluate@1.0.0"), stage: "split" })).toBe("Split");
+  });
+
+  it("is never guessed from the operator's id or kind", () => {
+    const { stage: _, ...unstaged } = byId("sprisk.validation.random_split@1.0.0");
+    expect(stageOf(unstaged)).toBe("Unknown");
   });
 });

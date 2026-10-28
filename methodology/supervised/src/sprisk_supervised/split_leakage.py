@@ -4,7 +4,7 @@ from typing import Any
 
 import networkx as nx
 
-from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
+from sprisk_contracts import ExecutionPlan, MethodologyCheck, Operator, PipelineVersion
 from sprisk_contracts.generated.models import (
     CapabilityClass,
     OperatorRole,
@@ -26,8 +26,6 @@ HOLDOUT_PORT = "test"
 TRAIN_PORT = "train"
 # A code step may split rows in a way this check cannot see.
 CODE_OPERATOR = "sprisk.code.python"
-# Transforms that learn from their `train` input and apply to `train` and `test` (ADR-0018).
-TRAIN_OUTPUTS = frozenset({"train", "train_words"})
 WORDS_PORT = "words"
 
 
@@ -59,6 +57,16 @@ def fits_on_train(op: Operator) -> bool:
     return op.fits_on_train is True
 
 
+def fits_on_all_it_reads(op: Operator) -> bool:
+    """A step that fits a model on its rows but is not a model and does not keep train rows
+    apart, such as a clustering step: whatever rows it reads shape its output."""
+    return (
+        op.model is not None
+        and op.capability_class != CapabilityClass.estimator
+        and not fits_on_train(op)
+    )
+
+
 LIMITATIONS = (
     "Looks at this version of the flow only. If earlier versions compared models on the "
     "same test set, this check cannot see it."
@@ -70,7 +78,11 @@ class CheckInputError(ValueError):
 
 
 def split_leakage(
-    pipeline: PipelineVersion, operators: Mapping[str, Operator], check_id: str, now: str
+    pipeline: PipelineVersion,
+    plan: ExecutionPlan,
+    operators: Mapping[str, Operator],
+    check_id: str,
+    now: str,
 ) -> MethodologyCheck:
     """FAIL when a holdout is used to fit or to choose between models (ADR-0015, §15.11).
 
@@ -78,13 +90,20 @@ def split_leakage(
     - Any estimator downstream of a holdout port was fit on it.
     - When the flow has a split, an estimator that reaches a data source other than through a
       split's train port was fit on rows that include the holdout.
+    - A step that fits on all it reads (clustering) and feeds a model must read only a split's
+      train rows.
     - Per holdout, evaluators may score at most one non-baseline model, where a
       model is the nearest estimator upstream of the evaluator's model input.
     - With no split step, a model scored on rows from the source it learns from FAILS; with a
       code step that may split them, NOT_ASSESSED. Never PASS.
     """
+    if plan.pipeline_version_id != pipeline.id:
+        raise CheckInputError(
+            f"the plan is of {plan.pipeline_version_id.root}, not {pipeline.id.root}"
+        )
     op_of = operators_by_node(pipeline, operators)
-    graph = _port_graph(pipeline, op_of)
+    # The graph is the one Rust compiled, ports and row lineage included (ADR-0070).
+    graph = _port_graph(plan)
     splits = [n for n, op in op_of.items() if is_split(op)]
     holdouts = {f"{node}.{HOLDOUT_PORT}" for node in splits}
     sources = {n for n, op in op_of.items() if op.capability_class == CapabilityClass.source}
@@ -100,6 +119,11 @@ def split_leakage(
     estimators = sorted(
         n for n, op in op_of.items() if op.capability_class == CapabilityClass.estimator
     )
+    for node in sorted(n for n, op in op_of.items() if fits_on_all_it_reads(op)):
+        problem = _fit_on_test_rows(graph, cut, node, estimators, holdouts, sources)
+        if problem:
+            rationale, cited = problem
+            return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
     # Only a source a split reads holds test rows; another dataset is not this split's.
     split_sources = sources & {a for s in splits for a in nx.ancestors(graph, s)}
     for node in estimators:
@@ -212,26 +236,28 @@ def operators_by_node(
     return op_of
 
 
-def _port_graph(pipeline: PipelineVersion, op_of: Mapping[str, Operator]) -> PortGraph:
-    """Vertices are nodes and their output ports: node → node.port → consumer node."""
+def _port_graph(plan: ExecutionPlan) -> PortGraph:
+    """Vertices are steps and their output ports: step → step.port → consumer step. An output
+    that holds the rows of only some inputs, as a fitting transform's train output holds only
+    its train input, hangs from those inputs' sources instead of its step."""
     graph: PortGraph = nx.DiGraph()
-    for node, op in op_of.items():
+    for step in plan.steps:
+        node = step.node_id.root
         graph.add_node(node)
-        for port in op.outputs:
-            graph.add_edge(node, f"{node}.{port.name.root}")
-    for edge in pipeline.edges:
-        consumer, in_port = edge.to.root.split(".")
-        graph.add_edge(edge.from_.root, consumer)
-        graph.edges[edge.from_.root, consumer].setdefault("ports", set()).add(in_port)
-    # A fitting transform's train outputs (its train table, and its train words) carry only
-    # its train input; its test outputs depend on both. Without this, every model after a
-    # transform looks fit on test rows.
-    for node, op in op_of.items():
-        if fits_on_train(op):
-            source = _source_of(graph, node, TRAIN_PORT)
-            for name in TRAIN_OUTPUTS & {p.name.root for p in op.outputs}:
-                graph.remove_edge(node, f"{node}.{name}")
-                graph.add_edge(source, f"{node}.{name}")
+        fed = {i.port.root: i.from_.root for i in step.inputs}
+        for i in step.inputs:
+            graph.add_edge(i.from_.root, node)
+            graph.edges[i.from_.root, node].setdefault("ports", set()).add(i.port.root)
+        for out in step.outputs:
+            port = f"{node}.{out.name.root}"
+            rows_from = {p.root for p in out.rows_from}
+            if rows_from == set(fed):
+                graph.add_edge(node, port)
+            else:
+                unfed = sorted(rows_from - set(fed))
+                if unfed:
+                    raise CheckInputError(f"input {node}.{unfed[0]} is not connected")
+                graph.add_edges_from((fed[p], port) for p in rows_from)
     return graph
 
 
@@ -293,6 +319,32 @@ def _fit_problem(
     return (
         f"{node} learns its settings from {where}. Fit it on the training rows only.",
         sorted({node, train_src.split(".")[0]}),
+    )
+
+
+def _fit_on_test_rows(
+    graph: PortGraph,
+    cut: PortGraph,
+    node: str,
+    estimators: list[str],
+    holdouts: set[str],
+    sources: set[str],
+) -> tuple[str, list[str]] | None:
+    """Why a step that fits on all it reads leaks test rows into a model, or None. Only a
+    model after it makes its fit matter; looking at clusters of every row is not a leak."""
+    fed = sorted(e for e in estimators if nx.has_path(graph, node, e))
+    if not fed:
+        return None
+    if holdouts & nx.ancestors(graph, node):
+        where = "the test set"
+    elif sources & (nx.ancestors(cut, node) | {node}):
+        where = "rows that were never split"
+    else:
+        return None
+    return (
+        f"{node} fits on {where}, and {fed[0]} learns from its output, so the model sees the "
+        f"test rows through it. Fit {node} on a split's training rows only.",
+        sorted({node, fed[0]}),
     )
 
 

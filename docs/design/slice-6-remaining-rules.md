@@ -67,7 +67,7 @@ Legend: **kept** = same behaviour in walks; **changed** = said how; **dropped** 
 | Rule | Becomes | What changes |
 |---|---|---|
 | model_baseline_selection | compared method (D1, D3) | Kept: the shortlist (baseline always, linear always, forest unless interpretability is high or under 100 rows), compared on folds by ADR-0050. |
-| loop_back | method (D4) | Kept: stop when no model beats the baseline; proceed when the bar is met; at most 3 looks. Changed: "reopen" stops the walk naming what to change, as the walk does today (it never went back). |
+| loop_back | method (D4), done | Kept: stop when no model beats the baseline; proceed when the bar is met; at most 3 looks. Changed: "reopen" stops the walk naming what to change, as the walk does today (it never went back). Dropped: "reopen the model choice", since the compared winner is always the model. |
 | clustering_algorithm | dropped | The walk needs a target and never builds a clustering flow; the rule always picked k-means. Clustering returns as a method when the walk explores. |
 
 ## Order of work
@@ -76,8 +76,9 @@ Legend: **kept** = same behaviour in walks; **changed** = said how; **dropped** 
 2. B2 redone: rare categories, missing values, encoding (with `leave_out`), skew, scaling.
 3. D3 and D4, then model selection and loop-back. Item 4 reuses D3.
 4. Remove the old format: rules, `applies_to`, the fixed fact list in `facts.rs`, the old
-   review routes, and the old-format tests in one commit. Until then the old-format tests are
-   left as they are, on the rules that still exist.
+   review routes, and the old-format tests. Done in several commits, since the walk and the
+   Methodology page still read the review: see the ADR-0063 step 4 amendment. Draft rules stay
+   as words for the map.
 
 ## Decisions for you
 

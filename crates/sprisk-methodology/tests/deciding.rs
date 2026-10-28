@@ -6,9 +6,11 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use sprisk_contracts::{MethodAssurance, Operator, PipelineVersion, QuestionVersion, parse};
+use sprisk_contracts::{
+    MethodAssurance, MethodStop, Operator, PipelineVersion, QuestionVersion, parse,
+};
 use sprisk_methodology::deciding::{
-    Basis, Made, apply_option, bindings, made_by, ready, reopened_too_late,
+    Basis, Made, apply_option, bindings, made_by, ready, reopened_too_late, stop_asked,
 };
 use sprisk_methodology::{RuleCatalog, patch};
 use sprisk_registry::Registry;
@@ -585,7 +587,7 @@ fn a_stratified_split_reads_the_target_from_its_binding() {
     assert_eq!(
         serde_json::to_value(&applied.effects).unwrap(),
         json!([{ "kind": "replace_node", "node_id": "split",
-                 "operator": "sprisk.validation.random_split@1.0.0",
+                 "operator": "sprisk.validation.stratified_split@1.0.0",
                  "params": { "stratify": "prdtypecode", "test_fraction": 0.2, "seed": 42 } }])
     );
     assert_eq!(applied.promises, ["no_row_in_both"]);
@@ -1327,4 +1329,272 @@ fn a_set_option_reading_a_statement_the_question_does_not_make_is_refused() {
     )
     .unwrap_err();
     assert!(refused.to_string().contains("costs"), "{refused}");
+}
+
+/// A compared method's option (ADR-0063 D3): it swaps the model for another.
+fn model_swap() -> sprisk_contracts::Method {
+    parse(
+        &json!({
+            "schema_version": "sprisk.method/v2",
+            "id": "methodology.supervised.model_shortlist@1.0.0",
+            "decides": "modeling.estimator_selection", "name": "Model shortlist",
+            "activity": "Models", "question": "Which models are worth comparing?",
+            "pitfall": "One complex model hides whether it beats a naive guess.",
+            "compare": true,
+            "needs": { "concepts": [], "evidence": [], "decisions": [] },
+            "options": [{
+                "id": "linear_model", "label": "Linear model", "description": "A linear model.",
+                "condition": "always", "when": "always", "rationale": "The simplest learner.",
+                "action": { "replace": { "role": "model", "operator": "sprisk.ml.linear_model@3.0.0" } },
+                "verify": [],
+            }],
+            "verifications": {}, "source": "Hastie et al. (2009), ch. 7.",
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_model_replaced_by_another_keeps_the_settings_the_new_model_takes() {
+    let ops = operators();
+    let flow: PipelineVersion = parse(
+        &json!({
+            "schema_version": "sprisk.pipeline_version/v1",
+            "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0", "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+            "nodes": [
+                { "id": "load", "operator": "sprisk.io.load_table@1.0.0",
+                  "params": { "path": "rows.csv", "format": "csv" } },
+                { "id": "split", "operator": "sprisk.validation.random_split@1.0.0",
+                  "params": { "test_fraction": 0.2, "seed": 0 } },
+                { "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0",
+                  "params": { "target": "churned", "task": "classification", "exclude": ["id"] } },
+            ],
+            "edges": [
+                { "from": "load.data", "to": "split.data" },
+                { "from": "split.train", "to": "model.train" },
+            ],
+            "created_at": "2026-10-27T00:00:00Z",
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let applied = apply_option(
+        &model_swap(),
+        "linear_model",
+        MethodAssurance::Rule,
+        &Basis {
+            bindings: &[],
+            pipeline: &flow,
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&applied.effects).unwrap(),
+        json!([{ "kind": "replace_node", "node_id": "model",
+                 "operator": "sprisk.ml.linear_model@3.0.0",
+                 "params": { "target": "churned", "task": "classification", "exclude": ["id"] } }])
+    );
+}
+
+const MODEL_CHOICE: &str = "models.model_choice";
+
+/// The repo's packs with a compared method on the model step (ADR-0063 D3).
+fn packs_with_a_compared_method() -> tempfile::TempDir {
+    let packs = tempfile::tempdir().unwrap();
+    copy_dir(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology"),
+        packs.path(),
+    );
+    let folder = packs.path().join("supervised/methods/model_choice");
+    std::fs::create_dir_all(&folder).unwrap();
+    let option = |id: &str, operator: &str| {
+        json!({ "id": id, "label": id, "description": "A model.", "condition": "always",
+                "when": "always", "rationale": "Compared on the same folds.",
+                "action": { "replace": { "role": "model", "operator": operator } }, "verify": [] })
+    };
+    let method = json!({
+        "schema_version": "sprisk.method/v2",
+        "id": "methodology.supervised.model_choice@1.0.0", "decides": MODEL_CHOICE,
+        "name": "Model choice", "activity": "Models", "question": "Which model?",
+        "pitfall": "A model picked before measuring.", "compare": true,
+        "needs": { "concepts": [], "evidence": [], "decisions": [] },
+        "options": [option("dummy_baseline", "sprisk.ml.dummy_baseline@3.0.0"),
+                    option("linear_model", "sprisk.ml.linear_model@3.0.0")],
+        "verifications": {}, "source": "Hastie et al. (2009), ch. 7.",
+    });
+    std::fs::write(folder.join("method.yaml"), method.to_string()).unwrap();
+    std::fs::write(
+        folder.join("method.py"),
+        "def decide(ctx):\n    return ctx.compare(['dummy_baseline', 'linear_model'], 'Both.')\n",
+    )
+    .unwrap();
+    packs
+}
+
+#[test]
+fn a_compared_method_waits_until_no_other_method_may_change_its_model_s_rows_or_settings() {
+    let ops = operators();
+    let packs = packs_with_a_compared_method();
+    let catalog = RuleCatalog::load_dir(packs.path(), &ops).unwrap();
+    let (flow, mut done) = after_the_split_decisions(&catalog);
+    done.retain(|m| m.decides != MODEL_CHOICE);
+    let q = titled();
+    let ready_now = |done: &[Made]| {
+        let effective = bindings(&q, done).unwrap();
+        let found = ready(
+            &catalog,
+            &q,
+            done,
+            &effective,
+            &BTreeMap::new(),
+            &ops,
+            &flow,
+        )
+        .unwrap();
+        found
+            .ready
+            .iter()
+            .map(|r| r.method.decides.to_string())
+            .collect::<Vec<_>>()
+    };
+    let waiting = ready_now(&done);
+    assert!(
+        !waiting.contains(&MODEL_CHOICE.to_owned()),
+        "feature methods may still insert before the model: {waiting:?}"
+    );
+    // The threshold sets the stated costs on the model the candidates are fit as.
+    let others: Vec<Made> = catalog
+        .methods()
+        .filter(|m| m.decides.as_str() != MODEL_CHOICE)
+        .map(|m| made(m.decides.as_str(), m.options[0].id.as_str(), json!([])))
+        .collect();
+    let all_but_threshold: Vec<Made> = others
+        .iter()
+        .filter(|m| m.decides != "evaluation.decision_threshold")
+        .cloned()
+        .collect();
+    assert!(!ready_now(&all_but_threshold).contains(&MODEL_CHOICE.to_owned()));
+    assert_eq!(ready_now(&others), [MODEL_CHOICE]);
+}
+
+/// The fixture pack with the duplicate method reading what a comparison found instead.
+fn reading_a_comparison() -> tempfile::TempDir {
+    let pack = tempfile::tempdir().unwrap();
+    copy_dir(&fixture(), pack.path());
+    let manifest = pack
+        .path()
+        .join("methodology/core/methods/repeated_items/method.yaml");
+    let text = std::fs::read_to_string(&manifest)
+        .unwrap()
+        .replace(
+            "evidence: [data.near_duplicate_groups]",
+            "evidence: [models.comparison]",
+        )
+        .replace(
+            "evidence: data.near_duplicate_groups, ",
+            "evidence: models.comparison, ",
+        );
+    std::fs::write(&manifest, text).unwrap();
+    pack
+}
+
+#[test]
+fn what_a_comparison_found_is_never_placed_and_a_method_reading_it_waits_for_it() {
+    let ops = operators();
+    let pack = reading_a_comparison();
+    let catalog = RuleCatalog::load_dir(&pack.path().join("methodology"), &ops).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &[]).unwrap();
+    let measuring = sprisk_methodology::measure::measure(
+        &catalog,
+        &measured_flow(),
+        &q,
+        &effective.bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
+    assert!(measuring.effects.is_empty(), "{:?}", measuring.effects);
+    assert!(measuring.left_out.is_empty(), "{:?}", measuring.left_out);
+
+    let waiting = ready_ids(&catalog, &q, &[], &BTreeMap::new(), &ops);
+    assert!(!waiting.contains(&REPEATED.to_owned()), "{waiting:?}");
+    let compared = BTreeMap::from([(
+        "models.comparison".to_owned(),
+        json!({ "metric": "balanced_accuracy", "score": 0.8, "baseline_score": 0.5,
+                "beats_baseline": true, "looks": 1 }),
+    )]);
+    let found = ready_ids(&catalog, &q, &[], &compared, &ops);
+    assert!(found.contains(&REPEATED.to_owned()), "{found:?}");
+}
+
+#[test]
+fn a_request_carries_the_method_s_limits() {
+    let ops = operators();
+    let pack = tempfile::tempdir().unwrap();
+    copy_dir(&fixture(), pack.path());
+    let manifest = pack
+        .path()
+        .join("methodology/core/methods/repeated_items/method.yaml");
+    let text = std::fs::read_to_string(&manifest)
+        .unwrap()
+        .replace("options:\n", "limits: { max_groups: 2 }\noptions:\n");
+    std::fs::write(&manifest, text).unwrap();
+    let catalog = RuleCatalog::load_dir(&pack.path().join("methodology"), &ops).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &[]).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &[],
+        &effective,
+        &groups(83),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
+    let request = serde_json::to_value(&found.ready[0].request).unwrap();
+    assert_eq!(request["limits"], json!({ "max_groups": 2 }));
+}
+
+#[test]
+fn a_decision_whose_option_stops_the_walk_says_how_and_why() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let loop_back = |round: u32, option: &str| {
+        let mut taken = serde_json::to_value(step(
+            round,
+            "decide",
+            json!({ "decides": "evaluation.loop_back",
+                    "method": "methodology.supervised.loop_back@1.0.0", "option": option }),
+        ))
+        .unwrap();
+        taken["reason"] = json!(format!("{option}, as the comparison found"));
+        parse::<sprisk_contracts::WalkStep>(&taken.to_string()).unwrap()
+    };
+    let stops = |steps: &[sprisk_contracts::WalkStep]| {
+        let made = made_by(&catalog, steps).unwrap();
+        stop_asked(&catalog, &made, steps).unwrap()
+    };
+
+    assert_eq!(stops(&[loop_back(4, "proceed")]), None);
+    assert_eq!(
+        stops(&[loop_back(4, "stop")]),
+        Some((
+            MethodStop::Limitation,
+            "stop, as the comparison found".to_owned()
+        ))
+    );
+    assert_eq!(
+        stops(&[loop_back(4, "reopen")]),
+        Some((
+            MethodStop::Uncovered,
+            "reopen, as the comparison found".to_owned()
+        ))
+    );
 }
