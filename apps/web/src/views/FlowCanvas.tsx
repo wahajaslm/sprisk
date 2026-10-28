@@ -545,7 +545,7 @@ function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel,
 }
 
 export function FlowCanvas() {
-  const { pipelineVersionId, runId, nodeId } = useSelection();
+  const { pipelineVersionId, runId, nodeId, setNav } = useSelection();
   const versions = usePipelineVersions();
   const operators = useOperators();
   const attempts = useRunAttempts(pipelineVersionId, runId);
@@ -563,7 +563,13 @@ export function FlowCanvas() {
   // Decisions place steps in their activity's card: lay out once they are read, not twice.
   if (versions.isPending || operators.isPending || (pipelineVersionId && decided.isPending)) return <Loading text="Loading pipeline…" pad />;
   const pipeline = pipelineNow;
-  if (!pipeline) return <p className="muted pad">No pipeline yet. Submit one with <code>sprisk run</code>.</p>;
+  if (!pipeline) {
+    return (
+      <p className="muted pad">
+        No pipeline yet. State a question, then start an auto run. <Button size="sm" onClick={() => setNav("Objective")}>Open Objective</Button>
+      </p>
+    );
+  }
 
   const byRef = new Map(operators.data.map((op) => [op.id, op]));
   const latest = latestByNode(attempts.data ?? []);
