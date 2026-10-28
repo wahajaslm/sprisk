@@ -22,7 +22,13 @@ Arch doc sections: §8 (methodology), §14 (layout), §15.1 (a capability is a p
 **The method never sees a column name (ADR-0063).**
 - A parameter for a concept gets a `Binding` when the concept is bound, else `None`. A `Binding` is truthy and has no column name. It carries the binding's assurance once the method request sends it.
 - A reason may say `{item_identity}`. It is filled with the column name only when shown.
-- A ruled-out option arrives as a `ruled_out` parameter, as `ctx.ruled_out` does today.
+- A method only chooses. It has no fallback code: no `ruled_out`, no `ask`.
+
+**The engine handles a broken promise, the same way for every method.**
+1. The option whose promise broke is ruled out. The broken promise and its evidence are recorded.
+2. The engine runs the method again without that option, and takes its next choice.
+3. If that option needs a concept that is not bound, the engine runs a method whose option can bind it, e.g. `repeated_items` binds the item from matching titles. The binding is marked assurance `rule`, shown, and can be overridden.
+4. Only when nothing can bind it does the engine ask the person. A guessed item column could give a split that looks fair and is not.
 
 **A build compiles the files.**
 - `just build-packs` writes the versioned Method IR. Its serialization today is the existing `method.yaml` and `manifest.yaml` contracts, so Rust is unchanged.
@@ -43,17 +49,18 @@ Arch doc sections: §8 (methodology), §14 (layout), §15.1 (a capability is a p
 - Good: a step reads as one Python file, and the notebook shows that same code.
 - Good: settings and logic are written once.
 - Good: a plot belongs to its operator and shows on its node.
+- Good: a broken promise is fixed by the engine for every method, not by code in each one.
 - Bad: the build imports Python to read the decorators. Only first-party packs are built this way; a third-party pack ships its IR.
 - Bad: until Rust runs promises on outputs directly, the build also writes evidence steps and `verify_*` plumbing. That needs a contract change, in a later ADR.
 - Bad: two formats live side by side until the last method is converted.
 
 ## Delivery slices
 1. SDK in `sprisk-workers`, `just build-packs`, stale check, notebook cell from source.
-2. Convert the split. The existing split tests and the Rakuten walk test pass unchanged.
+2. Engine: a broken promise rules the option out, the method runs again, a missing binding is found by rule, and the person is asked last. Convert the split in the same slice. Nothing is kept only because an old test expects it; tests that pinned the old fallback are rewritten.
 3. Each operator's visualizations become a `figures` output, shown on its node.
 4. Remove the split example view.
 
 ## Validation
-- The Rakuten walk test makes the same split decision, with the same promises, as before.
+- The Rakuten walk ends with a group split by matching titles, with no question asked, and its promises pass.
 - A changed operator file without a rebuild fails `just check`.
 - A person can read the Split step as one file and recognise it in the notebook.
