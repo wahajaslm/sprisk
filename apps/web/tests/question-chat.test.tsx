@@ -67,6 +67,7 @@ describe("the question conversation on the Objective page", () => {
 
     await click("Classification");
     expect(within(ledger()).getByText("classification")).toBeInTheDocument();
+    await click("designation");
     await click("Skip");
     await click("Weighted F1");
     await click("0.8");
@@ -131,6 +132,7 @@ describe("the question conversation on the Objective page", () => {
 
     await userEvent.type(screen.getByRole("textbox", { name: "Your answer" }), "Predict prdtypecode for each listing{enter}");
     await click("Classification");
+    await click("None");
     await userEvent.type(screen.getByRole("textbox", { name: "Your answer" }), "one product listing{enter}");
     await click("Balanced accuracy");
     await userEvent.type(screen.getByRole("textbox", { name: "Your answer" }), "75%{enter}");
@@ -155,6 +157,7 @@ describe("the question conversation on the Objective page", () => {
   async function completeByChips() {
     await click("Predict prdtypecode");
     await click("Classification");
+    await click("designation");
     await click("Skip");
     await click("Weighted F1");
     await click("0.8");

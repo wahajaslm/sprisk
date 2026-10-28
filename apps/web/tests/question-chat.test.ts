@@ -36,6 +36,14 @@ describe("the question conversation", () => {
 
     chat = pick(chat, "Classification");
     expect(chat.draft.task).toEqual({ value: "classification", origin: "confirmed" });
+    // Rows that name the same item stay on one side of the split, so the title is asked early.
+    expect(nextSlot(chat)).toBe("title");
+    expect(prompt(chat)).toBe("Which column names the item each row describes? Rows with the same name will stay on one side of the split.");
+    expect(chips(chat, rakuten).map((c) => c.label)).toEqual(["designation", "description", "None"]);
+    chat = pick(chat, "designation");
+    expect(chat.draft.bindings).toEqual([
+      { schema_version: "sprisk.binding/v1", concept: "common.item_title", source: { column: "designation" }, set_by: { assurance: "stated" } },
+    ]);
     expect(nextSlot(chat)).toBe("unit");
     chat = pick(chat, "Skip");
     expect(chat.draft.unit_of_analysis).toBeUndefined();
@@ -61,6 +69,8 @@ describe("the question conversation", () => {
     expect(chat.draft.objective).toEqual({ value: "I want to predict the PRDTYPECODE of each listing", origin: "explicit" });
     chat = answer(chat, rakuten, "it is a category", "explicit")!;
     expect(chat.draft.task?.value).toBe("classification");
+    chat = answer(chat, rakuten, "the DESIGNATION column", "explicit")!;
+    expect(chat.draft.bindings?.[0]?.source.column).toBe("designation");
     chat = answer(chat, rakuten, "one product listing", "explicit")!;
     expect(chat.draft.unit_of_analysis).toEqual({ value: "one product listing", origin: "explicit" });
     chat = answer(chat, rakuten, "balanced accuracy please", "explicit")!;
@@ -72,7 +82,7 @@ describe("the question conversation", () => {
 
   it("does not understand what it cannot match, and never invents a target", () => {
     expect(answer(start, rakuten, "what should I predict?", "explicit")).toBeUndefined();
-    let chat = pick(pick(pick(start, "Predict prdtypecode"), "Classification"), "Skip");
+    let chat = pick(pick(pick(pick(start, "Predict prdtypecode"), "Classification"), "None"), "Skip");
     expect(answer(chat, rakuten, "rmse", "explicit")).toBeUndefined();
     chat = pick(chat, "Balanced accuracy");
     expect(answer(chat, rakuten, "1.5", "explicit")).toBeUndefined();
@@ -86,6 +96,9 @@ describe("the question conversation", () => {
     expect(chat.draft.objective).toEqual({ value: "Predict price from the other columns", origin: "confirmed" });
     expect(chips(chat, prices)[0]?.label).toBe("Regression");
     chat = answer(chat, prices, "regression", "confirmed")!;
+    expect(chips(chat, prices).map((c) => c.label)).toEqual(["None"]);
+    chat = answer(chat, prices, "none", "confirmed")!;
+    expect(chat.draft.bindings).toBeUndefined();
     chat = answer(chat, prices, "", "confirmed")!;
     expect(chips(chat, prices).map((c) => c.label)).toEqual(["RMSE"]);
     chat = answer(chat, prices, "rmse", "confirmed")!;
@@ -101,7 +114,7 @@ describe("the question conversation", () => {
   });
 
   it("fails loudly when a score is read before its metric", () => {
-    const noMetric: Chat = { draft: {}, done: ["target", "task", "unit", "metric"] };
+    const noMetric: Chat = { draft: {}, done: ["target", "task", "title", "unit", "metric"] };
     expect(() => answer(noMetric, rakuten, "0.8", "explicit")).toThrow(/metric/);
     expect(() => prompt(noMetric)).toThrow(/metric/);
   });

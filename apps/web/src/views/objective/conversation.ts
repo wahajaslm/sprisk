@@ -1,18 +1,18 @@
-import type { ColumnProfile, ColumnRole, DatasetProfile, Fact, QuestionVersion, SelectionMetric } from "@sprisk/contracts";
+import type { Binding, ColumnProfile, ColumnRole, DatasetProfile, Fact, QuestionVersion, SelectionMetric } from "@sprisk/contracts";
 
 /** The question conversation (ADR-0068): one ledger slot at a time, in a fixed order, with
  * choices built from the dataset profile. Plain code reads every answer; a model never fills a
  * slot. Column names are dataset text (rule 7): they are shown, never run. */
 
-export type Slot = "target" | "task" | "unit" | "metric" | "score" | "interpretability";
+export type Slot = "target" | "task" | "title" | "unit" | "metric" | "score" | "interpretability";
 
-const ORDER: Slot[] = ["target", "task", "unit", "metric", "score", "interpretability"];
+const ORDER: Slot[] = ["target", "task", "title", "unit", "metric", "score", "interpretability"];
 
 /** A chip the page suggested and the person picked is `confirmed`; typed words are `explicit`. */
 export type Said = "confirmed" | "explicit";
 
 type Draft = Partial<
-  Pick<QuestionVersion, "objective" | "task" | "target" | "unit_of_analysis" | "success_bar" | "interpretability">
+  Pick<QuestionVersion, "objective" | "task" | "target" | "bindings" | "unit_of_analysis" | "success_bar" | "interpretability">
 >;
 
 export interface Chat {
@@ -97,6 +97,8 @@ export function prompt(chat: Chat): string {
       return "Which column should be predicted?";
     case "task":
       return `Is ${chat.draft.target?.value ?? "the target"} a class to pick or a number to estimate?`;
+    case "title":
+      return "Which column names the item each row describes? Rows with the same name will stay on one side of the split.";
     case "unit":
       return "What does one row describe? For example, one product.";
     case "metric":
@@ -128,6 +130,8 @@ export function chips(chat: Chat, profile: DatasetProfile): Chip[] {
       ];
       return column && predictsNumber(column) ? both.reverse() : both;
     }
+    case "title":
+      return [...titles(chat, profile).map((name) => ({ label: name, value: name })), { label: "None", value: "none" }];
     case "unit":
       return [{ label: "Skip", value: "" }];
     case "metric":
@@ -142,6 +146,16 @@ export function chips(chat: Chat, profile: DatasetProfile): Chip[] {
 }
 
 const fact = (value: string, origin: Fact["origin"]): Fact => ({ value, origin });
+const stated = (concept: string, column: string): Binding => ({
+  schema_version: "sprisk.binding/v1",
+  concept,
+  source: { column },
+  set_by: { assurance: "stated" },
+});
+
+/** The text columns that could name each row's item: the profiler's text columns, not the target. */
+const titles = (chat: Chat, profile: DatasetProfile) =>
+  profile.columns.filter((c) => c.role === "text" && c.name !== chat.draft.target?.value).map((c) => c.name);
 const words = (text: string) => text.toLowerCase().split(/[^a-z0-9_]+/).filter(Boolean);
 
 function readTarget(chat: Chat, profile: DatasetProfile, text: string, said: Said): Chat | undefined {
@@ -202,6 +216,14 @@ export function answer(chat: Chat, profile: DatasetProfile, text: string, said: 
     case "task": {
       const task = readTask(text);
       return task && next({ draft: { ...chat.draft, task: { value: task, origin: said } } });
+    }
+    case "title": {
+      if (words(text).includes("none")) return next({});
+      const typed = new Set(words(text));
+      const named = titles(chat, profile).filter((name) => typed.has(name.toLowerCase()));
+      if (named.length !== 1) return undefined;
+      // Matching titles group rows into items by rule (ADR-0071), so the split keeps them apart.
+      return next({ draft: { ...chat.draft, bindings: [stated("common.item_title", named[0]!)] } });
     }
     case "unit": {
       const unit = text.trim();
