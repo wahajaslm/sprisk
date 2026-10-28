@@ -4,9 +4,6 @@ from sklearn.model_selection import GroupShuffleSplit
 
 from sprisk_workers.authoring import Verdict, operator, promise
 
-# Enough ids for a person to look one up; the count says how many there are.
-SHOWN = 20
-
 
 @promise(
     id="no_group_overlap",
@@ -31,7 +28,8 @@ def no_group_overlap(train: pl.DataFrame, test: pl.DataFrame, group_column: str)
     learned = train[group_column].drop_nulls().unique()
     scored = test[group_column].drop_nulls().unique()
     both = learned.filter(learned.is_in(scored.implode())).sort()
-    named = [str(g) for g in both.head(SHOWN).to_list()]
+    # Enough ids for a person to look one up; the count says how many there are.
+    named = [str(g) for g in both.head(20).to_list()]
     evidence = {
         "overlapping": both.len(),
         "overlapping_groups": named,
