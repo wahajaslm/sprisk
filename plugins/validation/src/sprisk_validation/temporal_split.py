@@ -1,6 +1,8 @@
+import numpy as np
+import plotly.graph_objects as go
 import polars as pl
 
-from sprisk_workers.authoring import Verdict, operator, promise
+from sprisk_workers.authoring import Verdict, operator, promise, visualization
 
 
 @promise(
@@ -82,3 +84,19 @@ def temporal_split(
     if train.is_empty() or test.is_empty():
         raise ValueError(f"split gave {train.height} train and {test.height} test rows")
     return train, test
+
+
+@visualization(title="Rows over time, with the cutoff")
+def rows_over_time(train: pl.DataFrame, test: pl.DataFrame, time_column: str) -> go.Figure:
+    # Both sides share 30 bins, so the chart stays one size however many rows there are.
+    times = pl.concat([train[time_column], test[time_column]])
+    edges = np.histogram_bin_edges(times.to_physical().to_numpy(), bins=30)
+    starts = pl.Series(edges[:-1])
+    if times.dtype.is_temporal():
+        starts = starts.cast(pl.Int64).cast(times.dtype)
+    figure = go.Figure()
+    for name, side in (("train", train), ("test", test)):
+        counts, _ = np.histogram(side[time_column].to_physical().to_numpy(), bins=edges)
+        figure.add_bar(x=starts.to_list(), y=counts.tolist(), name=name)
+    figure.add_vline(x=test[time_column].min())
+    return figure.update_layout(yaxis_title="rows", barmode="stack")

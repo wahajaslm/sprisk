@@ -1,3 +1,4 @@
+import plotly.graph_objects as go
 import polars as pl
 from sklearn.model_selection import GroupShuffleSplit
 
@@ -87,3 +88,9 @@ def group_split(
     if train.is_empty() or test.is_empty():
         raise ValueError(f"split gave {train.height} train and {test.height} test rows")
     return train, test
+
+
+def items_per_side(train: pl.DataFrame, test: pl.DataFrame, group_column: str) -> go.Figure:
+    """Items on each side"""
+    items = [train[group_column].n_unique(), test[group_column].n_unique()]
+    return go.Figure(go.Bar(x=["train", "test"], y=items)).update_layout(yaxis_title="items")

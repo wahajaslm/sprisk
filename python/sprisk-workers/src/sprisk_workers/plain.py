@@ -22,10 +22,10 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from skops.io.exceptions import UntrustedTypesFoundException
 
 from sprisk_contracts import Operator
-from sprisk_workers.authoring import Verdict
+from sprisk_workers.authoring import Verdict, declared, view_title, visualizations
 from sprisk_workers.errors import ManifestError, OperatorError
 from sprisk_workers.matrix import Matrix, read_matrix, write_matrix
-from sprisk_workers.output import CONSOLE_PORT, JSON, MATRIX, PARQUET, SKOPS, Output
+from sprisk_workers.output import CONSOLE_PORT, FIGURES_PORT, JSON, MATRIX, PARQUET, SKOPS, Output
 from sprisk_workers.serve import OperatorFn
 
 # skops trusts scikit-learn estimators by default. Anything beyond them and this list fails
@@ -109,6 +109,18 @@ def adapt(
         if isinstance(v, Mapping) and v.get("x-sprisk-local-path") is True
     }
     _check_paths(fn, operator.id.root, files)
+    # A decorated operator's views draw its outputs once it has run (ADR-0071).
+    views = visualizations(fn) if declared(fn) is not None else []
+    # A view sees each setting as the operator does, its default when the step leaves it out.
+    defaults = {
+        n: p.default
+        for n, p in inspect.signature(fn).parameters.items()
+        if p.default is not inspect.Parameter.empty
+    }
+    if views and outputs.get(FIGURES_PORT) != "figure":
+        raise ManifestError(
+            f"{operator.id.root} has views but no {FIGURES_PORT} output; run just build-packs"
+        )
     # A setting marked excluded names a column the step must never read, such as the target on
     # a check of the test rows (ADR-0064): the column is dropped before the step runs.
     excluded = {
@@ -133,7 +145,8 @@ def adapt(
             if isinstance(value, pl.DataFrame):
                 values[port] = value.drop(dropped, strict=False)
         named = named_port_names(operator, params, "output")
-        expected = dict(outputs) | {name: "table" for name in named}
+        returned = {p: k for p, k in outputs.items() if not (views and p == FIGURES_PORT)}
+        expected = returned | {name: "table" for name in named}
         try:
             arguments = {k: Path(v) if k in files else v for k, v in params.items()}
             for setting, params_setting in named_models.items():
@@ -174,6 +187,8 @@ def adapt(
             got = sorted(by_port) if isinstance(by_port, dict) else type(by_port).__name__
             raise OperatorError("bad_output", f"expected outputs {sorted(expected)}, got {got}")
         written = [_write(port, by_port[port], kind, out_dir) for port, kind in expected.items()]
+        if views:
+            written.append(_draw(views, defaults | dict(params) | by_port, out_dir))
         if printed:
             path = out_dir / f"{CONSOLE_PORT}.json"
             path.write_text(json.dumps({"items": printed}))
@@ -389,6 +404,25 @@ def _write(port: str, value: Any, kind: str, out_dir: Path) -> Output:
     except TypeError as e:
         raise _wrong(port, "JSON (dicts, lists, numbers, text)", value) from e
     return Output(port, path, JSON)
+
+
+def _draw(views: list[Callable[..., Any]], given: Mapping[str, Any], out_dir: Path) -> Output:
+    """Each view called with the outputs and settings it names, as one FigureSet. A figure
+    with no title of its own takes the view's."""
+    items = []
+    for view in views:
+        names = [n for n in inspect.signature(view).parameters if n in given]
+        try:
+            figure = view(**{n: given[n] for n in names})
+        except Exception as e:  # noqa: BLE001 - reported as the attempt's failure, never swallowed
+            raise OperatorError(
+                "operator_error", f"view {view.__name__}: {type(e).__name__}: {_first_line(e)}"
+            ) from e
+        item = _figure(FIGURES_PORT, figure)
+        items.append(item | {"title": item.get("title") or view_title(view)})
+    path = out_dir / f"{FIGURES_PORT}.json"
+    path.write_text(json.dumps({"items": items}))
+    return Output(FIGURES_PORT, path, JSON)
 
 
 def _matrix(port: str, value: Any) -> Matrix:

@@ -1,3 +1,4 @@
+import plotly.graph_objects as go
 import polars as pl
 from sklearn.model_selection import train_test_split
 
@@ -42,3 +43,9 @@ def stratified_split(
     if train.is_empty() or test.is_empty():
         raise ValueError(f"split gave {train.height} train and {test.height} test rows")
     return train, test
+
+
+def rows_per_side(train: pl.DataFrame, test: pl.DataFrame) -> go.Figure:
+    """Rows on each side"""
+    figure = go.Figure(go.Bar(x=["train", "test"], y=[train.height, test.height]))
+    return figure.update_layout(yaxis_title="rows")

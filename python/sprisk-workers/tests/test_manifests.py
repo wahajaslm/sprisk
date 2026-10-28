@@ -97,7 +97,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.validation.time_order@1.0.0",
     ]
     split = ops["sprisk.validation.temporal_split@1.0.0"]
-    assert split.output_ports == {"train", "test"}
+    assert split.output_ports == {"train", "test", "figures"}
     # A setting with a default in the function's signature is not required (ADR-0071).
     assert split.params_schema["required"] == ["time_column"]
     assert split.params_schema["properties"]["test_fraction"]["default"] == 0.2

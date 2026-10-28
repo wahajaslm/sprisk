@@ -19,6 +19,8 @@ outputs:
   kind: table
 - name: test
   kind: table
+- name: figures
+  kind: figure
 params_schema:
   type: object
   additionalProperties: false

@@ -823,7 +823,8 @@ async fn a_split_cell_may_change_values_but_never_become_code() {
     let api = api().await;
     let mut request = json!({
         "settings": {"test_fraction": 0.25, "seed": 42},
-        "inputs": {"data": "df"}, "outputs": {"train": "train", "test": "test"},
+        "inputs": {"data": "df"},
+        "outputs": {"train": "train", "test": "test", "figures": "figures"},
     });
     let split = "/operators/sprisk.validation.random_split@1.0.0";
     let (_, written) = call(

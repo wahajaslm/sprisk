@@ -9,6 +9,8 @@ MATRIX = "application/vnd.sprisk.matrix+npz"
 
 # Every step may also write this: what it printed and warned (ADR-0025).
 CONSOLE_PORT = "console"
+# A decorated operator's views draw its outputs on this port (ADR-0071).
+FIGURES_PORT = "figures"
 
 
 @dataclass(frozen=True)

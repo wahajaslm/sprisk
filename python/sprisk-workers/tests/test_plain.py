@@ -3,6 +3,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import authored_views
 import numpy as np
 import polars as pl
 import pytest
@@ -14,6 +15,7 @@ from sklearn.linear_model import LogisticRegression
 
 from sprisk_contracts import Operator
 from sprisk_workers.authoring import Verdict
+from sprisk_workers.build_packs import operator_manifest
 from sprisk_workers.errors import ManifestError, OperatorError
 from sprisk_workers.matrix import Matrix
 from sprisk_workers.output import JSON, MATRIX, PARQUET, SKOPS
@@ -803,3 +805,37 @@ def test_a_promise_s_verdict_is_written_as_its_evidence(tmp_path: Path) -> None:
             "detail": "No row is on both sides.",
         }
     }
+
+
+def test_a_decorated_operator_s_views_draw_its_outputs_as_figures(tmp_path: Path) -> None:
+    rows = pl.DataFrame({"item": ["a", "a", "b", "c"]})
+    run = adapt(authored_views.halves, operator_manifest(authored_views.halves))
+
+    outputs = run({"group_column": "item"}, {"data": parquet(tmp_path, rows)}, staging(tmp_path))
+
+    assert [o.port for o in outputs] == ["train", "test", "figures"]
+    items = json.loads(outputs[2].path.read_text())["items"]
+    assert [i["title"] for i in items] == ["Rows on each side", "Items on each side"]
+    drawn = [json.loads(i["content"])["data"][0] for i in items]
+    assert [d["y"] for d in drawn] == [[2, 2], [1, 2]]
+    assert drawn[0]["name"] == "50% train"
+
+
+def test_an_operator_with_views_needs_its_figures_output() -> None:
+    manifest = operator_manifest(authored_views.halves)
+    stale = manifest.model_copy(update={"outputs": manifest.outputs[:2]})
+
+    with pytest.raises(ManifestError, match="has views but no figures output"):
+        adapt(authored_views.halves, stale)
+
+
+def test_a_view_that_fails_fails_the_step_and_names_the_view(tmp_path: Path) -> None:
+    rows = pl.DataFrame({"item": ["a", "b"]})
+    run = adapt(authored_views.halves, operator_manifest(authored_views.halves))
+
+    with pytest.raises(OperatorError, match="view items_per_side: ColumnNotFoundError"):
+        run(
+            {"group_column": "missing", "share": 0.5},
+            {"data": parquet(tmp_path, rows)},
+            staging(tmp_path),
+        )

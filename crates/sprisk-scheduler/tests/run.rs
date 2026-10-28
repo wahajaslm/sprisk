@@ -247,7 +247,7 @@ fn outputs_of(operator: &str) -> &'static [&'static str] {
     match operator.split('@').next().unwrap() {
         // Any step may also send `console` (ADR-0025).
         "sprisk.io.file_source" => &["data", "console"],
-        "sprisk.validation.random_split" => &["train", "test"],
+        "sprisk.validation.random_split" => &["train", "test", "figures"],
         "sprisk.ml.linear_model" | "sprisk.ml.dummy_baseline" => &["model"],
         "sprisk.ml.evaluate" => &["metrics", "figures"],
         "sprisk.methodology.supervised" | "sprisk.methodology.split_rows" => &["checks"],

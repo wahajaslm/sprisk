@@ -25,14 +25,17 @@ from pydantic import ValidationError
 
 from sprisk_contracts import Method, Operator
 from sprisk_workers.authoring import (
+    OperatorDeclaration,
     declared,
     declared_method,
     declared_promise,
     tables,
+    visualizations,
 )
 from sprisk_workers.errors import ManifestError
 from sprisk_workers.manifests import TRUSTED_PACKAGES
 from sprisk_workers.notebook_code import unresolved_names
+from sprisk_workers.output import FIGURES_PORT
 
 HEADER = "# Method IR compiled from {ref}. Do not edit; run `just build-packs`.\n"
 MARK = "# Method IR compiled from "
@@ -141,6 +144,9 @@ def operator_manifest(fn: Callable[..., Any], kinds: dict[str, str] | None = Non
     description, _ = docstring(fn)
     if not description:
         raise ManifestError(f"{fn.__name__} has no docstring to describe it")
+    views = visualizations(fn)
+    _check_views(fn, found, views, kinds or {})
+    drawn = [{"name": FIGURES_PORT, "kind": "figure"}] if views else []
     ref = f"{fn.__module__}:{fn.__name__}"
     manifest: dict[str, Any] = {
         "schema_version": "sprisk.operator/v1",
@@ -151,7 +157,7 @@ def operator_manifest(fn: Callable[..., Any], kinds: dict[str, str] | None = Non
         "entrypoint": ref,
         "notebook_code": ref,
         "inputs": [{"name": name, "kind": "table"} for name in found.inputs],
-        "outputs": [{"name": name, "kind": "table"} for name in found.outputs],
+        "outputs": [{"name": name, "kind": "table"} for name in found.outputs] + drawn,
         "params_schema": _params_schema(fn, found.concepts, found.tunables, kinds or {}),
         "effects": "pure",
         "network": "none",
@@ -166,6 +172,31 @@ def operator_manifest(fn: Callable[..., Any], kinds: dict[str, str] | None = Non
         if value is not None:
             manifest[key] = value
     return _validated(Operator, manifest, ref)  # type: ignore[no-any-return]
+
+
+def _check_views(
+    fn: Callable[..., Any],
+    found: OperatorDeclaration,
+    views: list[Callable[..., Any]],
+    kinds: dict[str, str],
+) -> None:
+    """A view draws the step's outputs with its settings. It runs before the final score, so
+    it never reads a label column (rule 8)."""
+    settings = set(inspect.signature(fn).parameters) - set(found.inputs)
+    for view in views:
+        names = list(inspect.signature(view).parameters)
+        unknown = [n for n in names if n not in found.outputs and n not in settings]
+        if unknown:
+            raise ManifestError(
+                f"view {view.__name__} takes {unknown}, "
+                f"which are not outputs or settings of {fn.__name__}"
+            )
+        for name in names:
+            if name in found.concepts and kinds.get(found.concepts[name]) == "label":
+                raise ManifestError(
+                    f"view {view.__name__} reads {name}, a label column; "
+                    "a view runs before the final score"
+                )
 
 
 def promise_id(fn: Callable[..., Any]) -> str:

@@ -1,6 +1,7 @@
 """A decorated operator compiles to a contract-valid manifest, its notebook cell is its own
 code, and the build finds stale output (ADR-0071)."""
 
+import importlib.util
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -11,12 +12,13 @@ import authored_never_first
 import authored_ops
 import authored_two_methods
 import authored_two_reasons
+import authored_views
 import polars as pl
 import pytest
 from authored_ops import every_nth
 from polars.testing import assert_frame_equal
 
-from sprisk_workers.authoring import Verdict, method, operator, option
+from sprisk_workers.authoring import Verdict, method, operator, option, visualizations
 from sprisk_workers.build_packs import (
     compile_packs,
     main,
@@ -371,3 +373,74 @@ def test_an_operator_keeps_its_label_column_and_only_a_promise_drops_it() -> Non
     assert all("x-sprisk-excluded" not in p for p in split.params_schema["properties"].values())
     check = promise_manifest(authored_method.no_shared_rows, "split", kinds)
     assert check.params_schema["properties"]["label"]["x-sprisk-excluded"] is True
+
+
+def test_an_operator_s_views_are_found_in_its_file_and_become_a_figures_output() -> None:
+    assert visualizations(authored_views.halves) == [
+        authored_views.rows_per_side,
+        authored_views.items_per_side,
+    ]
+    manifest = operator_manifest(authored_views.halves)
+    assert [(p.name.root, p.kind.value) for p in manifest.outputs] == [
+        ("train", "table"),
+        ("test", "table"),
+        ("figures", "figure"),
+    ]
+
+
+VIEWED = '''
+import plotly.graph_objects as go
+import polars as pl
+
+from sprisk_workers.authoring import operator
+
+
+@operator(
+    id="halves", inputs=["data"], outputs=["train", "test"], columns={"label": "common.target"}
+)
+def halves(data: pl.DataFrame, label: str) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Halves."""
+    return data.head(1), data.tail(1)
+'''
+
+SECOND = '''
+
+@operator(id="again", inputs=["data"], outputs=["out"])
+def again(data: pl.DataFrame) -> pl.DataFrame:
+    """Again."""
+    return data
+'''
+
+
+@pytest.mark.parametrize(
+    ("view", "message"),
+    [
+        (
+            "def shares(train: pl.DataFrame, test: pl.DataFrame, label: str) -> go.Figure:\n"
+            "    return go.Figure()\n",
+            "view shares reads label, a label column; a view runs before the final score",
+        ),
+        (
+            "def sizes(train: pl.DataFrame, rows: pl.DataFrame) -> go.Figure:\n"
+            "    return go.Figure()\n",
+            r"view sizes takes \['rows'\], which are not outputs or settings of halves",
+        ),
+        (
+            SECOND + "\n\ndef sizes(train: pl.DataFrame) -> go.Figure:\n    return go.Figure()\n",
+            "views_file has views and 2 operators; an operator file holds one",
+        ),
+    ],
+)
+def test_the_build_refuses_a_view_it_cannot_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, view: str, message: str
+) -> None:
+    path = tmp_path / "views_file.py"
+    path.write_text(VIEWED + "\n\n" + view)
+    spec = importlib.util.spec_from_file_location("views_file", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "views_file", module)
+    spec.loader.exec_module(module)
+
+    with pytest.raises(ManifestError, match=message):
+        operator_manifest(module.halves, {"common.target": "label"})

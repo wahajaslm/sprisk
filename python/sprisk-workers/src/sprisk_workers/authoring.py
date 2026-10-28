@@ -1,6 +1,7 @@
 """What a pack author writes with (ADR-0071). A decorator only records what a function
 declares; `build_packs` compiles the record into the Method IR."""
 
+import ast
 import inspect
 import typing
 from collections.abc import Callable
@@ -16,6 +17,8 @@ F = TypeVar("F", bound=Callable[..., Any])
 ATTRIBUTE = "__sprisk__"
 RESOURCES = {"cpu_cores": 1, "memory_mb": 2048, "gpu": "none", "timeout_seconds": 600}
 VERDICTS = ("pass", "fail", "inconclusive")
+# Return types the app draws: Plotly and Vega-Lite (Altair).
+VIEW_TYPES = {"go.Figure", "alt.Chart"}
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,11 @@ class OperatorDeclaration:
     version: str
     capability_class: str
     resources: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class VisualizationDeclaration:
+    title: str | None
 
 
 @dataclass(frozen=True)
@@ -177,6 +185,12 @@ def operator(
     )
 
 
+def visualization(*, title: str | None = None) -> Callable[[F], F]:
+    """Marks a view of the operator in the same file. A function annotated `-> go.Figure` or
+    `-> alt.Chart`, spelled so, is one without the mark."""
+    return _record(VisualizationDeclaration(title))
+
+
 def option(
     label: str,
     operator: Callable[..., Any],
@@ -255,3 +269,39 @@ def tables(fn: Callable[..., Any]) -> list[str]:
     """The parameters that receive a table: the operator's inputs."""
     hints = typing.get_type_hints(fn)
     return [name for name in inspect.signature(fn).parameters if hints.get(name) is pl.DataFrame]
+
+
+def visualizations(op: Callable[..., Any]) -> list[Callable[..., Any]]:
+    """The views in the operator's file, in file order: marked `@visualization`, or returning
+    a view type. A file with views holds one operator, so each view has one owner."""
+    module = inspect.getmodule(op)
+    if module is None:
+        raise ManifestError(f"{op.__name__} has no module to read its views from")
+    tree = ast.parse(inspect.getsource(module))
+    found = []
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        fn = getattr(module, node.name)
+        returns = node.returns is not None and ast.unparse(node.returns) in VIEW_TYPES
+        if returns or isinstance(getattr(fn, ATTRIBUTE, None), VisualizationDeclaration):
+            found.append(fn)
+    operators = [
+        v
+        for v in vars(module).values()
+        if declared(v) is not None and v.__module__ == module.__name__
+    ]
+    if found and len(operators) > 1:
+        raise ManifestError(
+            f"{module.__name__} has views and {len(operators)} operators; "
+            "an operator file holds one"
+        )
+    return found
+
+
+def view_title(view: Callable[..., Any]) -> str:
+    """The marked title, else the docstring's first line, else the function's name."""
+    found = getattr(view, ATTRIBUTE, None)
+    if isinstance(found, VisualizationDeclaration) and found.title:
+        return found.title
+    return (inspect.getdoc(view) or view.__name__).splitlines()[0]
