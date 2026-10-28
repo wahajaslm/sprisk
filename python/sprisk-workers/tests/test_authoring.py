@@ -6,14 +6,25 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import authored_method
+import authored_never_first
 import authored_ops
+import authored_two_methods
+import authored_two_reasons
 import polars as pl
 import pytest
 from authored_ops import every_nth
 from polars.testing import assert_frame_equal
 
-from sprisk_workers.authoring import operator
-from sprisk_workers.build_packs import compile_packs, main, operator_manifest, stale
+from sprisk_workers.authoring import Verdict, method, operator, option
+from sprisk_workers.build_packs import (
+    compile_packs,
+    main,
+    method_manifest,
+    operator_manifest,
+    promise_manifest,
+    stale,
+)
 from sprisk_workers.errors import ManifestError
 from sprisk_workers.notebook_code import read_settings, source_cell
 
@@ -167,7 +178,7 @@ def test_two_operators_with_one_id_are_refused(pack: Path) -> None:
     second = OPS.replace("def first_rows(", "def first_rows_again(")
     (pack / "acme" / "src" / "acme_pack" / "again.py").write_text(second)
 
-    with pytest.raises(ManifestError, match="two operators have the id first_rows"):
+    with pytest.raises(ManifestError, match="two operators compile to the same file"):
         compile_packs([pack], trusted=("acme_pack",))
 
 
@@ -214,3 +225,129 @@ def test_main_refuses_a_misspelt_flag_or_a_missing_folder(tmp_path: Path) -> Non
         main(["--check", str(tmp_path / "nowhere")])
     with pytest.raises(SystemExit):
         main(["--check"])
+
+
+KINDS = {"common.target": "label", "common.event_time": "time"}
+
+
+def test_a_promise_compiles_to_the_evidence_step_that_checks_it() -> None:
+    manifest = promise_manifest(authored_method.no_shared_rows, "split", KINDS)
+
+    assert manifest.id.root == "authored.method.shared_rows@1.0.0"
+    assert manifest.capability_class.value == "analyzer"
+    assert manifest.entrypoint.root == "authored_method:no_shared_rows"
+    assert manifest.attach is not None
+    assert (manifest.attach.role.value, manifest.attach.side.value) == ("split", "output")
+    assert [(p.name.root, p.kind.value) for p in manifest.inputs] == [
+        ("train", "table"),
+        ("test", "table"),
+    ]
+    assert [(p.name.root, p.kind.value) for p in manifest.outputs] == [("evidence", "report")]
+    assert manifest.produces is not None
+    fields = manifest.produces["evaluation.shared_rows"].fields
+    assert {k: v.value for k, v in fields.items()} == {
+        "shared": "integer",
+        "examples": "string_list",
+        "status": "string",
+        "detail": "string",
+    }
+    # A label column is dropped before the check runs, so it never reads a test label.
+    assert manifest.params_schema["properties"]["label"]["x-sprisk-excluded"] is True
+
+
+def test_a_method_compiles_to_its_options_promises_and_needs() -> None:
+    manifest = method_manifest(authored_method.split_way, "methodology.test")
+    body = manifest.model_dump(mode="json", exclude_none=True)
+
+    assert body["id"] == "methodology.test.split_way@1.0.0"
+    assert (body["name"], body["question"]) == ("Split way", "How are rows divided?")
+    assert body["pitfall"] == "A split that ignores time trains on the future."
+    assert body["decides"] == "split.way"
+    assert body["needs"] == {
+        "concepts": ["common.event_time"],
+        "evidence": [],
+        "decisions": ["data.repeated_items"],
+    }
+    assert body["options"] == [
+        {
+            "id": "by_time",
+            "label": "Train on earlier rows, test on later ones",
+            "description": "Earlier rows train; later rows test.",
+            "condition": "time column named",
+            "when": "a time column is named",
+            "rationale": "A time column orders the rows.",
+            "action": {
+                "replace": {
+                    "role": "split",
+                    "operator": "authored.method.time_split@1.0.0",
+                    "concepts": {"time_column": "common.event_time"},
+                    "settings": {"test_fraction": 0.2},
+                }
+            },
+            "verify": ["no_shared_rows"],
+        },
+        {
+            "id": "first_rows",
+            "label": "The first rows train",
+            "description": "The first rows train; the rest test.",
+            "condition": "¬ time column",
+            "when": "no time column is named",
+            "rationale": "No time column.",
+            "action": {
+                "replace": {
+                    "role": "split",
+                    "operator": "authored.method.head_split@1.0.0",
+                    "settings": {"n": 10},
+                }
+            },
+            "verify": ["no_shared_rows"],
+        },
+    ]
+    assert body["verifications"] == {
+        "no_shared_rows": {
+            "needs": "evaluation.shared_rows",
+            "promise": "No row is in both kept and dropped.",
+        }
+    }
+
+
+def test_a_verdict_is_pass_fail_or_inconclusive() -> None:
+    with pytest.raises(ValueError, match="maybe is not a verdict"):
+        Verdict("maybe", "Unsure.", {})
+
+
+def test_an_option_must_name_a_decorated_operator() -> None:
+    def plain(data: pl.DataFrame) -> pl.DataFrame:
+        return data
+
+    with pytest.raises(ManifestError, match="option odd names plain, which is not an operator"):
+
+        @method(
+            id="odd", decides="x.odd", activity="Test", applies_when={},
+            options={"odd": option("Odd", plain, when="always", condition="⊤")}, source="test",
+        )  # fmt: skip
+        def odd(task: str) -> object:
+            """Odd
+
+            Which?
+            """
+            return method.choose("odd", reason="Only one.")
+
+
+@pytest.mark.parametrize(
+    ("fn", "message"),
+    [
+        (authored_never_first.never_first, "never_first never chooses first_rows"),
+        (authored_two_reasons.two_reasons, "two_reasons gives by_time two reasons"),
+    ],
+)
+def test_each_option_needs_one_reason_its_rationale(fn: Any, message: str) -> None:
+    with pytest.raises(ManifestError, match=message):
+        method_manifest(fn, "methodology.test")
+
+
+def test_a_method_file_holds_one_method() -> None:
+    with pytest.raises(
+        ManifestError, match="authored_two_methods holds 2 methods; a method file holds one"
+    ):
+        method_manifest(authored_two_methods.first, "methodology.test")

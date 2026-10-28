@@ -13,6 +13,7 @@ from sklearn.base import clone
 from sklearn.linear_model import LogisticRegression
 
 from sprisk_contracts import Operator
+from sprisk_workers.authoring import Verdict
 from sprisk_workers.errors import ManifestError, OperatorError
 from sprisk_workers.matrix import Matrix
 from sprisk_workers.output import JSON, MATRIX, PARQUET, SKOPS
@@ -775,3 +776,30 @@ def test_a_second_fold_step_that_makes_words_is_refused() -> None:
     first = FoldStep(_words_step, {"column": "n"}).fit_transform(rows)
     with pytest.raises(ValueError, match="only one step may make words"):
         FoldStep(_words_step, {"column": "x"}).fit(first).transform(first)
+
+
+def test_a_promise_s_verdict_is_written_as_its_evidence(tmp_path: Path) -> None:
+    fields = {"shared": "integer", "status": "string", "detail": "string"}
+    check = Operator.model_validate_json(
+        json.dumps(
+            operator(
+                "[{ name: train, kind: table }, { name: test, kind: table }]",
+                "[{ name: evidence, kind: report }]",
+            ).model_dump(mode="json", exclude_none=True)
+            | {"produces": {"evaluation.shared_rows": {"fields": fields}}}
+        )
+    )
+
+    def promise(train: pl.DataFrame, test: pl.DataFrame) -> Verdict:
+        return Verdict("pass", "No row is on both sides.", {"shared": 0})
+
+    table = parquet(tmp_path, pl.DataFrame({"x": [1]}))
+    [out] = adapt(promise, check)({}, {"train": table, "test": table}, staging(tmp_path))
+
+    assert json.loads(out.path.read_text()) == {
+        "evaluation.shared_rows": {
+            "shared": 0,
+            "status": "pass",
+            "detail": "No row is on both sides.",
+        }
+    }

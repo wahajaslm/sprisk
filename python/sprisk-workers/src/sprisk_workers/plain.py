@@ -22,6 +22,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from skops.io.exceptions import UntrustedTypesFoundException
 
 from sprisk_contracts import Operator
+from sprisk_workers.authoring import Verdict
 from sprisk_workers.errors import ManifestError, OperatorError
 from sprisk_workers.matrix import Matrix, read_matrix, write_matrix
 from sprisk_workers.output import CONSOLE_PORT, JSON, MATRIX, PARQUET, SKOPS, Output
@@ -154,6 +155,12 @@ def adapt(
             raise OperatorError("invalid_input", str(e)) from e
         except Exception as e:  # noqa: BLE001 - reported as the attempt's failure, never swallowed
             raise OperatorError("operator_error", f"{type(e).__name__}: {e}") from e
+        # A promise's verdict is the evidence it produces (ADR-0071).
+        if isinstance(result, Verdict):
+            if operator.produces is None or len(operator.produces) != 1:
+                raise OperatorError("bad_output", "a promise's step must produce one evidence kind")
+            (kind,) = operator.produces
+            result = {kind: result.record()}
         several = len(expected) > 1 or named_out is not None
         # A decorated operator returns its outputs as a tuple, in manifest order (ADR-0071).
         if several and named_out is None and isinstance(result, tuple):
