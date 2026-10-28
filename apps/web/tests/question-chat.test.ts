@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { beforeWalk } from "../src/views/objective/ledger.ts";
 import { column, rakuten } from "./fixtures.ts";
-import { answer, chips, localFile, nextSlot, opening, prompt, toQuestion, type Chat } from "../src/views/objective/conversation.ts";
+import { answer, chips, nextSlot, opening, prompt, toQuestion, type Chat } from "../src/views/objective/conversation.ts";
 
 const start: Chat = { draft: {}, done: [] };
 const pick = (chat: Chat, label: string) => {
@@ -104,22 +104,5 @@ describe("the question conversation", () => {
     const noMetric: Chat = { draft: {}, done: ["target", "task", "unit", "metric"] };
     expect(() => answer(noMetric, rakuten, "0.8", "explicit")).toThrow(/metric/);
     expect(() => prompt(noMetric)).toThrow(/metric/);
-  });
-});
-
-describe("the walk's source file", () => {
-  const source = (location: string, file_count = 1) => ({ location, file_count });
-
-  it("is the path of a single local CSV or Parquet file", () => {
-    expect(localFile(source("file:///data/x%20train.csv"))).toEqual(["/data/x train.csv"]);
-    expect(localFile(source("file:///data/x.parquet"))).toEqual(["/data/x.parquet"]);
-  });
-
-  it("is not filled in for a folder, many files, a store, another host or a bad escape", () => {
-    expect(localFile(source("file:///data/folder"))).toEqual([]);
-    expect(localFile(source("file:///data/x.csv", 2))).toEqual([]);
-    expect(localFile(source("s3://bucket/x.csv"))).toEqual([]);
-    expect(localFile(source("file://otherhost/data/x.csv"))).toEqual([]);
-    expect(localFile(source("file:///data/%E0%A4%A.csv"))).toEqual([]);
   });
 });

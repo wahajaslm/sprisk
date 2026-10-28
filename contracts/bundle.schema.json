@@ -6763,7 +6763,7 @@
         "idempotency_key",
         "project_id",
         "question_version_id",
-        "sources",
+        "dataset_version_ids",
         "max_actions",
         "max_wall_seconds"
       ],
@@ -6779,8 +6779,8 @@
         "question_version_id": {
           "$ref": "#/$defs/QuestionVersionId"
         },
-        "sources": {
-          "$ref": "#/$defs/WalkSources"
+        "dataset_version_ids": {
+          "$ref": "#/$defs/WalkDatasets"
         },
         "max_actions": {
           "type": "integer",
@@ -6794,9 +6794,16 @@
         }
       }
     },
+    "WalkDatasets": {
+      "type": "array",
+      "description": "Registered dataset versions, at least one, in order (ADR-0069). The first holds the rows to predict on; any other is joined to it by a method. Each must be one local CSV or Parquet file, unchanged since it was registered.",
+      "items": {
+        "$ref": "#/$defs/DatasetVersionId"
+      }
+    },
     "WalkSources": {
       "type": "array",
-      "description": "Local CSV or Parquet files, inside an allowed data folder, read as file_source steps. The first holds the rows to predict on; any other is joined to it by a rule.",
+      "description": "Local CSV or Parquet files, inside an allowed data folder, read as file_source steps: the files the walk's dataset versions resolve to. The first holds the rows to predict on; any other is joined to it by a rule.",
       "items": {
         "type": "string",
         "minLength": 1
@@ -6836,6 +6843,10 @@
         },
         "sources": {
           "$ref": "#/$defs/WalkSources"
+        },
+        "dataset_version_ids": {
+          "$ref": "#/$defs/WalkDatasets",
+          "description": "The dataset versions the walk was started from (ADR-0069); `sources` are the files they resolve to. Absent: a walk started from file paths, before ADR-0069."
         },
         "source_hashes": {
           "type": "array",

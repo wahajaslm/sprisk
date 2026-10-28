@@ -4196,7 +4196,7 @@ async fn placeholders_are_marked_then_the_column_is_read_as_numbers_before_the_s
     }
     std::fs::write(&api.csv, csv).unwrap();
     learnable_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-markers");
+    let mut request = walk_request(&api, &[&api.csv], "walk-markers").await;
     request["max_actions"] = json!(20);
 
     let detail = walk_to_end(&api, request).await;
@@ -4236,7 +4236,7 @@ async fn rows_copied_in_the_data_are_dropped_before_the_split() {
     csv.push_str(&format!("{first}\n{first}\n"));
     std::fs::write(&api.csv, csv).unwrap();
     learnable_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-copies");
+    let mut request = walk_request(&api, &[&api.csv], "walk-copies").await;
     request["max_actions"] = json!(20);
 
     let detail = walk_to_end(&api, request).await;
@@ -4264,7 +4264,7 @@ async fn the_look_settles_the_task_and_class_balance_from_the_train_rows() {
     let api = api().await;
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-target");
+    let mut request = walk_request(&api, &[&api.csv], "walk-target").await;
     request["max_actions"] = json!(31);
 
     let detail = walk_to_end(&api, request).await;
@@ -4345,7 +4345,7 @@ async fn values_that_differ_only_in_case_are_lowercased_before_the_split() {
     }
     std::fs::write(&api.csv, csv).unwrap();
     learnable_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-spelling");
+    let mut request = walk_request(&api, &[&api.csv], "walk-spelling").await;
     request["max_actions"] = json!(4);
 
     let detail = walk_to_end(&api, request).await;
@@ -4458,15 +4458,32 @@ async fn rakuten_like_question(api: &Api) {
     assert_eq!(status, StatusCode::CREATED, "{body}");
 }
 
-fn walk_request(sources: &[&Path], key: &str) -> Value {
+/// A walk request on `sources`, each registered as a dataset version first (ADR-0069).
+async fn walk_request(api: &Api, sources: &[&Path], key: &str) -> Value {
+    let mut ids = Vec::with_capacity(sources.len());
+    for source in sources {
+        ids.push(registered(api, &source.display().to_string()).await);
+    }
+    walk_request_of(&ids, key)
+}
+
+fn walk_request_of(ids: &[String], key: &str) -> Value {
     json!({
         "idempotency_key": key,
         "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
         "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-        "sources": sources,
+        "dataset_version_ids": ids,
         "max_actions": 40,
         "max_wall_seconds": 600,
     })
+}
+
+/// The id of the dataset version `location` is registered as.
+async fn registered(api: &Api, location: &str) -> String {
+    let request = json!({ "location": location });
+    let (status, body) = call(&api.app, "POST", "/dataset_versions", Some(request)).await;
+    assert!(status.is_success(), "{status} {body}");
+    body["id"].as_str().unwrap().to_owned()
 }
 
 /// Starts a walk and waits, bounded, until it stops. Returns its detail.
@@ -4515,7 +4532,11 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-rakuten-0001")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-rakuten-0001").await,
+    )
+    .await;
     // Built from the question and the file. The look runs it once and the methods decide the
     // split and the data steps before it (ADR-0063 slice 6), measuring again where a step
     // changed the rows they read; then each rule's change is applied, and the flow is run
@@ -4646,7 +4667,7 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
         &api.app,
         "POST",
         "/walks",
-        Some(walk_request(&[&api.csv], "walk-rakuten-0001")),
+        Some(walk_request(&api, &[&api.csv], "walk-rakuten-0001").await),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{again}");
@@ -4654,7 +4675,11 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
 
     // Same question and file, a new walk: the same decisions in the same order, but the test
     // rows the first walk scored are not scored again.
-    let second = walk_to_end(&api, walk_request(&[&api.csv], "walk-rakuten-0002")).await;
+    let second = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-rakuten-0002").await,
+    )
+    .await;
     let first_trail: Vec<String> = trail(&detail)
         .into_iter()
         .filter(|s| s != "score")
@@ -4687,7 +4712,7 @@ async fn a_person_s_answer_is_taken_even_where_the_method_would_choose_another()
     q["answers"] = json!([{ "decides": "split.method", "option": "simple_random" }]);
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut request = walk_request(&[&api.csv], "walk-answered-split");
+    let mut request = walk_request(&api, &[&api.csv], "walk-answered-split").await;
     request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
     // The look measures and runs; text spelling and repeated items decide before the split.
     request["max_actions"] = json!(6);
@@ -4708,7 +4733,7 @@ async fn a_method_s_decision_is_a_record_made_through_apply_and_cited_by_the_ste
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-method-records");
+    let mut request = walk_request(&api, &[&api.csv], "walk-method-records").await;
     request["max_actions"] = json!(6);
 
     let detail = walk_to_end(&api, request).await;
@@ -4812,7 +4837,11 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
 
     // The look: the producers are placed and the first flow runs once, before any rule acts.
     // No category text is typed several ways, so the spelling stays.
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-relistings")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-relistings").await,
+    )
+    .await;
     assert_eq!(
         trail(&detail),
         [
@@ -4867,7 +4896,7 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     answered["answers"] = json!([{ "decides": "data.repeated_items", "option": "group_by_title" }]);
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(answered)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut request = walk_request(&[&api.csv], "walk-relistings-answered");
+    let mut request = walk_request(&api, &[&api.csv], "walk-relistings-answered").await;
     request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
     let detail = walk_to_end(&api, request).await;
     let walked = trail(&detail);
@@ -5070,7 +5099,7 @@ async fn a_walk_with_no_stated_target_stops_before_building_anything() {
         &api.app,
         "POST",
         "/walks",
-        Some(walk_request(&[&api.csv], "walk-no-target")),
+        Some(walk_request(&api, &[&api.csv], "walk-no-target").await),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{walk}");
@@ -5081,28 +5110,46 @@ async fn a_walk_with_no_stated_target_stops_before_building_anything() {
     assert_eq!(versions, json!([]), "nothing is built");
 }
 
+/// A walk starts from registered dataset versions, each one local file that is unchanged
+/// since it was registered (ADR-0069).
 #[tokio::test]
-async fn a_walk_reads_only_files_inside_the_data_roots() {
+async fn a_walk_starts_only_from_a_dataset_version_that_is_one_unchanged_local_file() {
     let api = api().await;
     rakuten_like_question(&api).await;
-    let outside = Path::new("/etc/hosts.csv");
-    let (status, body) = call(
-        &api.app,
-        "POST",
-        "/walks",
-        Some(walk_request(&[outside], "walk-outside")),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    let (status, body) = call(
-        &api.app,
-        "POST",
-        "/walks",
-        Some(walk_request(&[Path::new("/data/x.xlsx")], "walk-xlsx")),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "invalid_walk", "{body}");
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    let refused = |request: Value| {
+        let app = api.app.clone();
+        async move {
+            let (status, body) = call(&app, "POST", "/walks", Some(request)).await;
+            (
+                status,
+                body["errors"][0]["code"].as_str().unwrap().to_owned(),
+            )
+        }
+    };
+    let unknown = walk_request_of(&["dsv_01JABCDEFGHJKMNPQRSTVWXYZ9".into()], "walk-unknown");
+    let bad = StatusCode::UNPROCESSABLE_ENTITY;
+    assert_eq!(
+        refused(unknown).await,
+        (bad, "unknown_dataset_version".into())
+    );
+
+    let folder = api.csv.parent().unwrap().join("two");
+    std::fs::create_dir_all(&folder).unwrap();
+    for name in ["a.csv", "b.csv"] {
+        std::fs::write(folder.join(name), rakuten_like_listings()).unwrap();
+    }
+    let two = registered(&api, &folder.display().to_string()).await;
+    let request = walk_request_of(&[two], "walk-two-files");
+    assert_eq!(refused(request).await, (bad, "dataset_not_loadable".into()));
+
+    let id = registered(&api, &api.csv.display().to_string()).await;
+    let mut edited = rakuten_like_listings();
+    edited.push_str("9999,new listing,,1,1,10\n");
+    std::fs::write(&api.csv, edited).unwrap();
+    let request = walk_request_of(std::slice::from_ref(&id), "walk-changed");
+    let changed = (StatusCode::CONFLICT, "source_changed".into());
+    assert_eq!(refused(request).await, changed);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5110,7 +5157,7 @@ async fn a_walk_stops_when_it_has_taken_its_actions() {
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-one-action");
+    let mut request = walk_request(&api, &[&api.csv], "walk-one-action").await;
     request["max_actions"] = json!(1);
     let detail = walk_to_end(&api, request).await;
     assert_eq!(
@@ -5144,7 +5191,7 @@ async fn a_walk_stops_when_its_time_is_up() {
     .await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-no-time")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-no-time").await).await;
     assert_eq!(trail(&detail), ["build", "stop"], "{detail}");
     assert_eq!(
         detail["walk"]["stop"]["reason"], "budget_exhausted",
@@ -5157,7 +5204,7 @@ async fn a_walk_needs_a_bounded_budget_and_its_own_key() {
     let api = api().await;
     rakuten_like_question(&api).await;
     for (field, value) in [("max_actions", 0), ("max_wall_seconds", 8 * 24 * 60 * 60)] {
-        let mut request = walk_request(&[&api.csv], "walk-budget");
+        let mut request = walk_request(&api, &[&api.csv], "walk-budget").await;
         request[field] = json!(value);
         let (status, body) = call(&api.app, "POST", "/walks", Some(request)).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
@@ -5168,7 +5215,7 @@ async fn a_walk_needs_a_bounded_budget_and_its_own_key() {
     q["target"]["origin"] = json!("inferred");
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut request = walk_request(&[&api.csv], "walk-key-reused");
+    let mut request = walk_request(&api, &[&api.csv], "walk-key-reused").await;
     request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
     let (status, body) = call(&api.app, "POST", "/walks", Some(request.clone())).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -5211,12 +5258,24 @@ async fn a_walk_whose_source_changes_stops_as_source_changed() {
         &api.app,
         "POST",
         "/walks",
-        Some(walk_request(&[&api.csv], "walk-source-changed")),
+        Some(walk_request(&api, &[&api.csv], "walk-source-changed").await),
     )
     .await;
     assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
     let hashes = walk["source_hashes"].as_array().unwrap();
     assert_eq!(hashes.len(), 1, "{walk}");
+    assert_eq!(
+        walk["sources"],
+        json!([api.csv.canonicalize().unwrap()]),
+        "the file its dataset version holds, resolved"
+    );
+    assert!(
+        walk["dataset_version_ids"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("dsv_"),
+        "{walk}"
+    );
     assert!(hashes[0].as_str().unwrap().starts_with("sha256:"), "{walk}");
     // Someone saves new rows over the file while the walk is going.
     let mut edited = rakuten_like_listings();
@@ -5269,7 +5328,7 @@ async fn walk_left_walking(api: &Api) -> (sprisk_contracts::Walk, String) {
         "head_pipeline_version_id": head, "created_at": stamp_now(),
     });
     let walk: sprisk_contracts::Walk = parse(&walk.to_string()).unwrap();
-    let request = walk_request(&[&api.csv], "walk-restarted");
+    let request = walk_request(api, &[&api.csv], "walk-restarted").await;
     let request: sprisk_contracts::CreateWalk = parse(&request.to_string()).unwrap();
     let built = walk_step(
         &walk,
@@ -5400,7 +5459,7 @@ async fn a_question_s_walks_are_found_by_the_question_newest_first() {
     rakuten_like_question(&api).await;
     let mut made = Vec::new();
     for key in ["walk-found-1", "walk-found-2"] {
-        let mut request = walk_request(&[&api.csv], key);
+        let mut request = walk_request(&api, &[&api.csv], key).await;
         request["max_actions"] = json!(1);
         let (status, walk) = call(&api.app, "POST", "/walks", Some(request)).await;
         assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
@@ -5482,7 +5541,7 @@ async fn a_walk_that_cannot_take_its_next_step_stops_with_the_error() {
         &api.app,
         "POST",
         "/walks",
-        Some(walk_request(&[&api.csv], "walk-error")),
+        Some(walk_request(&api, &[&api.csv], "walk-error").await),
     )
     .await;
     assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
@@ -5519,7 +5578,11 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
     let (x, y) = rakuten_like_files(&api);
     rakuten_like_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&x, &y], "walk-rakuten-files")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&x, &y], "walk-rakuten-files").await,
+    )
+    .await;
     // The look's run fails at the split, which finds no target in the listings; the methods
     // decide the split, and the join method reads both loads all the same. Identifiers are
     // dropped after the join, which uses the row index as its key. The target's shape is
@@ -5736,7 +5799,11 @@ async fn a_split_operator_and_a_method_added_as_folders_are_used_with_no_code_ed
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-added-folders")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-added-folders").await,
+    )
+    .await;
 
     let steps = detail["steps"].as_array().unwrap();
     let split = steps
@@ -5775,7 +5842,7 @@ async fn a_complete_walk_ends_in_a_report_whose_claims_link_to_their_records() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-reported")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-reported").await).await;
     assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
     let walk = detail["walk"]["id"].as_str().unwrap();
     let (status, report) = call(&api.app, "GET", &format!("/walks/{walk}/report"), None).await;
@@ -5874,7 +5941,7 @@ async fn a_walk_that_did_not_complete_has_no_report() {
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
-    let mut request = walk_request(&[&api.csv], "walk-unreported");
+    let mut request = walk_request(&api, &[&api.csv], "walk-unreported").await;
     request["max_actions"] = json!(1);
     let detail = walk_to_end(&api, request).await;
     assert_ne!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
@@ -5891,7 +5958,7 @@ async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-scored")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-scored").await).await;
 
     let trail = trail(&detail);
     assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
@@ -5968,7 +6035,11 @@ async fn a_promise_its_evidence_cannot_settle_keeps_the_test_rows_sealed() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-unverified")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-unverified").await,
+    )
+    .await;
 
     let trail = trail(&detail);
     assert_eq!(detail["walk"]["stop"]["reason"], "unverified", "{detail}");
@@ -5991,7 +6062,7 @@ async fn a_failed_promise_reopens_the_decision_that_made_it() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-reopened")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-reopened").await).await;
 
     let trail = trail(&detail);
     assert!(!trail.contains(&"score".to_owned()), "{detail}");
@@ -6045,7 +6116,7 @@ async fn an_answer_whose_promise_failed_is_not_applied_again() {
     q["answers"] = json!([{ "decides": "split.method", "option": "simple_random" }]);
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut request = walk_request(&[&api.csv], "walk-answer-failed");
+    let mut request = walk_request(&api, &[&api.csv], "walk-answer-failed").await;
     request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
 
     let detail = walk_to_end(&api, request).await;
@@ -6082,7 +6153,11 @@ async fn a_method_that_refuses_to_check_its_promise_stops_the_walk_with_an_error
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-refused-check")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-refused-check").await,
+    )
+    .await;
 
     assert_eq!(detail["walk"]["stop"]["reason"], "error", "{detail}");
     let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
@@ -6095,13 +6170,13 @@ async fn a_second_walk_on_the_same_files_never_scores_their_test_rows_again() {
     let api = api().await;
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
-    let first = walk_to_end(&api, walk_request(&[&api.csv], "walk-scored")).await;
+    let first = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-scored").await).await;
     assert_eq!(first["walk"]["stop"]["reason"], "complete", "{first}");
 
     // The same rows, from a copy at another path: a second score would be a second look.
     let copy = api.csv.with_file_name("copy.csv");
     std::fs::copy(&api.csv, &copy).unwrap();
-    let second = walk_to_end(&api, walk_request(&[&copy], "walk-again")).await;
+    let second = walk_to_end(&api, walk_request(&api, &[&copy], "walk-again").await).await;
 
     let trail = trail(&second);
     assert!(!trail.iter().any(|s| s == "score"), "{second}");
@@ -6145,7 +6220,7 @@ async fn the_engine_fills_gaps_before_the_model_and_walks_on_to_the_comparison()
     std::fs::write(&api.csv, gappy_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-gappy")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-gappy").await).await;
     let trail = trail(&detail);
     let filled = trail
         .iter()
@@ -6164,7 +6239,11 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-learnable")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-learnable").await,
+    )
+    .await;
     let trail = trail(&detail);
     let compared = trail
         .iter()
@@ -6231,7 +6310,7 @@ async fn a_walk_where_no_model_beats_the_baseline_stops_and_says_so() {
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-noise")).await;
+    let detail = walk_to_end(&api, walk_request(&api, &[&api.csv], "walk-noise").await).await;
     let trail = trail(&detail);
     assert_eq!(trail.last().map(String::as_str), Some("stop"), "{detail}");
     assert!(
@@ -6615,7 +6694,11 @@ async fn a_compared_method_compares_its_shortlist_and_the_walk_takes_the_winner(
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-compared-method")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-compared-method").await,
+    )
+    .await;
 
     let steps = detail["steps"].as_array().unwrap();
     let method = "methodology.supervised.model_shortlist@1.0.0";
@@ -6671,7 +6754,11 @@ async fn a_winner_below_the_success_bar_stops_the_walk_naming_the_features_to_ch
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-below-bar")).await;
+    let detail = walk_to_end(
+        &api,
+        walk_request(&api, &[&api.csv], "walk-below-bar").await,
+    )
+    .await;
     let trail = trail(&detail);
     assert!(
         trail.contains(&"decide evaluation.loop_back reopen".to_owned()),

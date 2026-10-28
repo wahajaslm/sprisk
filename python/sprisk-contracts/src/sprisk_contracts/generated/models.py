@@ -1737,6 +1737,15 @@ class WalkId(RootModel[str]):
     root: Annotated[str, Field(pattern="^wlk_[0-9A-HJKMNP-TV-Z]{26}$")]
 
 
+class WalkDatasets(RootModel[list[DatasetVersionId]]):
+    root: Annotated[
+        list[DatasetVersionId],
+        Field(
+            description="Registered dataset versions, at least one, in order (ADR-0069). The first holds the rows to predict on; any other is joined to it by a method. Each must be one local CSV or Parquet file, unchanged since it was registered."
+        ),
+    ]
+
+
 class WalkSource(RootModel[str]):
     root: Annotated[str, Field(min_length=1)]
 
@@ -1745,7 +1754,7 @@ class WalkSources(RootModel[list[WalkSource]]):
     root: Annotated[
         list[WalkSource],
         Field(
-            description="Local CSV or Parquet files, inside an allowed data folder, read as file_source steps. The first holds the rows to predict on; any other is joined to it by a rule."
+            description="Local CSV or Parquet files, inside an allowed data folder, read as file_source steps: the files the walk's dataset versions resolve to. The first holds the rows to predict on; any other is joined to it by a rule."
         ),
     ]
 
@@ -3165,7 +3174,7 @@ class CreateWalk(StrictModel):
     idempotency_key: Annotated[str, Field(max_length=128, min_length=8)]
     project_id: ProjectId
     question_version_id: QuestionVersionId
-    sources: WalkSources
+    dataset_version_ids: WalkDatasets
     max_actions: Annotated[
         int, Field(description="Most actions (applies, runs, comparisons) the walk may take.", ge=0)
     ]
@@ -4451,6 +4460,12 @@ class Walk(StrictModel):
     project_id: ProjectId
     question_version_id: QuestionVersionId
     sources: WalkSources
+    dataset_version_ids: Annotated[
+        WalkDatasets | None,
+        Field(
+            description="The dataset versions the walk was started from (ADR-0069); `sources` are the files they resolve to. Absent: a walk started from file paths, before ADR-0069."
+        ),
+    ] = None
     source_hashes: Annotated[
         list[ContentHash] | None,
         Field(

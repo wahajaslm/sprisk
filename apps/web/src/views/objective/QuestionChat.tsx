@@ -10,7 +10,7 @@ import { Loading } from "../../components/ui/Loading.tsx";
 import { timestamp } from "../../flow/edit.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { SendIcon } from "../Icons.tsx";
-import { answer, chips, localFile, nextSlot, opening, prompt, toQuestion, type Chat, type Said } from "./conversation.ts";
+import { answer, chips, nextSlot, opening, prompt, toQuestion, type Chat, type Said } from "./conversation.ts";
 import { StartWalk } from "./StartWalk.tsx";
 
 /** A person's words and the model's replies are what the model may see again. The page's own
@@ -138,7 +138,7 @@ function Conversation({ source, profile, investigationId, onLeave }: {
             ),
           )}
           {copilot.isPending && <Loading text="Asking the Copilot…" />}
-          {question && <StartWalk question={question} draft initialSources={localFile(source)} />}
+          {question && <StartWalk question={question} draft initialDatasets={[source.id]} />}
         </div>
         {offered.length > 0 && (
           <div className="qchat-chips" aria-label="Choices">

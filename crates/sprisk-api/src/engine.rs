@@ -54,7 +54,10 @@ pub(crate) async fn create_walk(
         .store
         .get_question_version(&request.question_version_id)
         .await?;
-    let sources: Vec<String> = request.sources.iter().map(|s| s.to_string()).collect();
+    let mut sources = Vec::with_capacity(request.dataset_version_ids.len());
+    for id in request.dataset_version_ids.iter() {
+        sources.push(crate::datasets::loadable_file(&state, id).await?);
+    }
     let defaults = sprisk_methodology::Defaults::of(&state.registry)?;
     let started = start(&question, &sources, &defaults).map_err(|e| ApiError::BadRequest {
         code: "invalid_walk",
@@ -65,7 +68,8 @@ pub(crate) async fn create_walk(
     let walk_id = format!("wlk_{}", ulid::Ulid::new());
     let mut walk = json!({
         "schema_version": "sprisk.walk/v1", "id": walk_id, "project_id": request.project_id,
-        "question_version_id": request.question_version_id, "sources": request.sources,
+        "question_version_id": request.question_version_id, "sources": sources,
+        "dataset_version_ids": request.dataset_version_ids,
         "max_actions": request.max_actions, "max_wall_seconds": request.max_wall_seconds,
         "status": "walking", "created_at": at,
     });

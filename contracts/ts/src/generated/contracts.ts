@@ -610,12 +610,23 @@ export type StudyStatus = "running" | "completed" | "budget_reached" | "failed";
  */
 export type TrialState = "not_started" | "running" | "succeeded" | "failed" | "cancelled";
 /**
- * Local CSV or Parquet files, inside an allowed data folder, read as file_source steps. The first holds the rows to predict on; any other is joined to it by a rule.
+ * Registered dataset versions, at least one, in order (ADR-0069). The first holds the rows to predict on; any other is joined to it by a method. Each must be one local CSV or Parquet file, unchanged since it was registered.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkDatasets".
+ */
+export type WalkDatasets = DatasetVersionId[];
+/**
+ * Local CSV or Parquet files, inside an allowed data folder, read as file_source steps: the files the walk's dataset versions resolve to. The first holds the rows to predict on; any other is joined to it by a rule.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "WalkSources".
  */
 export type WalkSources = string[];
+/**
+ * Registered dataset versions, at least one, in order (ADR-0069). The first holds the rows to predict on; any other is joined to it by a method. Each must be one local CSV or Parquet file, unchanged since it was registered.
+ */
+export type WalkDatasets1 = DatasetVersionId[];
 /**
  * walking: it has more to do. stopped: it ended, for the reason in `stop`.
  *
@@ -4092,7 +4103,7 @@ export interface CreateWalk {
   idempotency_key: string;
   project_id: ProjectId;
   question_version_id: QuestionVersionId;
-  sources: WalkSources;
+  dataset_version_ids: WalkDatasets;
   /**
    * Most actions (applies, runs, comparisons) the walk may take.
    */
@@ -4114,6 +4125,7 @@ export interface Walk {
   project_id: ProjectId;
   question_version_id: QuestionVersionId;
   sources: WalkSources;
+  dataset_version_ids?: WalkDatasets1;
   /**
    * Each source's SHA-256 when the walk began, in the order of `sources`. Every round checks them: a source that changed stops the walk. Absent on walks made before they were recorded, and on one that stopped before building anything.
    */
