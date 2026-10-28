@@ -93,7 +93,7 @@ function PlotView({ plot, missing, atDefaults, small = false }: { plot: Plot; mi
   if (plot.figure === null) return null;
   return (
     <>
-      {!small && !atDefaults && <p className="split-example-plot-note">Drawn at the default settings. It is drawn again with yours when the step runs.</p>}
+      {!small && !atDefaults && <p className="split-example-plot-note">Drawn at the default settings, not yours.</p>}
       <Suspense fallback={<Loading text="Loading plot…" pad />}>
         <PlotlyFigure json={plot.figure} label={plot.title} small={small} />
       </Suspense>
@@ -271,7 +271,7 @@ export function SplitChoiceExample() {
               <span className="split-example-count">[1]</span>
               <CodeInput key={selected.id} value={code} label="Split cell" onChange={editCell} onRun={editCell} />
             </div>
-            {custom && <p className="split-example-note">Custom code. The promises are still checked on this cell's train and test.</p>}
+            {custom && <p className="split-example-note">Custom code. This example does not run or check it.</p>}
             {selected.plots.map((plot, index) => (
               <div key={plot.name}>
                 <div className="split-example-cell">

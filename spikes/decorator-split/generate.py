@@ -99,8 +99,8 @@ def option_entry(option: dict[str, Any], manifest: dict[str, Any]) -> dict[str, 
     }
 
 
-def main() -> None:
-    OUT.mkdir(exist_ok=True)
+def main(out: Path = OUT, screen_path: Path = SCREEN) -> None:
+    out.mkdir(exist_ok=True)
     pack, version = validation.PACK, validation.VERSION
     method = method_manifest(split, "methodology.supervised", pack, version)
     manifests = {}
@@ -108,7 +108,7 @@ def main() -> None:
         manifests[choice.operator.__name__] = operator_manifest(choice.operator, pack, version)
     for name, manifest in [("split_method", method), *manifests.items()]:
         text = yaml.safe_dump(manifest, sort_keys=False, width=100)
-        (OUT / f"{name}.yaml").write_text(
+        (out / f"{name}.yaml").write_text(
             "# Method IR, compiled from the decorated pack. Do not edit.\n" + text
         )
 
@@ -129,7 +129,7 @@ def main() -> None:
         ],
         "files": [{"path": path, "text": (HERE / path).read_text()} for path in WRITTEN],
     }
-    SCREEN.write_text(json.dumps(screen, indent=2) + "\n")
+    screen_path.write_text(json.dumps(screen, indent=2) + "\n")
 
 
 if __name__ == "__main__":

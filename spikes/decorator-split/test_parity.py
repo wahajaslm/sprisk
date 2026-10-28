@@ -102,7 +102,16 @@ def test_the_method_picks_todays_option(task: str, bound: set[str]) -> None:
 
 
 def test_a_method_cannot_choose_an_option_it_did_not_declare() -> None:
-    @method(options={"only": option("Only", random_split)})
+    @method(
+        id="broken",
+        decides="x",
+        name="Broken",
+        activity="Test",
+        question="Which?",
+        applies_when={},
+        options={"only": option("Only", random_split)},
+        source="test",
+    )
     def broken() -> Any:
         return method.choose("other", reason="typo")
 

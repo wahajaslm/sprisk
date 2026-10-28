@@ -6,6 +6,8 @@ from sprisk import Verdict, operator, promise, visualization
 
 @promise(id="test_after_train", text="Every test row is later than the latest train row.")
 def test_after_train(train: pl.DataFrame, test: pl.DataFrame, time_column: str):
+    if train.is_empty() or test.is_empty():
+        return Verdict("inconclusive", "One side has no rows.")
     latest = train[time_column].max()
     early = test.filter(pl.col(time_column) <= latest).height
     evidence = {

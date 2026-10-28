@@ -107,7 +107,7 @@ describe("decorator split example", () => {
 
     fireEvent.change(cell("Split cell"), { target: { value: cell("Split cell").value.replace("splitter = ", "splitter  = ") } });
 
-    expect(screen.getByText(/Custom code. The promises are still checked/)).toBeInTheDocument();
+    expect(screen.getByText(/Custom code. This example does not run or check it/)).toBeInTheDocument();
   });
 
   it("lists only the five files a person writes", async () => {

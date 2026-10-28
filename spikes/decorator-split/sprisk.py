@@ -6,7 +6,6 @@ the records into the versioned Method IR; YAML is its current serialization."""
 import ast
 import hashlib
 import inspect
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -115,11 +114,31 @@ def _record(**declared: Any) -> Callable[[Fn], Fn]:
 
 def method(
     *,
+    id: str,
+    decides: str,
+    name: str,
+    activity: str,
+    question: str,
+    applies_when: dict[str, list[str]],
+    options: dict[str, Option],
+    source: str,
+    decisions: list[str] | None = None,
     concepts: dict[str, str] | None = None,
     columns: dict[str, str] | None = None,
-    **declared: Any,
 ) -> Callable[[Fn], Fn]:
-    return _record(kind="method", concepts=_concepts(concepts, columns), **declared)
+    return _record(
+        kind="method",
+        id=id,
+        decides=decides,
+        name=name,
+        activity=activity,
+        question=question,
+        applies_when=applies_when,
+        options=options,
+        source=source,
+        decisions=decisions or [],
+        concepts=_concepts(concepts, columns),
+    )
 
 
 method.choose = Choice  # type: ignore[attr-defined]
@@ -247,7 +266,11 @@ def _params_schema(op: Fn) -> dict[str, Any]:
             continue
         annotation = p.annotation
         if annotation not in JSON_TYPES:  # `str | None`
-            (annotation,) = [a for a in annotation.__args__ if a is not type(None)]
+            annotation = next(
+                (a for a in getattr(annotation, "__args__", ()) if a is not type(None)), annotation
+            )
+        if annotation not in JSON_TYPES:
+            raise TypeError(f"{op.__name__}.{name}: annotation {p.annotation!r} has no JSON type")
         prop: dict[str, Any] = {"type": JSON_TYPES[annotation]}
         if name in declared["concepts"]:
             prop |= {"minLength": 1, "x-sprisk-column": True}
@@ -341,12 +364,13 @@ def notebook_cell(fn: Fn, args: list[str], settings: dict[str, Any], result: str
     module = inspect.getmodule(fn)
     source = inspect.getsource(fn)
     source = source[source.index("def ") :]
+    used = {n.id for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Name)}
     imports = [
-        line
-        for line in inspect.getsource(module).splitlines()  # type: ignore[arg-type]
-        if line.startswith(("import ", "from "))
-        and not line.startswith("from sprisk ")
-        and re.search(rf"\b{re.escape(line.split()[-1])}\b", source)
+        ast.unparse(node)
+        for node in ast.parse(inspect.getsource(module)).body  # type: ignore[arg-type]
+        if isinstance(node, ast.Import | ast.ImportFrom)
+        and getattr(node, "module", None) != "sprisk"
+        and any((a.asname or a.name).split(".")[0] in used for a in node.names)
     ]
     call_args = ", ".join([*args, *(f"{k}={v!r}" for k, v in settings.items())])
     target = f"{result} = " if result else ""
