@@ -107,6 +107,32 @@ def test_several_outputs_are_returned_as_a_dict_by_port(tmp_path: Path) -> None:
     }
 
 
+def test_several_outputs_may_be_a_tuple_in_the_manifest_port_order(tmp_path: Path) -> None:
+    def op(data: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+        return data.head(1), data.tail(1)
+
+    outputs = adapt(op, SPLIT)(
+        {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1, 2]}))}, staging(tmp_path)
+    )
+
+    assert {o.port: pl.read_parquet(o.path)["x"].to_list() for o in outputs} == {
+        "train": [1],
+        "test": [2],
+    }
+
+
+def test_a_tuple_of_the_wrong_length_is_a_bad_output(tmp_path: Path) -> None:
+    def op(data: pl.DataFrame) -> tuple[pl.DataFrame, ...]:
+        return (data, data, data)
+
+    with pytest.raises(OperatorError) as e:
+        adapt(op, SPLIT)(
+            {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
+        )
+    assert e.value.code == "bad_output"
+    assert "3 values" in str(e.value)
+
+
 def test_a_model_is_saved_safely_and_metrics_as_json(tmp_path: Path) -> None:
     fit = operator(
         "[{ name: train, kind: table }]",

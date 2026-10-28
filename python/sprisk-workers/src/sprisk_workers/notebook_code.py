@@ -7,6 +7,8 @@ manifest.
 """
 
 import ast
+import builtins
+import inspect
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -18,18 +20,26 @@ from sprisk_contracts import (
     NotebookSettings,
     NotebookSettingsRequest,
 )
+from sprisk_workers.authoring import declared, tables
+from sprisk_workers.errors import ManifestError
 from sprisk_workers.manifests import load_function
 
 
+def _writer(entrypoint: str) -> "Write":
+    found = load_function(Path(entrypoint), "notebook_code", entrypoint)
+    # A decorated operator is its own notebook code (ADR-0071).
+    return source_cell(found) if declared(found) else found
+
+
 def write_code(entrypoint: str, request: NotebookCodeRequest) -> NotebookCode:
-    write = load_function(Path(entrypoint), "notebook_code", entrypoint)
+    write = _writer(entrypoint)
     inputs = {port: name.root for port, name in request.inputs.items()}
     outputs = {port: name.root for port, name in request.outputs.items()}
     return NotebookCode(code=write(request.settings, inputs, outputs))
 
 
 def read_code(entrypoint: str, request: NotebookSettingsRequest) -> NotebookSettings:
-    write = load_function(Path(entrypoint), "notebook_code", entrypoint)
+    write = _writer(entrypoint)
     inputs = {port: name.root for port, name in request.inputs.items()}
     outputs = {port: name.root for port, name in request.outputs.items()}
     settings = read_settings(write, request.settings, inputs, outputs, request.code)
@@ -39,6 +49,67 @@ def read_code(entrypoint: str, request: NotebookSettingsRequest) -> NotebookSett
 
 
 Write = Callable[[dict[str, Any], dict[str, str], dict[str, str]], str]
+
+
+def _cell_parts(fn: Callable[..., Any]) -> tuple[list[ast.Import | ast.ImportFrom], str, str]:
+    """The module imports the function uses, the function's source without its decorator, and
+    the module's source those imports come from."""
+    module = inspect.getsource(inspect.getmodule(fn))  # type: ignore[arg-type]
+    tree = ast.parse(module)
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == fn.__name__]
+    if len(nodes) != 1:
+        raise ManifestError(f"{fn.__module__}:{fn.__name__} is not a single top-level function")
+    source = "\n".join(module.splitlines()[nodes[0].lineno - 1 : nodes[0].end_lineno])
+    used = {n.id for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Name)}
+    imports = [
+        n
+        for n in tree.body
+        if isinstance(n, ast.Import | ast.ImportFrom) and any(_bound(a) in used for a in n.names)
+    ]
+    return imports, source, module
+
+
+def _bound(alias: ast.alias) -> str:
+    return (alias.asname or alias.name).split(".")[0]
+
+
+def unresolved_names(fn: Callable[..., Any]) -> list[str]:
+    """Names the function reads that its cell would not define: a module constant or helper
+    the cell does not copy, which would fail with NameError in the notebook."""
+    imports, source, _ = _cell_parts(fn)
+    tree = ast.parse(source)
+    read = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    defined = {
+        n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and not isinstance(n.ctx, ast.Load)
+    }
+    defined |= {n.arg for n in ast.walk(tree) if isinstance(n, ast.arg)}
+    defined |= {n.name for n in ast.walk(tree) if isinstance(n, ast.ExceptHandler) and n.name}
+    defined |= {_bound(a) for n in imports for a in n.names} | {fn.__name__} | set(dir(builtins))
+    return sorted(read - defined)
+
+
+def source_cell(fn: Callable[..., Any]) -> Write:
+    """Write a decorated operator as its own function, without its decorator, plus one call
+    on the notebook's names. Only the imports the function uses come with it."""
+    found = declared(fn)
+    if found is None:
+        raise ManifestError(f"{fn.__module__}:{fn.__name__} is not a decorated operator")
+    nodes, source, module = _cell_parts(fn)
+    imports = [ast.get_source_segment(module, n) or "" for n in nodes]
+    inputs = tables(fn)
+    params = [p for p in inspect.signature(fn).parameters if p not in inputs]
+
+    def write(settings: dict[str, Any], names_in: dict[str, str], names_out: dict[str, str]) -> str:
+        args = [names_in[i] for i in inputs] + [
+            f"{p}={settings[p]!r}" for p in params if p in settings
+        ]
+        results = ", ".join(names_out[o] for o in found.outputs)
+        call = f"{results} = {fn.__name__}({', '.join(args)})"
+        return "\n".join(imports) + f"\n\n\n{source}\n\n\n{call}\n"
+
+    return write
+
+
 # Stands in for one setting while the step's code is written, to find where its value goes.
 MARK = "__sprisk_setting__"
 # What the parser and literal_eval raise on edited code they cannot read: deep nesting, huge

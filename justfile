@@ -25,6 +25,10 @@ contracts-test:
     uv run pytest -q python/sprisk-contracts
     pnpm -C contracts/ts test
 
+# Compile decorated operators into their manifests (ADR-0071).
+build-packs:
+    uv run python -m sprisk_workers.build_packs plugins methodology
+
 # Format, lint, typecheck and test everything.
 check:
     cargo fmt --all --check
@@ -40,6 +44,7 @@ check:
     # Every rule module is named rule.py, which mypy reads as one module, so each is checked alone.
     for f in methodology/*/rules/*/rule.py; do uv run mypy "$f" || exit 1; done
     uv run pytest -q python plugins methodology
+    uv run python -m sprisk_workers.build_packs --check plugins methodology
     pnpm -C contracts/ts typecheck
     pnpm -C contracts/ts test
     pnpm -C apps/web typecheck

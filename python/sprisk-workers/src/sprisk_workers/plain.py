@@ -155,6 +155,13 @@ def adapt(
         except Exception as e:  # noqa: BLE001 - reported as the attempt's failure, never swallowed
             raise OperatorError("operator_error", f"{type(e).__name__}: {e}") from e
         several = len(expected) > 1 or named_out is not None
+        # A decorated operator returns its outputs as a tuple, in manifest order (ADR-0071).
+        if several and named_out is None and isinstance(result, tuple):
+            if len(result) != len(expected):
+                raise OperatorError(
+                    "bad_output", f"expected outputs {list(expected)}, got {len(result)} values"
+                )
+            result = dict(zip(expected, result, strict=True))
         by_port = result if several else {next(iter(expected)): result}
         if not isinstance(by_port, dict) or set(by_port) != set(expected):
             got = sorted(by_port) if isinstance(by_port, dict) else type(by_port).__name__
