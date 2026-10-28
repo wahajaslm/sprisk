@@ -273,13 +273,18 @@ fn inside_roots(
     Ok(resolved)
 }
 
+/// Each reason, in order, as one line.
+fn joined(reasons: impl Iterator<Item = String>) -> String {
+    reasons.collect::<Vec<_>>().join("; ")
+}
+
 #[derive(Debug, thiserror::Error)]
 enum ApiError {
     #[error("{code}: {message}")]
     BadRequest { code: &'static str, message: String },
-    #[error("invalid pipeline")]
+    #[error("invalid pipeline: {}", joined(.0.iter().map(ToString::to_string)))]
     Compile(Vec<CompileError>),
-    #[error("pipeline breaks local policy")]
+    #[error("pipeline breaks local policy: {}", joined(.0.iter().map(|(_, why)| why.clone())))]
     Policy(Vec<(&'static str, String)>),
     #[error("forbidden: {0}")]
     Forbidden(String),
@@ -3028,6 +3033,19 @@ async fn list_loaded_tables(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A walk stops with this text (engine.rs), so it must say what is wrong.
+    #[test]
+    fn an_invalid_pipeline_says_why() {
+        let error = ApiError::Compile(vec![
+            CompileError::Empty,
+            CompileError::UnknownNode("x".into()),
+        ]);
+        assert_eq!(
+            error.to_string(),
+            "invalid pipeline: pipeline has no nodes; edge refers to unknown node x"
+        );
+    }
 
     fn attempt(state: &str) -> sprisk_contracts::Attempt {
         parse(
