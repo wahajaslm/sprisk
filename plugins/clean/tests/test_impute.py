@@ -6,11 +6,20 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from sprisk_clean.impute import as_code, impute
-from sprisk_workers.notebook_code import read_settings
+from sprisk_clean.impute import impute as step_function
+from sprisk_workers.notebook_code import read_settings, source_cell
 
 TRAIN = pl.DataFrame({"x": [1.0, 2.0, None, 100.0], "y": [1, 2, 3, 4]})
 TEST = pl.DataFrame({"x": [None, 5.0], "y": [5, 6]})
+
+
+# The step's notebook cell is its own function (ADR-0071).
+as_code = source_cell(step_function)
+
+
+def impute(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """The step's outputs by port name."""
+    return dict(zip(("train", "test"), step_function(*args, **kwargs), strict=True))
 
 
 @pytest.mark.parametrize(("method", "fill"), [("median", 2.0), ("mean", 103.0 / 3), ("zero", 0.0)])

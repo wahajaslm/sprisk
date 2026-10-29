@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError
-from sprisk_workers.plain import CheckedFunction, adapt
+from sprisk_workers.plain import CheckedFunction, adapt, by_port
 from sprisk_workers.serve import LoadedOperator
 
 # Only first-party packs run until plugin isolation exists (arch doc §12).
@@ -43,7 +43,11 @@ def load_operators(*roots: Path) -> dict[str, LoadedOperator]:
     # ...and refits the preparation steps between the split and the model per fold (ADR-0050).
     preparations = {
         ref: CheckedFunction(
-            load_function(path, "entrypoint", operator.entrypoint.root), operator.params_schema
+            by_port(
+                load_function(path, "entrypoint", operator.entrypoint.root),
+                [p.name.root for p in operator.outputs],
+            ),
+            operator.params_schema,
         )
         for ref, (path, operator) in manifests.items()
         if operator.fits_on_train

@@ -188,7 +188,12 @@ def operator_manifest(fn: Callable[..., Any], kinds: dict[str, str] | None = Non
             | ({"optional": True} if parameters[name].default is None else {})
             for name, kind in found.inputs.items()
         ],
-        "outputs": [{"name": n, "kind": k} for n, k in found.outputs.items()] + drawn,
+        "outputs": [
+            {"name": n, "kind": k}
+            | ({"description": found.described[n]} if n in found.described else {})
+            for n, k in found.outputs.items()
+        ]
+        + drawn,
         "params_schema": _params_schema(
             fn, found.concepts, found.tunables, kinds or {}, inputs=set(found.inputs)
         ),

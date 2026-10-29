@@ -1,23 +1,40 @@
-from typing import Any
+from typing import Literal
 
 import polars as pl
 
+from sprisk_workers.authoring import Columns, operator
 
+
+@operator(
+    id="impute",
+    title="Imputation",
+    stage="clean",
+    inputs=["train", "test"],
+    outputs=["train", "test"],
+    fits_on_train=True,
+)
 def impute(
     train: pl.DataFrame,
     test: pl.DataFrame,
-    columns: list[str],
-    method: str,
+    columns: Columns,
+    method: Literal["median", "mean", "zero"],
     text_fill: dict[str, str] | None = None,
     text_gap: str | None = None,
-) -> dict[str, pl.DataFrame]:
-    """Fill gaps with a statistic of the train rows, applied to train and test alike.
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Fill missing numbers with the train median or mean, or with 0, and missing text with a
+    category of its own. Fit on train only.
 
-    The statistic comes from train only, so nothing about the test rows leaks into it.
-    NaN counts as missing. Each text column's gaps get its `text_fill`: a category of their
-    own, such as "missing", or "" for free text, where a gap is no words; `text_gap` is the
-    fill of every text column `text_fill` leaves out. A most-frequent fill would give a gap a
-    value it never had."""
+    Args:
+        columns: Columns whose missing values are filled.
+        method: Statistic of the train rows used to fill gaps in numbers; zero fills with 0.
+        text_fill: Each text column's fill for its gaps: a category such as missing, or an
+            empty string for free text, where a gap is no words. Each text column needs one,
+            or text_gap.
+        text_gap: The fill for gaps in every text column text_fill does not name, such as
+            missing.
+    """
+    # The statistic comes from train only, so nothing about the test rows leaks into it. A
+    # most-frequent fill would give a gap a value it never had.
     nan_to_null = [pl.col(c).fill_nan(None) for c in columns if train.schema[c].is_float()]
     train, test = train.with_columns(nan_to_null), test.with_columns(nan_to_null)
 
@@ -46,44 +63,4 @@ def impute(
         fills[c] = value
 
     filled = [pl.col(c).fill_null(v) for c, v in fills.items()]
-    return {"train": train.with_columns(filled), "test": test.with_columns(filled)}
-
-
-FILL_CODE = {
-    "median": "{train}[c].median()",
-    "mean": "{train}[c].mean()",
-    "zero": "0.0",
-}
-
-
-def as_code(settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]) -> str:
-    """This step as plain Python for a notebook cell (ADR-0055); a test runs it against the
-    step. Helper names start with the train output's name, so they never replace a person's."""
-    train, test = inputs["train"], inputs["test"]
-    train_out, test_out = outputs["train"], outputs["test"]
-    columns, text_fill = settings["columns"], settings.get("text_fill", {})
-    text_gap = settings.get("text_gap")
-    nan, text = f"{train_out}_nan", f"{train_out}_text_fill"
-    fills, filled = f"{train_out}_fills", f"{train_out}_filled"
-    method = settings["method"]
-    if method not in FILL_CODE:
-        raise ValueError(f"impute has no method {method!r}")
-    number = FILL_CODE[method].format(train=train_out)
-    return (
-        "import polars as pl\n"
-        "\n"
-        "# NaN counts as missing.\n"
-        f"{nan} = [pl.col(c).fill_nan(None) for c in {columns!r} if {train}.schema[c].is_float()]\n"
-        f"{train_out}, {test_out} = {train}.with_columns({nan}), {test}.with_columns({nan})\n"
-        "# Text gaps get a category of their own; number gaps a value from the train rows only.\n"
-        f"{text} = {text_fill!r}\n"
-        f"{fills} = {{\n"
-        f"    c: {text}.get(c, {text_gap!r})\n"
-        f"    if {train_out}.schema[c] in (pl.String, pl.Categorical)\n"
-        f"    else {number}\n"
-        f"    for c in {columns!r}\n"
-        "}\n"
-        f"{filled} = [pl.col(c).fill_null(v) for c, v in {fills}.items()]\n"
-        f"{train_out}, {test_out} = "
-        f"{train_out}.with_columns({filled}), {test_out}.with_columns({filled})\n"
-    )
+    return train.with_columns(filled), test.with_columns(filled)

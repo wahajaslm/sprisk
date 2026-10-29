@@ -1,24 +1,57 @@
 from collections.abc import Sequence
-from typing import Any
+from typing import Annotated, Any
 
 import polars as pl
 from scipy import sparse
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from sprisk_workers.authoring import Columns, operator
 
+
+@operator(
+    id="vectorize_text",
+    version="1.1.0",
+    title="TF-IDF vectorization",
+    stage="clean",
+    inputs=["train", "test"],
+    outputs={
+        "train": {"kind": "table", "description": "The train rows without the text columns."},
+        "test": {"kind": "table", "description": "The test rows without the text columns."},
+        "train_words": {
+            "kind": "matrix",
+            "description": "Word features of the train rows, row for row.",
+        },
+        "test_words": {
+            "kind": "matrix",
+            "description": "Word features of the test rows, with the train rows' words only.",
+        },
+    },
+    fits_on_train=True,
+    resources={"cpu_cores": 1, "memory_mb": 4096, "gpu": "none", "timeout_seconds": 1800},
+)
 def vectorize_text(
     train: pl.DataFrame,
     test: pl.DataFrame,
-    columns: list[str],
-    ngram_range: Sequence[int] = (1, 1),
-    min_df: int = 1,
-) -> dict[str, Any]:
-    """Word features of free text (ADR-0058): one TF-IDF vectorizer per column, its words and
-    their weights learnt from the train rows only. A word seen only in test rows is ignored, and
-    so is one in fewer than `min_df` train rows.
-    Missing text is read as empty and gives a row of zeros. Each word is named after its
-    column (`title:red`), so two columns never share a name. The tables lose the text columns.
-    Each matrix is the pair the worker stores: the SciPy matrix and its column names."""
+    columns: Columns,
+    ngram_range: Annotated[
+        Sequence[int],
+        {"items": {"type": "integer", "minimum": 1, "maximum": 3}, "minItems": 2, "maxItems": 2},
+    ] = (1, 1),
+    min_df: Annotated[int, {"minimum": 1}] = 1,
+) -> tuple[pl.DataFrame, pl.DataFrame, Any, Any]:
+    """Free text becomes word features, TF-IDF weighted, learnt from the train rows only
+    (ADR-0058). Each text column leaves the tables and becomes words in a sparse matrix, named
+    after its column. A word seen only in test rows, or in fewer train rows than min_df, is
+    ignored; missing text gives a row of zeros.
+
+    Args:
+        columns: Text columns to turn into words.
+        ngram_range: Shortest and longest run of words that is a feature: [1, 1] single words,
+            [1, 2] words and word pairs.
+        min_df: Fewest train rows a word must appear in to be a feature. 2 leaves out words of
+            one row, which shrinks the vocabulary. A whole number: 1.0 is refused.
+    """
+
     for rows, which in ((train, "train"), (test, "test")):
         for c in columns:
             if c not in rows.columns:
@@ -46,39 +79,10 @@ def vectorize_text(
             raise
     applied = [v.transform(test[c].fill_null("").to_list()) for c, v in vectorizers.items()]
     names = tuple(f"{c}:{w}" for c, v in vectorizers.items() for w in v.get_feature_names_out())
-    return {
-        "train": train.drop(columns),
-        "test": test.drop(columns),
-        "train_words": (sparse.hstack(learnt).tocsr(), names),
-        "test_words": (sparse.hstack(applied).tocsr(), names),
-    }
-
-
-def as_code(settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]) -> str:
-    """This step as plain Python for a notebook cell (ADR-0055); a test runs it against the
-    step. Helper names start with the train output's name, so they never replace a person's."""
-    train, test = inputs["train"], inputs["test"]
-    columns = settings["columns"]
-    low, high = settings.get("ngram_range", [1, 1])
-    min_df = settings.get("min_df", 1)
-    vectorizers = f"{outputs['train']}_vectorizers"
+    # Each matrix is the pair the worker stores: the SciPy matrix and its column names.
     return (
-        "from scipy import sparse\n"
-        "from sklearn.feature_extraction.text import TfidfVectorizer\n"
-        "\n"
-        "# One vectorizer per text column, learnt from the training rows only.\n"
-        f"{vectorizers} = {{\n"
-        f"    c: TfidfVectorizer(ngram_range=({low!r}, {high!r}), min_df={min_df!r})\n"
-        f"    for c in {columns!r}\n"
-        "}\n"
-        "# Missing text is read as empty: a row of zeros.\n"
-        f"{outputs['train_words']} = sparse.hstack([\n"
-        f'    v.fit_transform({train}[c].fill_null("").to_list())\n'
-        f"    for c, v in {vectorizers}.items()\n"
-        "]).tocsr()\n"
-        f"{outputs['test_words']} = sparse.hstack([\n"
-        f'    v.transform({test}[c].fill_null("").to_list()) for c, v in {vectorizers}.items()\n'
-        "]).tocsr()\n"
-        f"{outputs['train']} = {train}.drop({columns!r})\n"
-        f"{outputs['test']} = {test}.drop({columns!r})\n"
+        train.drop(columns),
+        test.drop(columns),
+        (sparse.hstack(learnt).tocsr(), names),
+        (sparse.hstack(applied).tocsr(), names),
     )

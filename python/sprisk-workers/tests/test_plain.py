@@ -19,7 +19,7 @@ from sprisk_workers.build_packs import operator_manifest
 from sprisk_workers.errors import ManifestError, OperatorError
 from sprisk_workers.matrix import Matrix
 from sprisk_workers.output import JSON, MATRIX, PARQUET, SKOPS
-from sprisk_workers.plain import CheckedFunction, FoldStep, adapt
+from sprisk_workers.plain import CheckedFunction, FoldStep, adapt, by_port
 
 
 def operator(inputs: str, outputs: str, params: str = "{}") -> Operator:
@@ -839,3 +839,13 @@ def test_a_view_that_fails_fails_the_step_and_names_the_view(tmp_path: Path) -> 
             {"data": parquet(tmp_path, rows)},
             staging(tmp_path),
         )
+
+
+def test_a_step_returning_a_tuple_is_refit_per_fold_by_its_port_names() -> None:
+    def halve(train: pl.DataFrame, test: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+        return train.head(1), test.with_columns(pl.col("x") / 2)
+
+    step = FoldStep(by_port(halve, ["train", "test"]), {})
+    rows = pl.DataFrame({"x": [2.0, 4.0]})
+
+    assert step.fit(rows).transform(rows)["x"].to_list() == [1.0, 2.0]

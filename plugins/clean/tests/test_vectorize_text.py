@@ -4,9 +4,10 @@ from typing import Any
 import polars as pl
 import pytest
 
-from sprisk_clean.vectorize_text import as_code, vectorize_text
+from sprisk_clean.vectorize_text import vectorize_text as step_function
 from sprisk_workers.manifests import load_operators
 from sprisk_workers.matrix import Matrix, read_matrix
+from sprisk_workers.notebook_code import source_cell
 from sprisk_workers.output import MATRIX
 
 TRAIN = pl.DataFrame(
@@ -17,6 +18,21 @@ TRAIN = pl.DataFrame(
     }
 )
 TEST = pl.DataFrame({"title": ["red zebra", "zebra"], "body": ["wool", None], "price": [5, 6]})
+
+
+# The step's notebook cell is its own function (ADR-0071).
+as_code = source_cell(step_function)
+
+
+def vectorize_text(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """The step's outputs by port name."""
+    return dict(
+        zip(
+            ("train", "test", "train_words", "test_words"),
+            step_function(*args, **kwargs),
+            strict=True,
+        )
+    )
 
 
 def words(out: dict[str, Any], port: str) -> Matrix:
@@ -83,7 +99,7 @@ def test_a_min_df_above_the_train_rows_is_named() -> None:
 def test_a_min_df_that_is_not_a_whole_count_is_refused(min_df: float) -> None:
     # JSON Schema takes 1.0 for an integer; scikit-learn would read it as a share of rows.
     with pytest.raises(ValueError, match="min_df must be a whole count of rows"):
-        vectorize_text(TRAIN, TEST, columns=["title"], min_df=min_df)  # type: ignore[arg-type]
+        vectorize_text(TRAIN, TEST, columns=["title"], min_df=min_df)
 
 
 def test_only_text_columns_can_be_vectorized() -> None:
@@ -136,7 +152,8 @@ def test_plain_code_gives_the_same_tables_and_words() -> None:
     assert namespace["a"].equals(step["train"])  # type: ignore[attr-defined]
     assert namespace["b"].equals(step["test"])  # type: ignore[attr-defined]
     for name, port in (("a_words", "train_words"), ("b_words", "test_words")):
-        made = namespace[name]
+        # The cell holds what the step returns: the matrix and its column names.
+        made: Any = namespace[name][0]  # type: ignore[index]
         assert (made != words(step, port).values).nnz == 0
 
 

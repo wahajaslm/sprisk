@@ -77,6 +77,17 @@ class FoldStep(TransformerMixin, BaseEstimator):  # type: ignore[misc]
         return out["test"] if words is None else (out["test"], words)
 
 
+def by_port(fn: Callable[..., Any], ports: list[str]) -> Callable[..., Any]:
+    """A step whose outputs come back as a tuple in port order (ADR-0071), as a function
+    returning them by port name, as a fold reads them."""
+
+    def run(*args: Any, **kwargs: Any) -> Any:
+        result = fn(*args, **kwargs)
+        return dict(zip(ports, result, strict=True)) if isinstance(result, tuple) else result
+
+    return run
+
+
 def _table_and_words(x: Any) -> tuple[Any, Any]:
     return x if isinstance(x, tuple) else (x, None)
 

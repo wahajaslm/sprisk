@@ -14,7 +14,11 @@ from sprisk_workers.authoring import Columns, operator
     title="Gap filling",
     stage="clean",
     inputs={"train": "table", "test": "table", "words": "matrix"},
-    outputs={"train": "table", "test": "table", "evidence": "report"},
+    outputs={
+        "train": "table",
+        "test": "table",
+        "evidence": {"kind": "report", "description": "Rows filled."},
+    },
     fits_on_train=True,
     produces={"data.gaps": {"fields": {"rows": "integer"}}},
 )

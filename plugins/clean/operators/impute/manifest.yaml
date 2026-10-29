@@ -1,23 +1,62 @@
+# Method IR compiled from sprisk_clean.impute:impute. Do not edit; run `just build-packs`.
 schema_version: sprisk.operator/v1
 id: sprisk.clean.impute@1.0.0
-title: Imputation
 capability_class: transform
-stage: clean
-description: Fill missing numbers with the train median or mean, or with 0, and missing text with a category of its own. Fit on train only.
+title: Imputation
+description: Fill missing numbers with the train median or mean, or with 0, and missing
+  text with a category of its own. Fit on train only.
 entrypoint: sprisk_clean.impute:impute
-notebook_code: sprisk_clean.impute:as_code
+notebook_code: sprisk_clean.impute:impute
 fits_on_train: true
-inputs: [{ name: train, kind: table }, { name: test, kind: table }]
-outputs: [{ name: train, kind: table }, { name: test, kind: table }]
+stage: clean
+inputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
+outputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
 params_schema:
   type: object
   additionalProperties: false
-  required: [columns, method]
+  required:
+  - columns
+  - method
   properties:
-    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Columns whose missing values are filled." }
-    method: { type: string, enum: [median, mean, zero], description: "Statistic of the train rows used to fill gaps in numbers; zero fills with 0." }
-    text_fill: { type: object, additionalProperties: { type: string }, description: "Each text column's fill for its gaps: a category such as missing, or an empty string for free text, where a gap is no words. Each text column needs one, or text_gap." }
-    text_gap: { type: string, description: "The fill for gaps in every text column text_fill does not name, such as missing." }
+    columns:
+      type: array
+      items:
+        type: string
+        minLength: 1
+      minItems: 1
+      uniqueItems: true
+      description: Columns whose missing values are filled.
+    method:
+      type: string
+      enum:
+      - median
+      - mean
+      - zero
+      description: Statistic of the train rows used to fill gaps in numbers; zero
+        fills with 0.
+    text_fill:
+      type: object
+      additionalProperties:
+        type: string
+      description: 'Each text column''s fill for its gaps: a category such as missing,
+        or an empty string for free text, where a gap is no words. Each text column
+        needs one, or text_gap.'
+    text_gap:
+      type: string
+      description: The fill for gaps in every text column text_fill does not name,
+        such as missing.
 effects: pure
 network: none
-resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }
+resources:
+  cpu_cores: 1
+  memory_mb: 2048
+  gpu: none
+  timeout_seconds: 600

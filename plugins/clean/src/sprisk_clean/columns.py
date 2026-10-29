@@ -1,13 +1,27 @@
 import polars as pl
 
+from sprisk_workers.authoring import Columns, operator
+
 
 def select_columns(data: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
     """Keep only these columns, in this order."""
     return data.select(columns)
 
 
-def drop_columns(data: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
-    """Leave out these columns; every other column stays, including one a step added."""
+@operator(
+    id="drop_columns",
+    title="Column removal",
+    stage="clean",
+    inputs=["data"],
+    outputs=["data"],
+    resources={"cpu_cores": 1, "memory_mb": 1024, "gpu": "none", "timeout_seconds": 300},
+)
+def drop_columns(data: pl.DataFrame, columns: Columns) -> pl.DataFrame:
+    """Leave out the named columns; every other column stays, in its order.
+
+    Args:
+        columns: Columns to leave out.
+    """
     return data.drop(columns, strict=True)
 
 

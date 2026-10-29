@@ -468,7 +468,7 @@ def test_settings_ports_and_fields_compile_as_the_clean_operators_declare_them()
     assert manifest["outputs"] == [
         {"name": "train", "kind": "table"},
         {"name": "test", "kind": "table"},
-        {"name": "evidence", "kind": "report"},
+        {"name": "evidence", "kind": "report", "description": "Rows filled."},
     ]
     assert manifest["params_schema"] == {
         "type": "object",

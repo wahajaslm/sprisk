@@ -834,7 +834,8 @@ def test_words_are_made_in_each_fold_from_its_own_rows_and_reach_the_model() -> 
 
     def vectorize(train: pl.DataFrame, test: pl.DataFrame, columns: list[str]) -> dict[str, Any]:
         seen.append(train.height)
-        return vectorize_text(train, test, columns)
+        ports = ["train", "test", "train_words", "test_words"]
+        return dict(zip(ports, vectorize_text(train, test, columns), strict=True))
 
     result = cross_validate(
         worded(100, seed=4),

@@ -57,8 +57,21 @@ def claimed() -> list[tuple[str, Callable[..., dict[str, pl.DataFrame]]]]:
         manifest = yaml.safe_load(path.read_text())
         if manifest.get("fits_on_train"):
             module, function = manifest["entrypoint"].split(":")
-            found.append((manifest["id"], getattr(importlib.import_module(module), function)))
+            ports = [p["name"] for p in manifest["outputs"]]
+            found.append(
+                (manifest["id"], by_port(getattr(importlib.import_module(module), function), ports))
+            )
     return found
+
+
+def by_port(fn: Callable[..., Any], ports: list[str]) -> Callable[..., dict[str, Any]]:
+    """A decorated step returns its outputs as a tuple in port order (ADR-0071)."""
+
+    def run(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        result = fn(*args, **kwargs)
+        return dict(zip(ports, result, strict=True)) if isinstance(result, tuple) else result
+
+    return run
 
 
 def test_every_step_that_claims_it_is_checked() -> None:

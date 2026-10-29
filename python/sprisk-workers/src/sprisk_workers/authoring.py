@@ -56,9 +56,10 @@ class PromiseDeclaration:
 @dataclass(frozen=True)
 class OperatorDeclaration:
     id: str
-    # Port name to kind, in port order.
+    # Port name to kind, in port order; an output may carry a description.
     inputs: dict[str, str]
     outputs: dict[str, str]
+    described: dict[str, str]
     role: str | None
     folds: str | None
     role_default: bool
@@ -159,7 +160,7 @@ def operator(
     *,
     id: str,
     inputs: list[str] | dict[str, str],
-    outputs: list[str] | dict[str, str],
+    outputs: list[str] | dict[str, Any],
     role: str | None = None,
     folds: str | None = None,
     role_default: bool = False,
@@ -189,6 +190,11 @@ def operator(
             id=id,
             inputs=_ports(inputs),
             outputs=_ports(outputs),
+            described={
+                name: spec["description"]
+                for name, spec in (outputs.items() if isinstance(outputs, dict) else [])
+                if isinstance(spec, dict)
+            },
             role=role,
             folds=folds,
             role_default=role_default,
@@ -221,8 +227,10 @@ def visualization(*, title: str | None = None) -> Callable[[F], F]:
     return _record(VisualizationDeclaration(title))
 
 
-def _ports(ports: list[str] | dict[str, str]) -> dict[str, str]:
-    return dict(ports) if isinstance(ports, dict) else {name: "table" for name in ports}
+def _ports(ports: list[str] | dict[str, Any]) -> dict[str, str]:
+    if not isinstance(ports, dict):
+        return {name: "table" for name in ports}
+    return {name: spec["kind"] if isinstance(spec, dict) else spec for name, spec in ports.items()}
 
 
 def option(
