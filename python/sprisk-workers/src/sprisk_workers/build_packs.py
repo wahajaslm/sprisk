@@ -7,8 +7,8 @@ with `--check` to fail when any is stale. Only first-party packs are imported: b
 their code, so a third-party pack ships its IR."""
 
 import argparse
-import collections.abc
 import ast
+import collections.abc
 import importlib
 import importlib.util
 import inspect
