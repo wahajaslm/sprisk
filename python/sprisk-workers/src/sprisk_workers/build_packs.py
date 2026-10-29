@@ -7,6 +7,7 @@ with `--check` to fail when any is stale. Only first-party packs are imported: b
 their code, so a third-party pack ships its IR."""
 
 import argparse
+import collections.abc
 import ast
 import importlib
 import importlib.util
@@ -46,13 +47,35 @@ RANGE_KEYS = {"minimum": "minimum", "maximum": "maximum", "step": "x-sprisk-step
 
 
 def _json_type(fn: Callable[..., Any], name: str, annotation: Any) -> str:
-    if typing.get_origin(annotation) in (typing.Union, types.UnionType):
-        options = [a for a in typing.get_args(annotation) if a is not type(None)]
-        annotation = options[0] if len(options) == 1 else annotation
     if annotation not in JSON_TYPES:
         shown = getattr(annotation, "__name__", repr(annotation))
         raise ManifestError(f"{fn.__name__}.{name}: {shown} has no JSON type")
     return JSON_TYPES[annotation]
+
+
+def _schema(fn: Callable[..., Any], name: str, annotation: Any) -> dict[str, Any]:
+    """A setting's JSON schema from its type. `Annotated` extras are merged over it; a `Path`
+    is a file the step reads (ADR-0025)."""
+    origin = typing.get_origin(annotation)
+    args = typing.get_args(annotation)
+    if origin is typing.Annotated:
+        schema = _schema(fn, name, args[0])
+        for extra in args[1:]:
+            schema |= extra
+        return schema
+    if origin in (typing.Union, types.UnionType):
+        options = [a for a in args if a is not type(None)]
+        if len(options) == 1:
+            return _schema(fn, name, options[0])
+    if origin is typing.Literal:
+        return {"type": _json_type(fn, name, type(args[0])), "enum": list(args)}
+    if origin in (list, collections.abc.Sequence):
+        return {"type": "array", "items": _schema(fn, name, args[0])}
+    if origin is dict:
+        return {"type": "object", "additionalProperties": _schema(fn, name, args[1])}
+    if annotation is Path:
+        return {"type": "string", "minLength": 1, "x-sprisk-local-path": True}
+    return {"type": _json_type(fn, name, annotation)}
 
 
 def docstring(fn: Callable[..., Any]) -> tuple[str, dict[str, str]]:
@@ -77,9 +100,10 @@ def _params_schema(
     tunables: dict[str, dict[str, float]],
     kinds: dict[str, str],
     exclude_labels: bool = False,
+    inputs: set[str] | None = None,
 ) -> dict[str, Any]:
-    hints = typing.get_type_hints(fn)
-    inputs = set(tables(fn))
+    hints = typing.get_type_hints(fn, include_extras=True)
+    inputs = set(tables(fn)) if inputs is None else inputs
     _, described = docstring(fn)
     properties: dict[str, Any] = {}
     required = []
@@ -88,7 +112,7 @@ def _params_schema(
             continue
         if name not in hints:
             raise ManifestError(f"{fn.__name__}.{name}: has no type annotation")
-        prop: dict[str, Any] = {"type": _json_type(fn, name, hints[name])}
+        prop = _schema(fn, name, hints[name])
         if name in described:
             prop["description"] = described.pop(name)
         if name in concepts:
@@ -131,7 +155,9 @@ def operator_manifest(fn: Callable[..., Any], kinds: dict[str, str] | None = Non
     found = declared(fn)
     if found is None:
         raise ManifestError(f"{fn.__name__} is not a decorated operator")
-    if list(found.inputs) != tables(fn):
+    declared_tables = [name for name, kind in found.inputs.items() if kind == "table"]
+    parameters = inspect.signature(fn).parameters
+    if declared_tables != tables(fn) or not set(found.inputs) <= set(parameters):
         raise ManifestError(
             f"{fn.__name__} declares inputs {list(found.inputs)}; its tables are {tables(fn)}"
         )
@@ -156,13 +182,20 @@ def operator_manifest(fn: Callable[..., Any], kinds: dict[str, str] | None = Non
         "description": description,
         "entrypoint": ref,
         "notebook_code": ref,
-        "inputs": [{"name": name, "kind": "table"} for name in found.inputs],
-        "outputs": [{"name": name, "kind": "table"} for name in found.outputs] + drawn,
-        "params_schema": _params_schema(fn, found.concepts, found.tunables, kinds or {}),
+        "inputs": [
+            {"name": name, "kind": kind}
+            # An input that defaults to None may be left unconnected (ADR-0058).
+            | ({"optional": True} if parameters[name].default is None else {})
+            for name, kind in found.inputs.items()
+        ],
+        "outputs": [{"name": n, "kind": k} for n, k in found.outputs.items()] + drawn,
+        "params_schema": _params_schema(
+            fn, found.concepts, found.tunables, kinds or {}, inputs=set(found.inputs)
+        ),
         "effects": "pure",
         "network": "none",
         "resources": found.resources,
-    }
+    } | found.fields
     for key, value in (
         ("stage", found.stage),
         ("role", found.role),

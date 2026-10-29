@@ -6,7 +6,7 @@ import inspect
 import typing
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Annotated, Any, TypeVar
 
 import polars as pl
 
@@ -17,6 +17,10 @@ F = TypeVar("F", bound=Callable[..., Any])
 ATTRIBUTE = "__sprisk__"
 RESOURCES = {"cpu_cores": 1, "memory_mb": 2048, "gpu": "none", "timeout_seconds": 600}
 VERDICTS = ("pass", "fail", "inconclusive")
+# A setting naming columns: at least one, each once. Extra schema rides on `Annotated`.
+Columns = Annotated[
+    list[str], {"items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": True}
+]
 # Return types the app draws: Plotly and Vega-Lite (Altair).
 VIEW_TYPES = {"go.Figure", "alt.Chart"}
 
@@ -52,8 +56,9 @@ class PromiseDeclaration:
 @dataclass(frozen=True)
 class OperatorDeclaration:
     id: str
-    inputs: tuple[str, ...]
-    outputs: tuple[str, ...]
+    # Port name to kind, in port order.
+    inputs: dict[str, str]
+    outputs: dict[str, str]
     role: str | None
     folds: str | None
     role_default: bool
@@ -64,6 +69,8 @@ class OperatorDeclaration:
     capability_class: str
     resources: dict[str, Any]
     stage: str | None
+    # Manifest fields written as given (title, scope, attach, produces, fits_on_train, effects).
+    fields: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -151,8 +158,8 @@ def promise(
 def operator(
     *,
     id: str,
-    inputs: list[str],
-    outputs: list[str],
+    inputs: list[str] | dict[str, str],
+    outputs: list[str] | dict[str, str],
     role: str | None = None,
     folds: str | None = None,
     role_default: bool = False,
@@ -164,17 +171,24 @@ def operator(
     capability_class: str = "transform",
     resources: dict[str, Any] | None = None,
     stage: str | None = None,
+    title: str | None = None,
+    scope: str | None = None,
+    attach: dict[str, str] | None = None,
+    produces: dict[str, Any] | None = None,
+    fits_on_train: bool | None = None,
+    effects: str | None = None,
 ) -> Callable[[F], F]:
     """`columns=` is the short form of `concepts=` for a concept bound to a table column.
-    `stage` is where its steps show; its promises' check steps show there too."""
+    `stage` is where its steps show; its promises' check steps show there too. Ports listed by
+    name are tables; a dict names each port's kind."""
     for check in promises or []:
         if not isinstance(getattr(check, ATTRIBUTE, None), PromiseDeclaration):
             raise ManifestError(f"{id} lists {check.__name__}, which is not a promise")
     return _record(
         OperatorDeclaration(
             id=id,
-            inputs=tuple(inputs),
-            outputs=tuple(outputs),
+            inputs=_ports(inputs),
+            outputs=_ports(outputs),
             role=role,
             folds=folds,
             role_default=role_default,
@@ -185,6 +199,18 @@ def operator(
             capability_class=capability_class,
             resources=resources or dict(RESOURCES),
             stage=stage,
+            fields={
+                k: v
+                for k, v in {
+                    "title": title,
+                    "scope": scope,
+                    "attach": attach,
+                    "produces": produces,
+                    "fits_on_train": fits_on_train,
+                    "effects": effects,
+                }.items()
+                if v is not None
+            },
         )
     )
 
@@ -193,6 +219,10 @@ def visualization(*, title: str | None = None) -> Callable[[F], F]:
     """Marks a view of the operator in the same file. A function annotated `-> go.Figure` or
     `-> alt.Chart`, spelled so, is one without the mark."""
     return _record(VisualizationDeclaration(title))
+
+
+def _ports(ports: list[str] | dict[str, str]) -> dict[str, str]:
+    return dict(ports) if isinstance(ports, dict) else {name: "table" for name in ports}
 
 
 def option(

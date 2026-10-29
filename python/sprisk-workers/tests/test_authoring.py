@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import authored_clean
 import authored_method
 import authored_never_first
 import authored_ops
@@ -446,3 +447,43 @@ def test_the_build_refuses_a_view_it_cannot_run(
 
     with pytest.raises(ManifestError, match=message):
         operator_manifest(module.halves, {"common.target": "label"})
+
+
+def test_settings_ports_and_fields_compile_as_the_clean_operators_declare_them() -> None:
+    manifest = operator_manifest(authored_clean.fill_gaps).model_dump(
+        mode="json", exclude_none=True
+    )
+
+    assert {k: manifest[k] for k in ("title", "stage", "fits_on_train", "produces")} == {
+        "title": "Gap filling",
+        "stage": "clean",
+        "fits_on_train": True,
+        "produces": {"data.gaps": {"fields": {"rows": "integer"}}},
+    }
+    assert manifest["inputs"] == [
+        {"name": "train", "kind": "table"},
+        {"name": "test", "kind": "table"},
+        {"name": "words", "kind": "matrix", "optional": True},
+    ]
+    assert manifest["outputs"] == [
+        {"name": "train", "kind": "table"},
+        {"name": "test", "kind": "table"},
+        {"name": "evidence", "kind": "report"},
+    ]
+    assert manifest["params_schema"] == {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["columns", "method"],
+        "properties": {
+            "columns": {"type": "array", "items": {"type": "string", "minLength": 1},
+                        "minItems": 1, "uniqueItems": True,
+                        "description": "Columns whose gaps are filled."},
+            "method": {"type": "string", "enum": ["median", "mean"],
+                       "description": "Statistic of the train rows."},
+            "text_fill": {"type": "object", "additionalProperties": {"type": "string"}},
+            "share": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.5},
+            "keep": {"type": "boolean", "default": True},
+            "folder": {"type": "string", "minLength": 1, "x-sprisk-local-path": True,
+                       "x-sprisk-asset-root": "audio"},
+        },
+    }  # fmt: skip
