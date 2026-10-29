@@ -487,3 +487,15 @@ def test_settings_ports_and_fields_compile_as_the_clean_operators_declare_them()
                        "x-sprisk-asset-root": "audio"},
         },
     }  # fmt: skip
+
+
+def test_a_cell_passes_other_inputs_by_name_and_leaves_out_an_unconnected_one() -> None:
+    write = source_cell(authored_clean.fill_gaps)
+    outputs = {"train": "a", "test": "b", "evidence": "e"}
+    settings = {"columns": ["x"], "method": "mean"}
+
+    linked = write(settings, {"train": "tr", "test": "te", "words": "w"}, outputs)
+    alone = write(settings, {"train": "tr", "test": "te"}, outputs)
+
+    assert linked.endswith("a, b, e = fill_gaps(tr, te, words=w, columns=['x'], method='mean')\n")
+    assert alone.endswith("a, b, e = fill_gaps(tr, te, columns=['x'], method='mean')\n")

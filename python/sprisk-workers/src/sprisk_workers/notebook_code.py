@@ -97,12 +97,16 @@ def source_cell(fn: Callable[..., Any]) -> Write:
     nodes, source, module = _cell_parts(fn)
     imports = [ast.get_source_segment(module, n) or "" for n in nodes]
     inputs = tables(fn)
-    params = [p for p in inspect.signature(fn).parameters if p not in inputs]
+    # Other inputs, such as a matrix, go by name; one left unconnected is left out (ADR-0058).
+    named = [i for i in found.inputs if i not in inputs]
+    params = [p for p in inspect.signature(fn).parameters if p not in found.inputs]
 
     def write(settings: dict[str, Any], names_in: dict[str, str], names_out: dict[str, str]) -> str:
-        args = [names_in[i] for i in inputs] + [
-            f"{p}={settings[p]!r}" for p in params if p in settings
-        ]
+        args = (
+            [names_in[i] for i in inputs]
+            + [f"{i}={names_in[i]}" for i in named if i in names_in]
+            + [f"{p}={settings[p]!r}" for p in params if p in settings]
+        )
         results = ", ".join(names_out[o] for o in found.outputs)
         call = f"{results} = {fn.__name__}({', '.join(args)})"
         return "\n".join(imports) + f"\n\n\n{source}\n\n\n{call}\n"
