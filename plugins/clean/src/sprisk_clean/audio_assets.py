@@ -6,12 +6,14 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+import av
 import numpy as np
 import polars as pl
 import soundfile as sf
 import librosa
 from scipy import sparse
 from librosa.util.exceptions import ParameterError
+from sklearn.preprocessing import StandardScaler
 
 AUDIT_KIND = "audio.asset_quality"
 
@@ -72,9 +74,11 @@ def featurize_audio(
 ) -> dict[str, Any]:
     """Append deterministic acoustic descriptors to optional text features.
 
-    Features are extracted with librosa and have no fitted state or hidden download: 13 MFCCs,
-    12 chroma bins, spectral centroid/bandwidth/rolloff/flatness/contrast, RMS,
-    zero-crossing rate and tempo. Missing/unreadable assets produce all-zero rows and evidence.
+    Features are extracted with librosa with no hidden download: 13 MFCCs, 12 chroma bins,
+    spectral centroid/bandwidth/rolloff/flatness/contrast, RMS, zero-crossing rate and tempo.
+    Each column is then centred and scaled by the train rows that decoded; that mean and spread
+    is the only fitted state. Raw, tempo sits near 120 and flatness near 0.01, which stalls a
+    linear model. Missing/unreadable assets land on the train mean (all zeros) and are reported.
     """
     root = Path(audio_dir).resolve()
     if not root.is_dir():
@@ -82,8 +86,12 @@ def featurize_audio(
     for frame, name in ((train, "train"), (test, "test")):
         if audio_path_column not in frame.columns:
             raise ValueError(f"{audio_path_column!r} is not a column of the {name} rows")
-    train_values, train_state = _features(train[audio_path_column].to_list(), root)
-    test_values, test_state = _features(test[audio_path_column].to_list(), root)
+    train_values, train_found, train_state = _features(train[audio_path_column].to_list(), root)
+    test_values, test_found, test_state = _features(test[audio_path_column].to_list(), root)
+    if train_found.any():
+        scaler = StandardScaler().fit(train_values[train_found])
+        train_values = _scaled(scaler, train_values, train_found)
+        test_values = _scaled(scaler, test_values, test_found)
     train_matrix, train_names = _append(train_values, AUDIO_FEATURE_NAMES, train_words)
     test_matrix, test_names = _append(test_values, AUDIO_FEATURE_NAMES, test_words)
     if train_names != test_names:
@@ -106,30 +114,69 @@ def _measure(paths: list[object], root: Path) -> dict[str, Any]:
             missing += 1
             continue
         try:
-            samples, rate = sf.read(path, always_2d=True, dtype="float32")
-        except (RuntimeError, OSError):
+            samples, rate = read_audio(path)
+        except OSError:
             unreadable += 1
             continue
-        decoded.append(_metrics(samples, int(rate)))
+        decoded.append(_metrics(samples, rate))
     return {"decoded": decoded, "missing": missing, "unreadable": unreadable}
 
 
-def _features(paths: list[object], root: Path) -> tuple[np.ndarray, dict[str, int]]:
+def read_audio(path: Path) -> tuple[np.ndarray, int]:
+    """Decode a file to float32 samples shaped (frames, channels), at its own sample rate.
+
+    libsndfile reads WAV, FLAC and OGG. Anything else, such as AAC in a YouTube .m4a, goes
+    through PyAV's bundled FFmpeg. Example: a 44.1 kHz stereo .m4a returns shape (n, 2) and
+    44100. Raises OSError when neither can decode the file.
+    """
+    try:
+        samples, rate = sf.read(path, always_2d=True, dtype="float32")
+        return samples, int(rate)
+    except (RuntimeError, OSError):
+        pass
+    try:
+        with av.open(str(path)) as container:
+            stream = container.streams.audio[0]
+            planar = av.AudioResampler(format="fltp", layout=stream.layout, rate=stream.rate)
+            chunks = [
+                out.to_ndarray()
+                for frame in container.decode(stream)
+                for out in planar.resample(frame)
+            ]
+            chunks += [out.to_ndarray() for out in planar.resample(None)]
+            return np.concatenate(chunks, axis=1).T.astype(np.float32), int(stream.rate)
+    except (av.FFmpegError, IndexError, ValueError) as error:
+        raise OSError(f"cannot decode {path.name}") from error
+
+
+def _features(
+    paths: list[object], root: Path
+) -> tuple[np.ndarray, np.ndarray, dict[str, int]]:
+    """Raw descriptors per row, which rows decoded, and the coverage counts."""
     matrix = np.zeros((len(paths), len(AUDIO_FEATURE_NAMES)), dtype=np.float32)
-    missing = unreadable = found = 0
+    found = np.zeros(len(paths), dtype=bool)
+    missing = unreadable = 0
     for row, raw in enumerate(paths):
         path = _path(root, raw)
         if path is None or not path.is_file():
             missing += 1
             continue
         try:
-            samples, rate = sf.read(path, always_2d=True, dtype="float32")
-        except (RuntimeError, OSError):
+            samples, rate = read_audio(path)
+        except OSError:
             unreadable += 1
             continue
-        matrix[row] = _librosa_features(samples.mean(axis=1), int(rate))
-        found += 1
-    return matrix, {"rows": len(paths), "found": found, "missing": missing, "unreadable": unreadable}
+        matrix[row] = _librosa_features(samples.mean(axis=1), rate)
+        found[row] = True
+    counts = {
+        "rows": len(paths), "found": int(found.sum()), "missing": missing, "unreadable": unreadable,
+    }
+    return matrix, found, counts
+
+
+def _scaled(scaler: StandardScaler, values: np.ndarray, found: np.ndarray) -> np.ndarray:
+    """Train-fitted scaling; rows that did not decode sit at the train mean, which is zero."""
+    return np.where(found[:, None], scaler.transform(values), 0).astype(np.float32)
 
 
 def _metrics(samples: np.ndarray, rate: int) -> dict[str, float | int]:

@@ -4722,6 +4722,7 @@ name = "sprisk-clean"
 version = "0.1.0"
 source = { editable = "plugins/clean" }
 dependencies = [
+    { name = "av" },
     { name = "faster-whisper" },
     { name = "librosa" },
     { name = "opensmile" },
@@ -4739,6 +4740,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "av", specifier = ">=14" },
     { name = "faster-whisper", specifier = ">=1.2.1" },
     { name = "librosa", specifier = ">=0.11" },
     { name = "opensmile", specifier = ">=2.6" },

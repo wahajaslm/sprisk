@@ -9,11 +9,10 @@ import librosa
 import numpy as np
 import opensmile
 import polars as pl
-import soundfile as sf
 import webrtcvad
 from scipy import sparse
 
-from .audio_assets import _append, _path
+from .audio_assets import _append, _path, read_audio
 
 VAD_KIND = "audio.speech_activity"
 
@@ -74,8 +73,8 @@ def voice_activity(
             missing += 1
             continue
         try:
-            samples, rate = sf.read(path, always_2d=True, dtype="float32")
-            flags = _speech_flags(samples.mean(axis=1), int(rate), vad)
+            samples, rate = read_audio(path)
+            flags = _speech_flags(samples.mean(axis=1), rate, vad)
         except (RuntimeError, OSError, ValueError):
             unreadable += 1
             continue
@@ -113,7 +112,8 @@ def _opensmile(
             rows.append(None)
             continue
         try:
-            frame = extractor.process_file(str(path))
+            samples, rate = read_audio(path)
+            frame = extractor.process_signal(samples.mean(axis=1), rate)
             values = frame.iloc[0].to_numpy(dtype=np.float32)
             observed = tuple(f"audio_egemaps_{name}" for name in frame.columns)
             if names is None:
