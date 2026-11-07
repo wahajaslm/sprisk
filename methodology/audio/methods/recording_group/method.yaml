@@ -1,0 +1,20 @@
+schema_version: sprisk.method/v2
+id: methodology.audio.recording_group@1.0.0
+decides: data.recording_group
+name: Who made each recording
+activity: Audio files
+question: Which column says who made each recording, such as the artist, uploader, speaker or listener?
+applies_when: { modality: [audio] }
+needs:
+  concepts: [common.item_identity]
+  evidence: []
+  decisions: []
+options:
+  - id: maker_groups
+    label: Keep each maker's recordings on one side of the split
+    verify: []
+  - id: one_maker_each
+    label: Every recording has its own maker
+    verify: []
+verifications: {}
+source: "Flexer (2007), ISMIR, 'A closer look on artist filters for musical genre classification': clips by one artist share production and timbre, so a split that mixes them overstates the score. Sturm (2013), arXiv:1306.1461, GTZAN: repeated artists and tracks inflate reported accuracy."

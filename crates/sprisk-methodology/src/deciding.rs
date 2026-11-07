@@ -269,7 +269,7 @@ impl Made {
 }
 
 /// The methods fitting the question that are not decided yet and can decide: every decision
-/// they read is made, no concept they read is only a guess, no undecided method may still
+/// they read that a fitting method makes is made, no concept they read is only a guess, no undecided method may still
 /// change the rows their evidence is measured on, and each evidence kind they need is in
 /// `measured` or cannot be measured (see `measure::measurable`). One whose evidence can be
 /// measured but is not yet waits for the walk to measure it.
@@ -311,6 +311,9 @@ pub fn ready<'c>(
             });
         }
     }
+    let deciders: BTreeSet<&str> = fitting(catalog, question)
+        .map(|m| m.decides.as_str())
+        .collect();
     'methods: for (order, method) in fitting(catalog, question).enumerate() {
         let ruled_out: &[RuledOutOption] = match decided.get(method.decides.as_str()) {
             Some(made) if made.reopened() => &made.ruled_out,
@@ -332,6 +335,11 @@ pub fn ready<'c>(
         }
         let mut decisions = Map::new();
         for key in &method.needs.decisions {
+            // A decision no method fitting this question makes is never waited for: a split
+            // reads the audio pack's recording group, which only audio questions decide.
+            if !deciders.contains(key.as_str()) {
+                continue;
+            }
             // A decision made again may change: what reads it waits.
             let Some(made) = decided.get(key.as_str()).filter(|m| !m.reopened()) else {
                 continue 'methods;

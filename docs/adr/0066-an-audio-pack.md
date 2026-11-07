@@ -26,6 +26,8 @@ Arch doc sections: §8 (methodology engine), §9 (runs). Builds on ADR-0059, ADR
 | `audio.representation` | 2 Try | `audio.embedding_coverage` (new) | Compares librosa, openSMILE, CLAP and MERT on the same folds and seed, against the baseline (ADR-0060 Try). MERT routes are one per layer. |
 | Evaluation | — | — | Reuses `error_analysis` sliced by the recording group, `bootstrap_robustness` and `ablation_analysis`. |
 
+**A decision only a fitting method makes is not waited for.** The supervised split reads `data.recording_group`, so on audio it waits for the person's answer. On any other question no fitting method makes that decision, so the split goes ahead. An ask alone would not hold the split back: the engine moves to the next ready method in the same round.
+
 **A new operator, `sprisk.clean.embed_audio`.** It runs a frozen encoder from a local model folder only (no download, `network: none`, rule 6). It resamples to the encoder's native rate (CLAP 48 kHz, MERT 24 kHz, WavLM 16 kHz) and records the rate. Each option promises `native_rate`.
 
 **Decode once, at the rate the step needs.** `read_audio` gains a target rate and channel count, so librosa features decode at 22.05 kHz mono. Caching decoded audio across steps is left open: caching belongs to Rust (rule 2) and needs an artifact kind for decoded audio.

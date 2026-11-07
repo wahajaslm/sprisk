@@ -2501,7 +2501,7 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 61);
+    assert_eq!(rules.len(), 62);
 
     // Methods are bridged into rules with their options as alternatives.
     let split = rules

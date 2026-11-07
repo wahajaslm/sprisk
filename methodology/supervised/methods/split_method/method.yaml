@@ -8,7 +8,7 @@ applies_when: { task: [classification, regression] }
 needs:
   concepts: [common.target, common.event_time, common.item_identity]
   evidence: []
-  decisions: [data.repeated_items]
+  decisions: [data.repeated_items, data.recording_group]
 options:
   - id: temporal
     label: Train on earlier rows, test on later ones

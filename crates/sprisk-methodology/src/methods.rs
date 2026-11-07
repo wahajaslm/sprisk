@@ -417,12 +417,67 @@ pub(crate) fn producer_of<'a>(
     producer(kind, operators).map_err(|p| crate::ResolveError::Rules(CatalogError::Evidence(p)))
 }
 
+/// Methods in decision order: a method comes after every method whose decision it reads. A
+/// method that applies only to some questions (an audio method, ADR-0066) is ordered with the
+/// rest left as they were without it, then placed just before the first method that reads its
+/// decision. So a pack for some questions never reorders the walk of any other question.
 fn in_decision_order(methods: Vec<MethodEntry>) -> Result<Vec<MethodEntry>, CatalogError> {
+    // The full order refuses a cycle, whichever methods it runs through.
+    sorted(&methods, |_| true)?;
+    let conditional = |i: usize| {
+        methods[i]
+            .method
+            .applies_when
+            .as_ref()
+            .is_some_and(|w| !w.modality.is_empty())
+    };
+    let mut order: Vec<usize> = sorted(&methods, |maker| !conditional(maker))?
+        .into_iter()
+        .filter(|&i| !conditional(i))
+        .collect();
+    for (i, entry) in methods.iter().enumerate().filter(|(i, _)| conditional(*i)) {
+        let first_reader = order.iter().position(|&r| {
+            methods[r]
+                .method
+                .needs
+                .decisions
+                .contains(&entry.method.decides)
+        });
+        let after_makers = order
+            .iter()
+            .rposition(|&m| {
+                entry
+                    .method
+                    .needs
+                    .decisions
+                    .contains(&methods[m].method.decides)
+            })
+            .map_or(0, |at| at + 1);
+        match first_reader {
+            Some(at) if at >= after_makers => order.insert(at, i),
+            Some(_) => {
+                return Err(CatalogError::DecisionCycle(entry.method.id.to_string()));
+            }
+            None => order.push(i),
+        }
+    }
+    let mut slots: Vec<Option<MethodEntry>> = methods.into_iter().map(Some).collect();
+    Ok(order.into_iter().filter_map(|i| slots[i].take()).collect())
+}
+
+/// Indexes of `methods` in a topological order of the decisions they read, counting only the
+/// edges whose maker `counts`.
+fn sorted(
+    methods: &[MethodEntry],
+    counts: impl Fn(usize) -> bool,
+) -> Result<Vec<usize>, CatalogError> {
     let mut graph = DiGraph::<usize, ()>::new();
     let nodes: Vec<_> = (0..methods.len()).map(|i| graph.add_node(i)).collect();
     for (reader, entry) in methods.iter().enumerate() {
         for read in &entry.method.needs.decisions {
-            if let Some(maker) = methods.iter().position(|m| &m.method.decides == read) {
+            if let Some(maker) = methods.iter().position(|m| &m.method.decides == read)
+                && counts(maker)
+            {
                 graph.add_edge(nodes[maker], nodes[reader], ());
             }
         }
@@ -430,11 +485,7 @@ fn in_decision_order(methods: Vec<MethodEntry>) -> Result<Vec<MethodEntry>, Cata
     let order = toposort(&graph, None).map_err(|cycle| {
         CatalogError::DecisionCycle(methods[graph[cycle.node_id()]].method.id.to_string())
     })?;
-    let mut slots: Vec<Option<MethodEntry>> = methods.into_iter().map(Some).collect();
-    Ok(order
-        .into_iter()
-        .filter_map(|node| slots[graph[node]].take())
-        .collect())
+    Ok(order.into_iter().map(|node| graph[node]).collect())
 }
 
 fn method_error(path: &Path, problem: &str) -> CatalogError {

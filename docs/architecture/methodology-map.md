@@ -101,6 +101,14 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 
 Deployment and monitoring (ref-v3 stage 6) wait for M5 and M6. Unsupervised rules (clustering, anomaly) follow the same levels; see `methodology/unsupervised/`.
 
+## Audio (only when the question links audio files, ADR-0066)
+| Decision | Level | Decided by | Evidence chart | Rule | Source |
+| --- | --- | --- | --- | --- | --- |
+| Decode coverage | 1 | Every linked file decodes; unreadable rows are left out and reported | — | none | ADR-0066 |
+| Who made each recording | 3 | A stated entity column (artist, uploader, speaker, listener) keeps each maker on one side; else a person is asked before the split | — | active (`data.recording_group`) | Flexer 2007; Sturm 2013 |
+| Same recording twice | 1 | Hash of the decoded samples; copies become one item before the split | — | none | ADR-0066 |
+| Audio representation | 2 | librosa, openSMILE, CLAP and MERT compared on the same folds against the baseline | Score per route with intervals | none | HEAR (Turian et al. 2022); MARBLE (Yuan et al. 2023) |
+
 ## Refusals: routes the map does not take
 | Reference route | Map route | Why |
 | --- | --- | --- |

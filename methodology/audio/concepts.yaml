@@ -1,0 +1,3 @@
+# The audio pack reads the common pack's concepts; it adds none of its own yet (ADR-0066).
+schema_version: sprisk.concept_set/v1
+concepts: {}

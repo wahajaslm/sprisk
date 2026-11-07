@@ -1,0 +1,16 @@
+schema_version: sprisk.method/v2
+id: methodology.core.split@1.0.0
+decides: split.method
+name: Train/test split
+activity: Fair evaluation
+question: How are rows divided into training and test?
+needs:
+  concepts: []
+  evidence: []
+  decisions: [data.recording_group]
+options:
+  - id: simple_random
+    label: Random rows
+    verify: []
+verifications: {}
+source: "Fixture."
