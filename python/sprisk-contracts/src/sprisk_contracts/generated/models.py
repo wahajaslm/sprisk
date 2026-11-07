@@ -2690,6 +2690,27 @@ class NotebookKernelRequest(
     ]
 
 
+class OperatorAssets(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    modality: AssetModality
+    root_param: Annotated[
+        str,
+        Field(
+            description="Param that takes the binding's asset_root.",
+            pattern="^[a-z][a-z0-9_]{0,62}$",
+        ),
+    ]
+    link_param: Annotated[
+        str,
+        Field(
+            description="Param that takes the binding's link_column.",
+            pattern="^[a-z][a-z0-9_]{0,62}$",
+        ),
+    ]
+
+
 class OperatorModel(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3715,6 +3736,12 @@ class Operator(StrictModel):
     scope: Annotated[
         OperatorScope | None,
         Field(description="Which rows the step reads. Absent: whatever its inputs carry."),
+    ] = None
+    assets: Annotated[
+        OperatorAssets | None,
+        Field(
+            description="Params the question's asset binding of one kind fills: the folder and the column of file paths (ADR-0066). Absent: the step reads no linked files."
+        ),
     ] = None
     concepts: Annotated[
         dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], ConceptId]

@@ -6,6 +6,7 @@ description: "Measures speech activity, speech segments and speech coverage loca
 entrypoint: sprisk_clean.audio_speech:voice_activity
 scope: all
 attach: { role: split, side: input }
+assets: { modality: audio, root_param: audio_dir, link_param: audio_path_column }
 inputs: [{ name: data, kind: table }]
 outputs: [{ name: evidence, kind: report }]
 produces:

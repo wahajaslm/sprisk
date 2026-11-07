@@ -378,7 +378,13 @@ pub fn ready<'c>(
             }
             let producer = methods::producer_of(kind.as_str(), &by_id)?;
             let operator_of = |id: &str| by_id.get(id).copied();
-            if measurable(producer, |c| bound.contains(c), pipeline, operator_of)? {
+            if measurable(
+                producer,
+                |c| bound.contains(c),
+                &question.asset_bindings,
+                pipeline,
+                operator_of,
+            )? {
                 continue 'methods;
             }
         }

@@ -581,6 +581,21 @@ fn a_producer_with_no_attach_is_refused() {
     assert!(refused(pack.path()).contains("produces evidence, so it needs an attach"));
 }
 
+#[test]
+fn a_step_whose_asset_params_are_not_its_params_is_refused() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        NEAR_DUPLICATES,
+        "attach: { role: split, side: input }\n",
+        "attach: { role: split, side: input }\n\
+         assets: { modality: audio, root_param: audio_dir, link_param: title_column }\n",
+    );
+    assert!(
+        refused(pack.path()).contains("assets names audio_dir, which is not one of its params")
+    );
+}
+
 /// A copy of the text-spelling fixture: a method whose option inserts a step.
 fn text_spelling() -> TempDir {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/text_spelling");

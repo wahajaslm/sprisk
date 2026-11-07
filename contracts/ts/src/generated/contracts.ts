@@ -3235,6 +3235,7 @@ export interface Operator {
    * Which rows the step reads. Absent: whatever its inputs carry.
    */
   scope?: "all" | "train";
+  assets?: OperatorAssets;
   /**
    * Params a project's binding fills: param name to concept (ADR-0063). Absent: none.
    */
@@ -3305,6 +3306,20 @@ export interface OperatorAttach1 {
   side: "input" | "output";
 }
 /**
+ * Params the question's asset binding of one kind fills: the folder and the column of file paths (ADR-0066). Absent: the step reads no linked files.
+ */
+export interface OperatorAssets {
+  modality: AssetModality;
+  /**
+   * Param that takes the binding's asset_root.
+   */
+  root_param: string;
+  /**
+   * Param that takes the binding's link_column.
+   */
+  link_param: string;
+}
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "InputPort".
  */
@@ -3335,6 +3350,23 @@ export interface Resources {
   memory_mb: number;
   gpu: "none" | "optional" | "required";
   timeout_seconds: number;
+}
+/**
+ * Which params take the linked files' folder and path column, for files of one kind.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "OperatorAssets".
+ */
+export interface OperatorAssets1 {
+  modality: AssetModality;
+  /**
+   * Param that takes the binding's asset_root.
+   */
+  root_param: string;
+  /**
+   * Param that takes the binding's link_column.
+   */
+  link_param: string;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

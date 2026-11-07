@@ -128,6 +128,16 @@ fn check_operator(operator: &Operator, provided: &Provided) -> Result<(), Catalo
     if !operator.produces.is_empty() && operator.attach.is_none() {
         return Err(refuse("produces evidence, so it needs an attach".into()));
     }
+    // The engine fills these two params from the question's asset binding (ADR-0066).
+    if let Some(assets) = &operator.assets {
+        for param in [assets.root_param.as_str(), assets.link_param.as_str()] {
+            if param_schema(operator, param).is_none() {
+                return Err(refuse(format!(
+                    "assets names {param}, which is not one of its params"
+                )));
+            }
+        }
+    }
     // A producer on a split's outputs that reads the test rows is a look at them: it may read
     // their features, never their labels, except to name a column the worker drops (ADR-0064).
     let reads_test_rows = operator

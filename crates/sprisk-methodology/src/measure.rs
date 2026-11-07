@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
-    AssetModality, Binding, GraphEffect, Method, Operator, OperatorAttachSide, PipelineVersion,
-    QuestionVersion, parse,
+    AssetBinding, AssetModality, Binding, GraphEffect, Method, Operator, OperatorAttachSide,
+    PipelineVersion, QuestionVersion, parse,
 };
 
 use crate::compare::upstream;
@@ -80,6 +80,13 @@ pub fn measure(
         let producer = methods::producer_of(&kind, &by_id)?;
         match bound_params(producer, bindings) {
             Ok(params) => {
+                let Some(params) = with_assets(producer, params, &question.asset_bindings) else {
+                    placing.measuring.left_out.push(format!(
+                        "{need}, but the question links no {} files to its rows.",
+                        modality_of(producer)
+                    ));
+                    continue;
+                };
                 if let Some(why) = placing.place(producer, params, &need)? {
                     placing
                         .measuring
@@ -137,6 +144,28 @@ fn bound_params(producer: &Operator, bindings: &[Binding]) -> Result<Value, Stri
     Ok(Value::Object(params))
 }
 
+/// `params` with the folder and path column of the question's asset binding the producer
+/// reads, when it reads linked files (ADR-0066). None when the question links no files of that
+/// kind. Example: an audio audit with a binding of `data/genre_mix` and `audio_path` gets
+/// `{audio_dir: "data/genre_mix", audio_path_column: "audio_path"}`.
+fn with_assets(producer: &Operator, params: Value, assets: &[AssetBinding]) -> Option<Value> {
+    let Some(wants) = &producer.assets else {
+        return Some(params);
+    };
+    let binding = assets.iter().find(|a| a.modality == wants.modality)?;
+    let mut params = params;
+    params[wants.root_param.as_str()] = json!(binding.asset_root);
+    params[wants.link_param.as_str()] = json!(binding.link_column);
+    Some(params)
+}
+
+fn modality_of(producer: &Operator) -> String {
+    producer
+        .assets
+        .as_ref()
+        .map_or_else(String::new, |a| a.modality.to_string())
+}
+
 fn requires(producer: &Operator, param: &str) -> bool {
     producer
         .params_schema
@@ -146,10 +175,11 @@ fn requires(producer: &Operator, param: &str) -> bool {
 }
 
 /// Whether the walk can measure what `producer` produces on `pipeline`: every concept it
-/// requires is bound, and a producer reading a second table has exactly one to read.
+/// requires is bound, the files it reads are linked, and a producer reading a second table has exactly one to read.
 pub fn measurable<'a>(
     producer: &Operator,
     bound: impl Fn(&str) -> bool,
+    assets: &[AssetBinding],
     pipeline: &PipelineVersion,
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
 ) -> Result<bool, ResolveError> {
@@ -157,7 +187,10 @@ pub fn measurable<'a>(
         .concepts
         .iter()
         .all(|(param, concept)| bound(concept.as_str()) || !requires(producer, param.as_str()));
-    Ok(concepts && (!reads_other(producer) || unread_sources(pipeline, operator_of)?.len() == 1))
+    let files = with_assets(producer, json!({}), assets).is_some();
+    Ok(concepts
+        && files
+        && (!reads_other(producer) || unread_sources(pipeline, operator_of)?.len() == 1))
 }
 
 /// The patch so far, and the flow as it would stand with it, so a later producer is placed

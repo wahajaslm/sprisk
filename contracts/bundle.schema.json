@@ -4907,6 +4907,10 @@
           "$ref": "#/$defs/OperatorScope",
           "description": "Which rows the step reads. Absent: whatever its inputs carry."
         },
+        "assets": {
+          "$ref": "#/$defs/OperatorAssets",
+          "description": "Params the question's asset binding of one kind fills: the folder and the column of file paths (ADR-0066). Absent: the step reads no linked files."
+        },
         "concepts": {
           "type": "object",
           "description": "Params a project's binding fills: param name to concept (ADR-0063). Absent: none.",
@@ -4952,6 +4956,31 @@
         },
         "resources": {
           "$ref": "#/$defs/Resources"
+        }
+      }
+    },
+    "OperatorAssets": {
+      "type": "object",
+      "description": "Which params take the linked files' folder and path column, for files of one kind.",
+      "additionalProperties": false,
+      "required": [
+        "modality",
+        "root_param",
+        "link_param"
+      ],
+      "properties": {
+        "modality": {
+          "$ref": "#/$defs/AssetModality"
+        },
+        "root_param": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "description": "Param that takes the binding's asset_root."
+        },
+        "link_param": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "description": "Param that takes the binding's link_column."
         }
       }
     },

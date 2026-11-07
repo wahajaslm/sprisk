@@ -6,6 +6,7 @@ description: "Audits row-linked audio assets before modelling: duration, sample 
 entrypoint: sprisk_clean.audio_assets:audit_audio
 scope: all
 attach: { role: split, side: input }
+assets: { modality: audio, root_param: audio_dir, link_param: audio_path_column }
 inputs: [{ name: data, kind: table }]
 outputs: [{ name: evidence, kind: report }]
 produces:
