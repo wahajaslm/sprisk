@@ -67,6 +67,7 @@
 | [0063](0063-methods-need-evidence-operators-produce-it.md) | Methods need evidence, operators produce it | Accepted |
 | [0064](0064-validate-the-architecture-before-the-libraries.md) | Validate the architecture before the method and operator libraries | Accepted |
 | [0065](0065-understand-a-dataset-in-the-dataset-tab.md) | Understand a dataset in the Dataset tab | Accepted |
+| [0066](0066-an-audio-pack.md) | An audio pack makes audio results credible | Proposed |
 
 ## Open questions (arch doc §17)
 
