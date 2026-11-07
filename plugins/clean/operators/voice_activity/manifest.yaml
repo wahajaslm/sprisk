@@ -5,6 +5,7 @@ capability_class: analyzer
 description: "Measures speech activity, speech segments and speech coverage locally. It does not identify speakers or transcribe audio."
 entrypoint: sprisk_clean.audio_speech:voice_activity
 scope: all
+attach: { role: split, side: input }
 inputs: [{ name: data, kind: table }]
 outputs: [{ name: evidence, kind: report }]
 produces:
