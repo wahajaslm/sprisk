@@ -1,0 +1,32 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.embed_audio@1.0.0
+title: Frozen audio embeddings
+capability_class: transform
+description: "Appends one frozen embedding per recording (CLAP 512, MERT 768) to optional word features. Each encoder reads audio at its native rate; a song is cut into evenly spaced windows that are embedded and averaged. Weights load from the local cache only; missing or unreadable files become zero rows and are reported (ADR-0066)."
+entrypoint: sprisk_clean.embed_audio:embed_audio
+assets: { modality: audio, root_param: audio_dir, link_param: audio_path_column }
+inputs:
+  - { name: train, kind: table }
+  - { name: test, kind: table }
+  - { name: train_words, kind: matrix, optional: true }
+  - { name: test_words, kind: matrix, optional: true }
+outputs:
+  - { name: train, kind: table }
+  - { name: test, kind: table }
+  - { name: train_words, kind: matrix, description: "Word features and frozen audio embeddings for training rows." }
+  - { name: test_words, kind: matrix, description: "Word features and frozen audio embeddings for test rows." }
+  - { name: evidence, kind: report }
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [audio_dir, audio_path_column]
+  properties:
+    audio_dir: { type: string, minLength: 1, description: "Root directory of audio files." }
+    audio_path_column: { type: string, minLength: 1, x-sprisk-column: true, description: "Relative audio-file path for each row." }
+    encoder: { type: string, enum: [clap, mert, culturemert], default: clap, description: "clap: 48 kHz, 512 values, Apache-2.0 weights. mert and culturemert: 24 kHz, 768 values, CC-BY-NC-4.0 weights (non-commercial)." }
+    layer: { type: integer, minimum: 1, maximum: 12, description: "One MERT encoder layer. Left out: the 12 layers are averaged. Not for clap." }
+    window_seconds: { type: number, exclusiveMinimum: 0, maximum: 30, default: 10, description: "Length of each window a song is cut into." }
+    max_windows: { type: integer, minimum: 1, maximum: 64, default: 12, description: "Most windows per song, evenly spaced from start to end." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 6144, gpu: none, timeout_seconds: 14400 }
