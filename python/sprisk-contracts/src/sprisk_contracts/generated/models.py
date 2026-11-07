@@ -1319,7 +1319,7 @@ class PortRef(RootModel[str]):
     ]
 
 
-class Modality(StrEnum):
+class AssetModality(StrEnum):
     image = "image"
     audio = "audio"
     video = "video"
@@ -1334,7 +1334,7 @@ class AssetBinding(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    modality: Modality
+    modality: AssetModality
     asset_root: Annotated[str, Field(min_length=1)]
     link_column: Annotated[str, Field(min_length=1)]
     origin: Origin1
@@ -2165,7 +2165,13 @@ class MethodAppliesWhen(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    task: list[TaskType]
+    task: Annotated[
+        list[TaskType] | None, Field(description="The question's task is one of these.")
+    ] = None
+    modality: Annotated[
+        list[AssetModality] | None,
+        Field(description="The question declares asset files of one of these kinds (ADR-0066)."),
+    ] = None
 
 
 class MethodNeeds(StrictModel):

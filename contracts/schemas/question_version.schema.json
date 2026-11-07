@@ -71,12 +71,17 @@
         "created_at": { "$ref": "#/$defs/Timestamp" }
       }
     },
+    "AssetModality": {
+      "type": "string",
+      "description": "The kind of file an asset binding links to rows.",
+      "enum": ["image", "audio", "video"]
+    },
     "AssetBinding": {
       "type": "object",
       "additionalProperties": false,
       "required": ["modality", "asset_root", "link_column", "origin"],
       "properties": {
-        "modality": { "type": "string", "enum": ["image", "audio", "video"] },
+        "modality": { "$ref": "#/$defs/AssetModality" },
         "asset_root": { "type": "string", "minLength": 1 },
         "link_column": { "type": "string", "minLength": 1 },
         "origin": { "type": "string", "enum": ["explicit", "confirmed"] }

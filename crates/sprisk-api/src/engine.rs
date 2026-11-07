@@ -552,7 +552,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             reason: WalkStopReason::Complete,
             detail,
         } => {
-            let undecided: Vec<String> = fitting(&state.rules, question.task.value)
+            let undecided: Vec<String> = fitting(&state.rules, &question)
                 .filter(|m| !made.iter().any(|d| d.decides == m.decides.as_str()))
                 .map(|m| format!("{}: {}", m.decides.as_str(), m.question.as_str()))
                 .collect();

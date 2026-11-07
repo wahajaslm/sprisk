@@ -2220,16 +2220,22 @@
     },
     "MethodAppliesWhen": {
       "type": "object",
-      "description": "When the method applies. Absent: always.",
+      "description": "When the method applies. Absent: always. Each field present must hold.",
       "additionalProperties": false,
-      "required": [
-        "task"
-      ],
+      "minProperties": 1,
       "properties": {
         "task": {
           "type": "array",
+          "description": "The question's task is one of these.",
           "items": {
             "$ref": "#/$defs/TaskType"
+          }
+        },
+        "modality": {
+          "type": "array",
+          "description": "The question declares asset files of one of these kinds (ADR-0066).",
+          "items": {
+            "$ref": "#/$defs/AssetModality"
           }
         }
       }
@@ -5457,6 +5463,15 @@
         }
       }
     },
+    "AssetModality": {
+      "type": "string",
+      "description": "The kind of file an asset binding links to rows.",
+      "enum": [
+        "image",
+        "audio",
+        "video"
+      ]
+    },
     "AssetBinding": {
       "type": "object",
       "additionalProperties": false,
@@ -5468,12 +5483,7 @@
       ],
       "properties": {
         "modality": {
-          "type": "string",
-          "enum": [
-            "image",
-            "audio",
-            "video"
-          ]
+          "$ref": "#/$defs/AssetModality"
         },
         "asset_root": {
           "type": "string",

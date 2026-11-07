@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
-    Binding, GraphEffect, Method, Operator, OperatorAttachSide, PipelineVersion, QuestionVersion,
-    TaskType, parse,
+    AssetModality, Binding, GraphEffect, Method, Operator, OperatorAttachSide, PipelineVersion,
+    QuestionVersion, parse,
 };
 
 use crate::compare::upstream;
@@ -61,7 +61,7 @@ pub fn measure(
         },
     };
     // A decided method reads nothing more: its producer stays where it is, unmoved.
-    let deciding = fitting(catalog, question.task.value)
+    let deciding = fitting(catalog, question)
         .filter(|m| !made.iter().any(|d| d.decides == m.decides.as_str()));
     let needed = deciding.flat_map(|method| {
         method.needs.evidence.iter().map(move |kind| {
@@ -102,12 +102,21 @@ pub fn measure(
     Ok(placing.measuring)
 }
 
-/// The methods that apply to a question of `task`, in decision order.
-pub fn fitting(catalog: &RuleCatalog, task: TaskType) -> impl Iterator<Item = &Method> {
+/// The methods that apply to `question`, in decision order: its task is one the method names,
+/// and it declares files of a kind the method names (ADR-0066). An audio method applies only
+/// when the question links audio files to its rows.
+pub fn fitting<'c>(
+    catalog: &'c RuleCatalog,
+    question: &QuestionVersion,
+) -> impl Iterator<Item = &'c Method> {
+    let task = question.task.value;
+    let modalities: Vec<AssetModality> =
+        question.asset_bindings.iter().map(|a| a.modality).collect();
     catalog.methods().filter(move |m| {
-        m.applies_when
-            .as_ref()
-            .is_none_or(|w| w.task.contains(&task))
+        m.applies_when.as_ref().is_none_or(|w| {
+            (w.task.is_empty() || w.task.contains(&task))
+                && (w.modality.is_empty() || w.modality.iter().any(|k| modalities.contains(k)))
+        })
     })
 }
 

@@ -1,0 +1,17 @@
+schema_version: sprisk.method/v2
+id: methodology.audio.decode_coverage@1.0.0
+decides: data.audio_decode_coverage
+name: Audio decode coverage
+activity: Audio files
+question: Can every linked audio file be read?
+applies_when: { modality: [audio] }
+needs:
+  concepts: []
+  evidence: [audio.asset_quality]
+  decisions: []
+options:
+  - id: all_readable
+    label: Every file is read
+    verify: []
+verifications: {}
+source: "ADR-0066 fixture."

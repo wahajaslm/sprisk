@@ -298,7 +298,7 @@ pub fn ready<'c>(
     // The undecided methods and the steps their options may change: a method measuring rows
     // after one of those steps waits, so it decides on the rows the model will see.
     let mut open: Vec<Open> = Vec::new();
-    for (order, m) in fitting(catalog, question.task.value).enumerate() {
+    for (order, m) in fitting(catalog, question).enumerate() {
         if decided.get(m.decides.as_str()).is_none_or(|d| d.reopened()) {
             open.push(Open {
                 order,
@@ -311,7 +311,7 @@ pub fn ready<'c>(
             });
         }
     }
-    'methods: for (order, method) in fitting(catalog, question.task.value).enumerate() {
+    'methods: for (order, method) in fitting(catalog, question).enumerate() {
         let ruled_out: &[RuledOutOption] = match decided.get(method.decides.as_str()) {
             Some(made) if made.reopened() => &made.ruled_out,
             Some(_) => continue,

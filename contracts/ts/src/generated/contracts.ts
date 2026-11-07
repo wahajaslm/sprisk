@@ -188,6 +188,13 @@ export type DecisionKey = string;
  */
 export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
 /**
+ * The kind of file an asset binding links to rows.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "AssetModality".
+ */
+export type AssetModality = "image" | "audio" | "video";
+/**
  * <pack>.<concept>, a meaning defined in a pack's concepts.yaml.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1874,13 +1881,20 @@ export interface Method {
   source: string;
 }
 /**
- * When the method applies. Absent: always.
+ * When the method applies. Absent: always. Each field present must hold.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodAppliesWhen".
  */
 export interface MethodAppliesWhen {
-  task: TaskType[];
+  /**
+   * The question's task is one of these.
+   */
+  task?: TaskType[];
+  /**
+   * The question declares asset files of one of these kinds (ADR-0066).
+   */
+  modality?: AssetModality[];
 }
 /**
  * Everything decide() may read. It reads nothing else.
@@ -3478,7 +3492,7 @@ export interface SuccessBarFact {
  * via the `definition` "AssetBinding".
  */
 export interface AssetBinding {
-  modality: "image" | "audio" | "video";
+  modality: AssetModality;
   asset_root: string;
   link_column: string;
   origin: "explicit" | "confirmed";
