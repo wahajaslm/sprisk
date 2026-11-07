@@ -30,6 +30,16 @@ SPECTRAL_NAMES = tuple(
     for stat in ("mean", "std")
 )
 CONTRAST_NAMES = tuple(f"audio_spectral_contrast_band_{index}" for index in range(1, 8))
+# Raw librosa features per file, kept for the life of the process: cross-validation runs the
+# step once per fold, and the features fit nothing; only their scaling is refit per fold.
+_FEATURES: dict[tuple[object, ...], np.ndarray] = {}
+
+
+def clear_feature_cache() -> None:
+    """Forget every kept feature row; the next call decodes again."""
+    _FEATURES.clear()
+
+
 # librosa counts frames in samples, so one rate keeps features comparable across files.
 # 22.05 kHz is librosa's default and keeps content up to 11 kHz.
 FEATURE_RATE = 22_050
@@ -258,12 +268,16 @@ def _features(
         if path is None or not path.is_file():
             missing += 1
             continue
-        try:
-            samples, rate = read_audio(path, rate=FEATURE_RATE, mono=True)
-        except OSError:
-            unreadable += 1
-            continue
-        matrix[row] = _librosa_features(samples[:, 0], rate)
+        stat = path.stat()
+        key = (str(path), stat.st_size, stat.st_mtime_ns)
+        if key not in _FEATURES:
+            try:
+                samples, rate = read_audio(path, rate=FEATURE_RATE, mono=True)
+            except OSError:
+                unreadable += 1
+                continue
+            _FEATURES[key] = _librosa_features(samples[:, 0], rate)
+        matrix[row] = _FEATURES[key]
         found[row] = True
     counts = {
         "rows": len(paths), "found": int(found.sum()), "missing": missing, "unreadable": unreadable,

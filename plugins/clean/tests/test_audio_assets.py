@@ -210,3 +210,27 @@ def test_copies_of_one_recording_are_counted_and_dropped_keeping_the_first(
     kept = drop_recording_copies(rows, str(tmp_path), "clip")["data"]
     # A row whose file cannot be read is kept: nothing shows it copies another.
     assert kept["clip"].to_list() == ["a.wav", "c.wav", "missing.wav"]
+
+
+def test_librosa_features_decode_a_file_once_per_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Cross-validation runs the step once per fold: the raw features of a file are kept, and
+    # only the scaling is refit on each fold's train rows.
+    import sprisk_clean.audio_assets as module
+
+    _tone(tmp_path / "a.wav", 440, 0.5)
+    _tone(tmp_path / "b.wav", 880, 0.5)
+    rows = pl.DataFrame({"clip": ["a.wav", "b.wav"]})
+    module.clear_feature_cache()
+    decoded: list[Path] = []
+    original = module.read_audio
+
+    def counting(path: Path, **kwargs: object) -> object:
+        decoded.append(path)
+        return original(path, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(module, "read_audio", counting)
+    featurize_audio(rows, rows, str(tmp_path), "clip")
+    featurize_audio(rows.head(1), rows.tail(1), str(tmp_path), "clip")
+    assert len(decoded) == 2

@@ -13,6 +13,7 @@ most 12 gives windows starting every ~20 s, the same ones on every run.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,16 @@ ENCODERS: dict[str, Encoder] = {
     "culturemert": Encoder("ntua-slp/CultureMERT-95M", 24_000, 768, "CC-BY-NC-4.0"),
 }
 MERT_LAYERS = 12
+# One embedding per file, encoder and window settings, kept for the life of the process: the
+# encoder fits nothing, so cross-validation, which runs this step once per fold, embeds each
+# file once. MERT keeps all 12 layers (shape (12, 768)), so choosing another layer is free.
+# Example: 5 folds x 10 repeats over 120 songs decode 120 files, not 12,000.
+_EMBEDDED: dict[tuple[object, ...], np.ndarray] = {}
+
+
+def clear_cache() -> None:
+    """Forget every kept embedding; the next call decodes and embeds again."""
+    _EMBEDDED.clear()
 
 
 def embed_audio(
@@ -72,12 +83,13 @@ def embed_audio(
     spec = ENCODERS[encoder]
     root = _root(audio_dir, train, audio_path_column)
     _root(audio_dir, test, audio_path_column)
-    embed = _clap(spec) if encoder == "clap" else _mert(spec, layer)
+    embed = _clap(encoder) if encoder == "clap" else _mert(encoder)
     windows = (window_seconds, max_windows)
     train_paths = train[audio_path_column].to_list()
     test_paths = test[audio_path_column].to_list()
-    train_values, train_state = _embed_rows(train_paths, root, spec, embed, windows)
-    test_values, test_state = _embed_rows(test_paths, root, spec, embed, windows)
+    pick = _layer_of(layer)
+    train_values, train_state = _embed_rows(train_paths, root, encoder, embed, pick, windows)
+    test_values, test_state = _embed_rows(test_paths, root, encoder, embed, pick, windows)
     names = tuple(f"audio_{encoder}_{i:03d}" for i in range(spec.dimensions))
     train_matrix, train_names = _append(train_values, names, train_words)
     test_matrix, test_names = _append(test_values, names, test_words)
@@ -134,8 +146,14 @@ def is_cached(encoder: str) -> bool:
 
 
 def _embed_rows(
-    paths: list[object], root: Path, spec: Encoder, embed: Any, windows: tuple[float, int]
+    paths: list[object],
+    root: Path,
+    encoder: str,
+    embed: Any,
+    pick: Any,
+    windows: tuple[float, int],
 ) -> tuple[np.ndarray, dict[str, int]]:
+    spec = ENCODERS[encoder]
     out = np.zeros((len(paths), spec.dimensions), dtype=np.float32)
     state = {"rows": len(paths), "found": 0, "missing": 0, "unreadable": 0}
     for row, raw in enumerate(paths):
@@ -143,20 +161,36 @@ def _embed_rows(
         if path is None or not path.is_file():
             state["missing"] += 1
             continue
-        try:
-            samples, _ = read_audio(path, rate=spec.rate, mono=True)
-        except OSError:
-            state["unreadable"] += 1
-            continue
-        chunks = audio_windows(samples[:, 0], spec.rate, *windows)
-        out[row] = embed(chunks)
+        stat = path.stat()
+        key = (encoder, *windows, str(path), stat.st_size, stat.st_mtime_ns)
+        if key not in _EMBEDDED:
+            try:
+                samples, _ = read_audio(path, rate=spec.rate, mono=True)
+            except OSError:
+                state["unreadable"] += 1
+                continue
+            _EMBEDDED[key] = embed(audio_windows(samples[:, 0], spec.rate, *windows))
+        out[row] = pick(_EMBEDDED[key])
         state["found"] += 1
     return out, state
 
 
-def _clap(spec: Encoder) -> Any:
+def _layer_of(layer: int | None) -> Any:
+    """The row's vector from a kept embedding: CLAP's as it is, one MERT layer, or their mean."""
+
+    def pick(kept: np.ndarray) -> np.ndarray:
+        if kept.ndim == 1:
+            return kept
+        return kept.mean(axis=0) if layer is None else kept[layer - 1]
+
+    return pick
+
+
+@cache
+def _clap(encoder: str) -> Any:
     from transformers import ClapModel, ClapProcessor
 
+    spec = ENCODERS[encoder]
     processor = ClapProcessor.from_pretrained(spec.repo, local_files_only=True)
     loaded = ClapModel.from_pretrained(spec.repo, local_files_only=True)
     model = loaded.eval()  # type: ignore[no-untyped-call]
@@ -174,9 +208,11 @@ def _clap(spec: Encoder) -> Any:
     return embed
 
 
-def _mert(spec: Encoder, layer: int | None) -> Any:
+@cache
+def _mert(encoder: str) -> Any:
     from transformers import AutoModel, Wav2Vec2FeatureExtractor
 
+    spec = ENCODERS[encoder]
     extractor = Wav2Vec2FeatureExtractor.from_pretrained(spec.repo, local_files_only=True)
     # MERT's model class ships as code in its cached snapshot; it runs from the local cache only.
     model = AutoModel.from_pretrained(
@@ -191,15 +227,14 @@ def _mert(spec: Encoder, layer: int | None) -> Any:
         )
 
     def embed(chunks: list[np.ndarray]) -> np.ndarray:
+        """All 12 layers, each the mean over a window's frames, then over the windows."""
         per_window = []
         for chunk in chunks:
             inputs = extractor(chunk, sampling_rate=spec.rate, return_tensors="pt")
             caught.clear()
             with torch.inference_mode():
                 model(**inputs)
-            # One vector per layer: the mean over the window's frames, shape (12, 768).
-            layers = torch.stack([h[0].mean(dim=0) for h in caught])
-            per_window.append(layers.mean(dim=0) if layer is None else layers[layer - 1])
+            per_window.append(torch.stack([h[0].mean(dim=0) for h in caught]))
         return torch.stack(per_window).mean(dim=0).cpu().numpy().astype(np.float32)
 
     return embed

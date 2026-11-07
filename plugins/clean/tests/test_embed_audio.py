@@ -89,3 +89,30 @@ def test_mert_gives_768_values_from_one_chosen_layer(tmp_path: Path) -> None:
     assert not np.allclose(every["train_words"][0].toarray(), seventh["train_words"][0].toarray())
     evidence = seventh["evidence"]["audio.embedding_coverage"]
     assert (evidence["layer"], evidence["weights_license"]) == (7, "CC-BY-NC-4.0")
+
+
+@pytest.mark.skipif(not is_cached("mert"), reason="MERT weights are not in the local cache")
+def test_a_recording_is_decoded_once_per_process_whatever_layer_or_fold_reads_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Cross-validation runs the step once per fold; the encoder fits nothing, so each file's
+    # embedding is reused. MERT keeps all 12 layers, so another layer is free.
+    import sprisk_clean.embed_audio as module
+
+    _tone(tmp_path / "a.wav", 440)
+    rows = pl.DataFrame({"clip": ["a.wav"]})
+    module.clear_cache()
+    decoded: list[Path] = []
+    from sprisk_clean.audio_assets import read_audio as original
+
+    def counting(path: Path, **kwargs: object) -> object:
+        decoded.append(path)
+        return original(path, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(module, "read_audio", counting)
+    first = embed_audio(rows, rows, str(tmp_path), "clip", encoder="mert", layer=3)
+    again = embed_audio(rows, rows, str(tmp_path), "clip", encoder="mert", layer=9)
+    every = embed_audio(rows, rows, str(tmp_path), "clip", encoder="mert")
+    assert len(decoded) == 1
+    assert not np.allclose(first["train_words"][0].toarray(), again["train_words"][0].toarray())
+    assert every["train_words"][0].shape == (1, 768)
