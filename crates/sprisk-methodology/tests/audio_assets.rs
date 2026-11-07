@@ -2,11 +2,13 @@
 //! the question's audio asset binding (ADR-0066).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::{Value, json};
-use sprisk_contracts::{Operator, PipelineVersion, QuestionVersion, parse};
+use sprisk_contracts::{MethodAssurance, Operator, PipelineVersion, QuestionVersion, parse};
 use sprisk_methodology::RuleCatalog;
+use sprisk_methodology::deciding::{Basis, apply_option, bindings};
 use sprisk_methodology::measure::measure;
 use sprisk_registry::Registry;
 
@@ -80,5 +82,41 @@ fn an_audio_producer_reads_the_folder_and_path_column_the_question_declares() {
     assert_eq!(
         audit["params"],
         json!({ "audio_dir": "data/genre_mix", "audio_path_column": "audio_path" })
+    );
+}
+
+#[test]
+fn a_step_an_option_inserts_reads_the_files_the_question_declares() {
+    // The real audio pack: dropping repeated recordings inserts a step that reads the files.
+    let ops = operators();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let catalog = RuleCatalog::load_dir(&root.join("methodology"), &ops).unwrap();
+    let method = catalog
+        .methods()
+        .find(|m| m.decides.as_str() == "data.same_recording")
+        .unwrap();
+    let q = question(
+        json!([{ "modality": "audio", "asset_root": "data/genre_mix",
+        "link_column": "audio_path", "origin": "explicit" }]),
+    );
+    let effective = bindings(&q, &[]).unwrap();
+    let applied = apply_option(
+        method,
+        "drop",
+        MethodAssurance::Rule,
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &load_split(),
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &q,
+        },
+    )
+    .unwrap();
+    let effects = serde_json::to_value(&applied.effects).unwrap();
+    assert_eq!(
+        effects[0]["params"],
+        json!({ "audio_dir": "data/genre_mix", "audio_path_column": "audio_path" }),
+        "{effects}"
     );
 }

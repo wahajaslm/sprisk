@@ -1,0 +1,20 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.drop_recording_copies@1.0.0
+title: Drop repeated recordings
+capability_class: transform
+role: row_filter
+description: "Keeps the first row of each recording, compared by its decoded audio. Run before the split, so no recording is in both train and test (ADR-0066)."
+entrypoint: sprisk_clean.audio_assets:drop_recording_copies
+assets: { modality: audio, root_param: audio_dir, link_param: audio_path_column }
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: data, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [audio_dir, audio_path_column]
+  properties:
+    audio_dir: { type: string, minLength: 1, description: "Root directory of audio files." }
+    audio_path_column: { type: string, minLength: 1, x-sprisk-column: true, description: "Relative audio-file path for each row." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 7200 }

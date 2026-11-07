@@ -13,7 +13,7 @@ use sprisk_contracts::{
 
 use crate::compare::upstream;
 use crate::decision::{free_id, other_table};
-use crate::measure::{fitting, measurable};
+use crate::measure::{fitting, measurable, with_assets};
 use crate::{ResolveError, RuleCatalog, methods};
 
 /// The question facts that act as bindings until slice 6 removes the fixed facts: a stated
@@ -773,6 +773,11 @@ pub fn apply_option(
                 if listed { json!([column]) } else { column },
             );
         }
+        // A step reading linked files takes their folder and path column from the question;
+        // with none linked its params stay as they are, and compiling refuses the step.
+        let params = Value::Object(params);
+        let params =
+            with_assets(operator, params.clone(), &question.asset_bindings).unwrap_or(params);
         let mut inserted = json!({ "kind": "insert_node",
             "node_id": free_id(&pipeline.nodes, insert.node_id.as_str()),
             "operator": operator.id, "params": params, "before": before });

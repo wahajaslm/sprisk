@@ -10,9 +10,12 @@ import pytest
 from sprisk_clean.audio_assets import (
     AUDIO_FEATURE_NAMES,
     AUDIT_KIND,
+    COPIES_KIND,
     audit_audio,
+    drop_recording_copies,
     featurize_audio,
     read_audio,
+    recording_copies,
 )
 from sprisk_clean.audio_speech import VAD_KIND, opensmile_features, voice_activity
 from sprisk_clean.audio_models import diarize_audio, transcribe_audio
@@ -186,3 +189,24 @@ def test_speech_synthesis_marks_outputs_synthetic(tmp_path: Path) -> None:
     assert result["data"]["synthetic_audio"].to_list() == [True, True]
     assert result["data"]["synthetic_audio_path"].to_list() == [None, None]
     assert result["evidence"]["audio.synthetic_generation"]["generated"] == 0
+
+
+def test_copies_of_one_recording_are_counted_and_dropped_keeping_the_first(
+    tmp_path: Path,
+) -> None:
+    # b.wav is a.wav under another name, and a.wav is listed twice: three rows, one recording.
+    _tone(tmp_path / "a.wav", 440, 0.5)
+    (tmp_path / "b.wav").write_bytes((tmp_path / "a.wav").read_bytes())
+    _tone(tmp_path / "c.wav", 880, 0.5)
+    clips = ["a.wav", "b.wav", "a.wav", "c.wav", "missing.wav"]
+    rows = pl.DataFrame({"clip": clips, "y": range(5)})
+
+    found = recording_copies(rows, str(tmp_path), "clip")[COPIES_KIND]
+    assert found == {
+        "rows": 5, "hashed": 4, "missing": 1, "unreadable": 0,
+        "copies": 2, "groups": 1, "largest_group": 3,
+    }
+
+    kept = drop_recording_copies(rows, str(tmp_path), "clip")["data"]
+    # A row whose file cannot be read is kept: nothing shows it copies another.
+    assert kept["clip"].to_list() == ["a.wav", "c.wav", "missing.wav"]

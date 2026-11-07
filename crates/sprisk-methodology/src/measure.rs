@@ -148,7 +148,11 @@ fn bound_params(producer: &Operator, bindings: &[Binding]) -> Result<Value, Stri
 /// reads, when it reads linked files (ADR-0066). None when the question links no files of that
 /// kind. Example: an audio audit with a binding of `data/genre_mix` and `audio_path` gets
 /// `{audio_dir: "data/genre_mix", audio_path_column: "audio_path"}`.
-fn with_assets(producer: &Operator, params: Value, assets: &[AssetBinding]) -> Option<Value> {
+pub(crate) fn with_assets(
+    producer: &Operator,
+    params: Value,
+    assets: &[AssetBinding],
+) -> Option<Value> {
     let Some(wants) = &producer.assets else {
         return Some(params);
     };

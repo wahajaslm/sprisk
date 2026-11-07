@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,10 @@ from librosa.util.exceptions import ParameterError
 from sklearn.preprocessing import StandardScaler
 
 AUDIT_KIND = "audio.asset_quality"
+COPIES_KIND = "audio.recording_copies"
+# Copies are compared on 16 kHz mono 16-bit samples: one file decodes the same each time, and
+# the rounding hides float noise between decoders.
+HASH_RATE = 16_000
 
 MFCC_NAMES = tuple(f"audio_mfcc_{index:02d}_{stat}" for index in range(1, 14) for stat in ("mean", "std"))
 CHROMA_NAMES = tuple(f"audio_chroma_{index:02d}_{stat}" for index in range(1, 13) for stat in ("mean", "std"))
@@ -65,6 +70,82 @@ def audit_audio(
             "clipping_share": _summary(clipping),
         }
     }
+
+
+def recording_copies(data: pl.DataFrame, audio_dir: str, audio_path_column: str) -> dict[str, Any]:
+    """Count rows whose audio repeats an earlier row's, by a hash of the decoded samples.
+
+    One file listed twice, or one recording saved under two names, is one recording: its rows
+    on both sides of a split score the model on a sound it heard. Example: rows a.wav, b.wav (a
+    copy of a.wav) and a.wav again give copies 2, groups 1, largest_group 3. Labels are never
+    read, so the count is valid before the split.
+    """
+    root = _root(audio_dir, data, audio_path_column)
+    hashes, missing, unreadable = _hashes(data[audio_path_column].to_list(), root)
+    sizes = Counter(h for h in hashes if h is not None)
+    repeated = [n for n in sizes.values() if n > 1]
+    return {
+        COPIES_KIND: {
+            "rows": data.height,
+            "hashed": sum(sizes.values()),
+            "missing": missing,
+            "unreadable": unreadable,
+            "copies": sum(n - 1 for n in repeated),
+            "groups": len(repeated),
+            "largest_group": max(sizes.values(), default=0),
+        }
+    }
+
+
+def drop_recording_copies(
+    data: pl.DataFrame, audio_dir: str, audio_path_column: str
+) -> dict[str, pl.DataFrame]:
+    """Keep the first row of each recording, in row order; a row is kept when its file cannot
+    be read, since nothing shows it copies another. The first row is kept whatever its label,
+    so the choice never looks at the target."""
+    root = _root(audio_dir, data, audio_path_column)
+    hashes, _, _ = _hashes(data[audio_path_column].to_list(), root)
+    seen: set[str] = set()
+    keep: list[bool] = []
+    for value in hashes:
+        keep.append(value is None or value not in seen)
+        if value is not None:
+            seen.add(value)
+    return {"data": data.filter(pl.Series(keep))}
+
+
+def _root(audio_dir: str, data: pl.DataFrame, audio_path_column: str) -> Path:
+    root = Path(audio_dir).resolve()
+    if not root.is_dir():
+        raise ValueError(f"audio_dir is not a directory: {audio_dir}")
+    if audio_path_column not in data.columns:
+        raise ValueError(f"{audio_path_column!r} is not a column of the data")
+    return root
+
+
+def _hashes(paths: list[object], root: Path) -> tuple[list[str | None], int, int]:
+    """A hash per row (None when the file is missing or unreadable), and those two counts. A
+    file listed several times is decoded once."""
+    by_path: dict[Path, str | None] = {}
+    hashes: list[str | None] = []
+    missing = unreadable = 0
+    for raw in paths:
+        path = _path(root, raw)
+        if path is None or not path.is_file():
+            missing += 1
+            hashes.append(None)
+            continue
+        if path not in by_path:
+            try:
+                samples, _ = read_audio(path, rate=HASH_RATE, mono=True)
+                pcm = np.round(np.clip(samples[:, 0], -1.0, 1.0) * 32767).astype("<i2")
+                by_path[path] = hashlib.sha256(pcm.tobytes()).hexdigest()
+            except OSError:
+                by_path[path] = None
+        if by_path[path] is None:
+            unreadable += 1
+        hashes.append(by_path[path])
+    return hashes, missing, unreadable
 
 
 def featurize_audio(
