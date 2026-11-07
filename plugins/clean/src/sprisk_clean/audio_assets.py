@@ -25,6 +25,9 @@ SPECTRAL_NAMES = tuple(
     for stat in ("mean", "std")
 )
 CONTRAST_NAMES = tuple(f"audio_spectral_contrast_band_{index}" for index in range(1, 8))
+# librosa counts frames in samples, so one rate keeps features comparable across files.
+# 22.05 kHz is librosa's default and keeps content up to 11 kHz.
+FEATURE_RATE = 22_050
 AUDIO_FEATURE_NAMES = MFCC_NAMES + CHROMA_NAMES + SPECTRAL_NAMES + CONTRAST_NAMES + ("audio_tempo_bpm",)
 
 
@@ -122,29 +125,42 @@ def _measure(paths: list[object], root: Path) -> dict[str, Any]:
     return {"decoded": decoded, "missing": missing, "unreadable": unreadable}
 
 
-def read_audio(path: Path) -> tuple[np.ndarray, int]:
-    """Decode a file to float32 samples shaped (frames, channels), at its own sample rate.
+def read_audio(path: Path, rate: int | None = None, mono: bool = False) -> tuple[np.ndarray, int]:
+    """Decode a file to float32 samples shaped (frames, channels).
 
     libsndfile reads WAV, FLAC and OGG. Anything else, such as AAC in a YouTube .m4a, goes
-    through PyAV's bundled FFmpeg. Example: a 44.1 kHz stereo .m4a returns shape (n, 2) and
-    44100. Raises OSError when neither can decode the file.
+    through PyAV's bundled FFmpeg. With `rate` and `mono`, the file is converted while it is
+    decoded, so a step never holds more than it analyses. Example: a 44.1 kHz stereo .m4a read
+    with rate=22050, mono=True returns shape (n, 1) and 22050; read plainly, (2n, 2) and 44100.
+    Raises OSError when neither can decode the file.
     """
     try:
-        samples, rate = sf.read(path, always_2d=True, dtype="float32")
-        return samples, int(rate)
+        samples, native = sf.read(path, always_2d=True, dtype="float32")
     except (RuntimeError, OSError):
-        pass
+        return _read_with_ffmpeg(path, rate, mono)
+    if mono:
+        samples = samples.mean(axis=1, keepdims=True)
+    if rate is None or rate == native:
+        return samples, int(native)
+    converted = librosa.resample(samples.T, orig_sr=native, target_sr=rate).T
+    return np.ascontiguousarray(converted, dtype=np.float32), rate
+
+
+def _read_with_ffmpeg(path: Path, rate: int | None, mono: bool) -> tuple[np.ndarray, int]:
     try:
         with av.open(str(path)) as container:
             stream = container.streams.audio[0]
-            planar = av.AudioResampler(format="fltp", layout=stream.layout, rate=stream.rate)
+            target = rate or stream.rate
+            planar = av.AudioResampler(
+                format="fltp", layout="mono" if mono else stream.layout, rate=target
+            )
             chunks = [
                 out.to_ndarray()
                 for frame in container.decode(stream)
                 for out in planar.resample(frame)
             ]
             chunks += [out.to_ndarray() for out in planar.resample(None)]
-            return np.concatenate(chunks, axis=1).T.astype(np.float32), int(stream.rate)
+            return np.concatenate(chunks, axis=1).T.astype(np.float32), int(target)
     except (av.FFmpegError, IndexError, ValueError) as error:
         raise OSError(f"cannot decode {path.name}") from error
 
@@ -162,11 +178,11 @@ def _features(
             missing += 1
             continue
         try:
-            samples, rate = read_audio(path)
+            samples, rate = read_audio(path, rate=FEATURE_RATE, mono=True)
         except OSError:
             unreadable += 1
             continue
-        matrix[row] = _librosa_features(samples.mean(axis=1), rate)
+        matrix[row] = _librosa_features(samples[:, 0], rate)
         found[row] = True
     counts = {
         "rows": len(paths), "found": int(found.sum()), "missing": missing, "unreadable": unreadable,

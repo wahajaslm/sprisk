@@ -1,4 +1,5 @@
 import wave
+from collections.abc import Callable
 from pathlib import Path
 
 import av
@@ -6,7 +7,13 @@ import numpy as np
 import polars as pl
 import pytest
 
-from sprisk_clean.audio_assets import AUDIO_FEATURE_NAMES, AUDIT_KIND, audit_audio, featurize_audio
+from sprisk_clean.audio_assets import (
+    AUDIO_FEATURE_NAMES,
+    AUDIT_KIND,
+    audit_audio,
+    featurize_audio,
+    read_audio,
+)
 from sprisk_clean.audio_speech import VAD_KIND, opensmile_features, voice_activity
 from sprisk_clean.audio_models import diarize_audio, transcribe_audio
 from sprisk_clean.synthesize_speech import synthesize_speech
@@ -21,12 +28,14 @@ def _wave(path: Path, value: int = 0) -> None:
         output.writeframes(samples.tobytes())
 
 
-def _m4a(path: Path, rate: int = 16_000) -> None:
+def _m4a(path: Path, rate: int = 16_000, channels: int = 1) -> None:
     """Half a second of a 440 Hz tone in AAC, the format YouTube downloads arrive in."""
     tone = (0.5 * np.sin(2 * np.pi * 440 * np.arange(rate // 2) / rate)).astype(np.float32)
+    layout = "mono" if channels == 1 else "stereo"
     with av.open(str(path), "w", format="mp4") as container:
-        stream = container.add_stream("aac", rate=rate, layout="mono")
-        frame = av.AudioFrame.from_ndarray(tone.reshape(1, -1), format="flt", layout="mono")
+        stream = container.add_stream("aac", rate=rate, layout=layout)
+        planes = np.tile(tone, (channels, 1))
+        frame = av.AudioFrame.from_ndarray(planes, format="fltp", layout=layout)
         frame.sample_rate = rate
         for packet in [*stream.encode(frame), *stream.encode(None)]:
             container.mux(packet)
@@ -40,6 +49,50 @@ def _tone(path: Path, frequency: float, amplitude: float, rate: int = 8000) -> N
         output.setsampwidth(2)
         output.setframerate(rate)
         output.writeframes(samples.tobytes())
+
+
+def _chord(path: Path, rate: int) -> None:
+    """One second of 440 Hz plus a 6 kHz partial, stereo, written at the given rate."""
+    t = np.arange(rate) / rate
+    mono = 0.4 * np.sin(2 * np.pi * 440 * t) + 0.2 * np.sin(2 * np.pi * 6000 * t)
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(2)
+        output.setsampwidth(2)
+        output.setframerate(rate)
+        output.writeframes((np.repeat(mono, 2) * 32_000).astype("<i2").tobytes())
+
+
+@pytest.mark.parametrize("make", [_m4a, _chord])
+def test_audio_is_read_at_the_rate_and_channels_a_step_asks_for(
+    tmp_path: Path, make: Callable[..., None]
+) -> None:
+    # A step that analyses 22.05 kHz mono reads it so, whatever the file holds (44.1 kHz stereo).
+    path = tmp_path / ("song.m4a" if make is _m4a else "song.wav")
+    make(path, rate=44_100, **({"channels": 2} if make is _m4a else {}))
+
+    samples, rate = read_audio(path, rate=22_050, mono=True)
+
+    assert rate == 22_050
+    assert samples.shape[1] == 1
+    spectrum = np.abs(np.fft.rfft(samples[:, 0]))
+    peak = np.fft.rfftfreq(len(samples), 1 / rate)[spectrum.argmax()]
+    assert abs(peak - 440) < 5
+
+
+def test_audio_features_do_not_depend_on_the_file_sample_rate(tmp_path: Path) -> None:
+    # librosa frames are counted in samples, so the same sound at 44.1 kHz and 22.05 kHz gave
+    # different statistics: tempo 139.7 vs 112.3 BPM for this chord. Features are now computed
+    # at one rate, so the two rows match.
+    _chord(tmp_path / "high.wav", 44_100)
+    _chord(tmp_path / "low.wav", 22_050)
+    _tone(tmp_path / "other.wav", 220, 0.8, rate=22_050)
+    train = pl.DataFrame({"clip": ["high.wav", "low.wav", "other.wav"]})
+
+    values = featurize_audio(train, train, str(tmp_path), "clip")["train_words"][0].toarray()
+
+    for name in ("audio_tempo_bpm", "audio_spectral_centroid_hz_mean"):
+        column = AUDIO_FEATURE_NAMES.index(name)
+        assert values[0, column] == pytest.approx(values[1, column], abs=0.1)
 
 
 def test_compressed_audio_that_soundfile_cannot_read_is_decoded(tmp_path: Path) -> None:

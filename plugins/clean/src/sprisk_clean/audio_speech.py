@@ -73,8 +73,8 @@ def voice_activity(
             missing += 1
             continue
         try:
-            samples, rate = read_audio(path)
-            flags = _speech_flags(samples.mean(axis=1), rate, vad)
+            samples, rate = read_audio(path, rate=16_000, mono=True)
+            flags = _speech_flags(samples[:, 0], rate, vad)
         except (RuntimeError, OSError, ValueError):
             unreadable += 1
             continue
