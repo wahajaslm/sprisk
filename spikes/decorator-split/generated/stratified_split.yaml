@@ -1,0 +1,52 @@
+# Method IR, compiled from the decorated pack. Do not edit.
+schema_version: sprisk.operator/v1
+id: sprisk.validation.stratified_split@1.0.0
+title: Stratified split
+capability_class: transform
+role: split
+folds: plain
+description: Shuffle rows into train and test, keeping each class's share on both sides.
+entrypoint: validation.stratified_split:stratified_split
+inputs:
+- name: data
+  kind: table
+outputs:
+- name: train
+  kind: table
+- name: test
+  kind: table
+concepts:
+  stratify: common.target
+promises:
+- no_row_in_both
+visualizations:
+- id: class_shares
+  title: Class shares in train and test
+params_schema:
+  type: object
+  additionalProperties: false
+  required:
+  - stratify
+  properties:
+    stratify:
+      type: string
+      minLength: 1
+      x-sprisk-column: true
+    test_fraction:
+      type: number
+      minimum: 0.05
+      maximum: 0.4
+      x-sprisk-step: 0.05
+      default: 0.2
+    seed:
+      type: integer
+      minimum: 0
+      maximum: 10000
+      default: 42
+effects: pure
+network: none
+resources:
+  cpu_cores: 1
+  memory_mb: 2048
+  gpu: none
+  timeout_seconds: 600

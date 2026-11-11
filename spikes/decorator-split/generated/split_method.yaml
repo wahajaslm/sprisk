@@ -1,0 +1,79 @@
+# Method IR, compiled from the decorated pack. Do not edit.
+schema_version: sprisk.method/v2
+id: methodology.supervised.split_method@1.0.0
+decides: split.method
+name: Train/test split
+activity: Fair evaluation
+question: How are rows divided into training and test so the score is fair?
+applies_when:
+  task:
+  - classification
+  - regression
+needs:
+  concepts:
+  - common.event_time
+  - common.item_identity
+  - common.target
+  evidence: []
+  decisions:
+  - data.repeated_items
+options:
+- id: temporal
+  label: Train on earlier rows, test on later ones
+  action:
+    replace:
+      role: split
+      operator: sprisk.validation.temporal_split@1.0.0
+      concepts:
+        time_column: common.event_time
+        group_column: common.item_identity
+      settings:
+        test_fraction: 0.2
+  verify:
+  - test_after_train
+- id: item_groups
+  label: Keep each item's rows on one side
+  action:
+    replace:
+      role: split
+      operator: sprisk.validation.group_split@1.0.0
+      concepts:
+        group_column: common.item_identity
+      settings:
+        test_fraction: 0.2
+        seed: 42
+  verify:
+  - no_group_overlap
+- id: stratified_random
+  label: Random rows, with class shares kept
+  action:
+    replace:
+      role: split
+      operator: sprisk.validation.stratified_split@1.0.0
+      concepts:
+        stratify: common.target
+      settings:
+        test_fraction: 0.2
+        seed: 42
+  verify:
+  - no_row_in_both
+- id: simple_random
+  label: Random rows
+  action:
+    replace:
+      role: split
+      operator: sprisk.validation.random_split@1.0.0
+      settings:
+        test_fraction: 0.2
+        seed: 42
+  verify:
+  - no_row_in_both
+verifications:
+  test_after_train:
+    promise: Every test row is later than the latest train row.
+  no_group_overlap:
+    promise: No item has rows in both train and test.
+  no_row_in_both:
+    promise: No test row has the same features as a train row.
+source: "Roberts et al. (2017), Ecography 40(8): cross-validation for temporal and grouped data; scikit-learn\
+  \ User Guide \xA73.1: GroupShuffleSplit, train_test_split(stratify=y)."
